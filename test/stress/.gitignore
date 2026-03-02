@@ -1,0 +1,7 @@
+# Stress test databases
+*.db
+*.db-wal
+*.db-shm
+
+# Benchmark result files (intermediate JSON, not the final docs/performance.md)
+benchmark-results-*.json

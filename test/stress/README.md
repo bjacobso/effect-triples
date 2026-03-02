@@ -4,11 +4,12 @@ Performance and stress tests for the Open Ontology triple store at scale, suppor
 
 ## Overview
 
-These tests validate that each storage backend can handle moderate production workloads by:
-- Inserting ~1 million triples (100k employee records)
+These tests validate that each storage backend can handle production workloads by:
+- Inserting ~10 million triples (1M employee records × 10 attributes)
+- Running 10 rounds of updates (retract-then-assert) across 5 attributes per employee
 - Running common TripleStore query patterns (Q1-Q6)
 - Running Datalog query patterns including joins, predicates, aggregations, and reference traversal (D1-D6)
-- Measuring throughput and latency with backend-specific thresholds
+- Measuring insertion, update, and query throughput with backend-specific thresholds
 - Identifying performance bottlenecks across backends
 
 Tests use `DatabaseManager` — the same public API that production code uses — to construct `TripleStore` and `Datalog` services.
@@ -19,6 +20,28 @@ Tests use `DatabaseManager` — the same public API that production code uses �
 |---------|--------|---------|----------|
 | `sqlite` | SQLite (better-sqlite3) | File-based | Default. Production single-node deployments. |
 | `pg` | PostgreSQL (@effect/sql-pg) | Network database | Production multi-node deployments. Requires running PG server. |
+
+## Benchmark Report
+
+Generate a side-by-side SQLite vs PostgreSQL performance report at `docs/performance.md`:
+
+```bash
+# Full benchmark (1M employees, 10 update rounds, auto-starts PostgreSQL via Docker)
+pnpm --filter @open-ontology/core-stress benchmark
+
+# Customize scale
+STRESS_EMPLOYEE_COUNT=100000 STRESS_UPDATE_ROUNDS=5 pnpm --filter @open-ontology/core-stress benchmark
+
+# Skip updates (insertion + queries only)
+STRESS_UPDATE_ROUNDS=0 pnpm --filter @open-ontology/core-stress benchmark
+
+# SQLite only (no Docker required)
+BENCHMARK_SKIP_PG=true pnpm --filter @open-ontology/core-stress benchmark
+```
+
+**Requirements**: Docker (for PostgreSQL). If Docker is not available, the script automatically skips PostgreSQL and benchmarks SQLite only.
+
+The generated report includes insertion throughput, update throughput with per-round breakdown, TripleStore query latency (Q1-Q6), and Datalog query latency (D1-D6) with system information and methodology notes.
 
 ## Running Tests
 
@@ -66,8 +89,9 @@ pnpm --filter @open-ontology/stress test:watch
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `STRESS_BACKEND` | `sqlite` | Backend to test: `sqlite` or `pg` |
-| `STRESS_EMPLOYEE_COUNT` | `100000` | Number of employees to generate. Each produces ~10 triples. |
+| `STRESS_BACKEND` | `sqlite` | Backend to test: `sqlite`, `pg`, or `kv` |
+| `STRESS_EMPLOYEE_COUNT` | `100000` | Number of employees to generate. Each produces ~10 triples. Benchmark script defaults to 1,000,000. |
+| `STRESS_UPDATE_ROUNDS` | `10` | Number of update rounds. Each round updates 5 attributes per employee. Set to 0 to skip. |
 | `DATABASE_URL` | _(empty)_ | PostgreSQL connection URL. **Required** when `STRESS_BACKEND=pg`. |
 | `STRESS_DROP_INDEXES` | `false` | Drop indexes before bulk insert, recreate after. SQLite only. ~3-5x speedup. |
 | `STRESS_UNSAFE_MODE` | `false` | Use `PRAGMA synchronous=OFF` and `journal_mode=MEMORY`. SQLite only. ~1.2-2x speedup. **WARNING: Data loss possible on crash.** |

@@ -6,19 +6,24 @@
   "description": "Performance and stress tests for @open-ontology/core",
   "scripts": {
     "stress-test": "vitest run",
+    "stress-test:kv": "STRESS_BACKEND=kv NODE_OPTIONS='--max-old-space-size=4096' vitest run",
+    "benchmark": "tsx scripts/generate-benchmark-report.ts",
     "test:watch": "vitest",
     "typecheck": "tsc --noEmit",
-    "clean": "rm -rf dist stress-data"
+    "clean": "rm -rf dist stress-data benchmark-results-*.json"
   },
   "dependencies": {
     "@open-ontology/core": "workspace:*",
+    "@open-ontology/domain": "workspace:*",
     "@effect/platform-node": "catalog:",
+    "@effect/sql": "catalog:",
     "@effect/sql-sqlite-node": "catalog:",
     "@effect/sql-pg": "catalog:",
     "effect": "catalog:"
   },
   "devDependencies": {
     "@types/node": "catalog:",
+    "tsx": "catalog:",
     "vitest": "catalog:"
   }
 }
