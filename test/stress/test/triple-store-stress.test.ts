@@ -24,6 +24,7 @@ import {
   supportsBulkOptions,
   getStoreAndDatalog,
   makeSqlLayer,
+  getInsertBatchSize,
 } from "../src/backend.js";
 import type { BenchmarkResults, RoundMetrics } from "../src/benchmark-results.js";
 
@@ -37,9 +38,10 @@ const UPDATE_ROUNDS = getUpdateRounds();
 // PG uses smaller batches to reduce parameter counts and keep individual
 // transactions lightweight (less WAL pressure, lower chance of transient failures).
 const UPDATE_BATCH_SIZE = BACKEND === "pg" ? 500 : 1_000;
-const INSERT_BATCH_SIZE = 1_000; // Employees per insertion batch (both backends)
+const INSERT_BATCH_SIZE = getInsertBatchSize(BACKEND); // Employees per insertion batch
 const TRIPLES_PER_EMPLOYEE = 10; // Average (9 core + ~20% have 10th manager attribute)
 const TestLayer = makeTestLayer(BACKEND);
+const SQL_LAYER = makeSqlLayer(BACKEND);
 const thresholds = getThresholds(BACKEND);
 
 // ============================================================================
@@ -48,10 +50,13 @@ const thresholds = getThresholds(BACKEND);
 // STRESS_DROP_INDEXES=true     - Drop indexes during bulk insert (3-5x speedup, SQLite only)
 // STRESS_UNSAFE_MODE=true      - Use unsafe PRAGMA settings (1.2-2x speedup, SQLite only)
 // STRESS_TEST_KEEP_DB=true     - Keep database after test for inspection
-// STRESS_BACKEND=sqlite|pg     - Backend to test (default: sqlite)
-// STRESS_EMPLOYEE_COUNT=N      - Number of employees to generate (default: 100000)
-// STRESS_UPDATE_ROUNDS=N       - Number of update rounds (default: 10, 0 to skip)
-// DATABASE_URL=...             - PostgreSQL connection URL (required for pg backend)
+// STRESS_BACKEND=sqlite|pg|kv|fdb - Backend to test (default: sqlite)
+// STRESS_EMPLOYEE_COUNT=N          - Number of employees to generate (default: 100000)
+// STRESS_UPDATE_ROUNDS=N           - Number of update rounds (default: 10, 0 to skip)
+// STRESS_INSERT_BATCH_SIZE=N       - Employees per insert batch (default: 1000, fdb default: 200)
+// DATABASE_URL=...                 - PostgreSQL connection URL (required for pg backend)
+// FDB_CLUSTER_FILE=/path/to/cluster - Optional FoundationDB cluster file (fdb backend)
+// FDB_LOG_RETRIES=true             - Log FDB transaction retries
 // ============================================================================
 
 const JSON_OUTPUT = process.env["STRESS_JSON_OUTPUT"] === "true";
@@ -95,6 +100,7 @@ const sqliteOpts = supportsBulkOptions(BACKEND)
 process.stderr.write(`\n  Backend: ${describeBackend(BACKEND)}\n`);
 process.stderr.write(`  Employees: ${EMPLOYEE_COUNT.toLocaleString()}\n`);
 process.stderr.write(`  Update rounds: ${UPDATE_ROUNDS}\n`);
+process.stderr.write(`  Insert batch size: ${INSERT_BATCH_SIZE.toLocaleString()} employees\n`);
 process.stderr.write(`  SQLite options: ${sqliteOpts}\n`);
 
 // ============================================================================
@@ -102,9 +108,12 @@ process.stderr.write(`  SQLite options: ${sqliteOpts}\n`);
 // ============================================================================
 
 describe(`Triple Store Stress Test [${BACKEND}] - ${(EMPLOYEE_COUNT * TRIPLES_PER_EMPLOYEE).toLocaleString()} Triples`, () => {
-  beforeAll(async () => {
-    await cleanupBefore(BACKEND);
-  });
+  beforeAll(
+    async () => {
+      await cleanupBefore(BACKEND);
+    },
+    Number.parseInt(process.env["STRESS_TEST_TIMEOUT"] ?? "600000", 10),
+  );
 
   it("should insert triples efficiently", async () => {
     const result = await Effect.runPromise(
@@ -126,21 +135,54 @@ describe(`Triple Store Stress Test [${BACKEND}] - ${(EMPLOYEE_COUNT * TRIPLES_PE
         );
         const startInsert = Date.now();
         const batchTimes: number[] = [];
+        const totalBatches = Math.ceil(EMPLOYEE_COUNT / INSERT_BATCH_SIZE);
+
+        const startStallLogger = (batchIndex: number, batchStart: number) => {
+          let delayMs = 60_000;
+          let timer: NodeJS.Timeout | null = null;
+          let cancelled = false;
+
+          const schedule = () => {
+            if (cancelled) return;
+            timer = setTimeout(() => {
+              if (cancelled) return;
+              const elapsed = ((Date.now() - batchStart) / 1000).toFixed(1);
+              const totalElapsed = ((Date.now() - startInsert) / 1000).toFixed(1);
+              process.stderr.write(
+                `  [${totalElapsed}s] Batch ${batchIndex}/${totalBatches} still running (${elapsed}s). Next log in ${(
+                  delayMs / 1000
+                ).toFixed(0)}s\n`,
+              );
+              delayMs *= 2;
+              schedule();
+            }, delayMs);
+          };
+
+          schedule();
+
+          return () => {
+            cancelled = true;
+            if (timer) clearTimeout(timer);
+          };
+        };
 
         for (let i = 0; i < EMPLOYEE_COUNT; i += INSERT_BATCH_SIZE) {
+          const batchIndex = i / INSERT_BATCH_SIZE + 1;
           const batchStart = Date.now();
+          const stopStallLogger = startStallLogger(batchIndex, batchStart);
           const batch = allTriples.slice(
             i * TRIPLES_PER_EMPLOYEE,
             Math.min((i + INSERT_BATCH_SIZE) * TRIPLES_PER_EMPLOYEE, allTriples.length),
           );
 
           yield* store.assertBatch(batch, BULK_OPTIONS);
+          stopStallLogger();
 
           const batchTime = Date.now() - batchStart;
           batchTimes.push(batchTime);
 
           // Log progress every 5 batches
-          if ((i / INSERT_BATCH_SIZE + 1) % 5 === 0) {
+          if (batchIndex % 5 === 0) {
             const processed = Math.min(
               (i + INSERT_BATCH_SIZE) * TRIPLES_PER_EMPLOYEE,
               allTriples.length,
@@ -148,7 +190,7 @@ describe(`Triple Store Stress Test [${BACKEND}] - ${(EMPLOYEE_COUNT * TRIPLES_PE
             const elapsed = ((Date.now() - startInsert) / 1000).toFixed(1);
             const rate = processed / ((Date.now() - startInsert) / 1000);
             process.stderr.write(
-              `  [${elapsed}s] Batch ${i / INSERT_BATCH_SIZE + 1}/${Math.ceil(EMPLOYEE_COUNT / INSERT_BATCH_SIZE)}: ${batchTime}ms | Total: ${processed.toLocaleString()} triples | Rate: ${rate.toFixed(0)}/s\n`,
+              `  [${elapsed}s] Batch ${batchIndex}/${totalBatches}: ${batchTime}ms | Total: ${processed.toLocaleString()} triples | Rate: ${rate.toFixed(0)}/s\n`,
             );
           }
         }
@@ -213,7 +255,7 @@ describe(`Triple Store Stress Test [${BACKEND}] - ${(EMPLOYEE_COUNT * TRIPLES_PE
   // Update Performance (retract-then-assert rounds)
   // ============================================================================
 
-  it.skipIf(UPDATE_ROUNDS === 0)(
+  it.skipIf(UPDATE_ROUNDS === 0 || SQL_LAYER === null)(
     `should handle ${UPDATE_ROUNDS} rounds of updates across ${EMPLOYEE_COUNT.toLocaleString()} employees`,
     async () => {
       const roundMetrics: RoundMetrics[] = [];
@@ -226,8 +268,10 @@ describe(`Triple Store Stress Test [${BACKEND}] - ${(EMPLOYEE_COUNT * TRIPLES_PE
       const MAX_RETRIES = BACKEND === "pg" ? 3 : 0;
       const RETRY_DELAY_MS = 2_000;
 
-      const sqlLayer = makeSqlLayer(BACKEND)!;
-      const combinedLayer = Layer.merge(TestLayer, sqlLayer);
+      if (SQL_LAYER === null) {
+        throw new Error("Update test requires an SQL-backed backend (sqlite or pg)");
+      }
+      const combinedLayer = Layer.merge(TestLayer, SQL_LAYER);
       await Effect.runPromise(
         Effect.gen(function* () {
           const { store } = yield* getStoreAndDatalog();

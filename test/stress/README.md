@@ -20,26 +20,34 @@ Tests use `DatabaseManager` â€” the same public API that production code uses â€
 |---------|--------|---------|----------|
 | `sqlite` | SQLite (better-sqlite3) | File-based | Default. Production single-node deployments. |
 | `pg` | PostgreSQL (@effect/sql-pg) | Network database | Production multi-node deployments. Requires running PG server. |
+| `kv` | In-memory KV + hexastore | Memory only | Fast local algorithm benchmark (no SQL layer). |
+| `fdb` | FoundationDB KV + hexastore | Distributed KV | Distributed KV benchmark (requires FoundationDB cluster + client library). |
 
 ## Benchmark Report
 
-Generate a side-by-side SQLite vs PostgreSQL performance report at `docs/performance.md`:
+Generate a multi-backend performance report at `docs/performance.md`:
 
 ```bash
-# Full benchmark (1M employees, 10 update rounds, auto-starts PostgreSQL via Docker)
-pnpm --filter @open-ontology/core-stress benchmark
+# Full benchmark (SQLite + PostgreSQL + KV + FoundationDB)
+pnpm --filter @open-ontology/stress benchmark
 
 # Customize scale
-STRESS_EMPLOYEE_COUNT=100000 STRESS_UPDATE_ROUNDS=5 pnpm --filter @open-ontology/core-stress benchmark
+STRESS_EMPLOYEE_COUNT=100000 STRESS_UPDATE_ROUNDS=5 pnpm --filter @open-ontology/stress benchmark
 
 # Skip updates (insertion + queries only)
-STRESS_UPDATE_ROUNDS=0 pnpm --filter @open-ontology/core-stress benchmark
+STRESS_UPDATE_ROUNDS=0 pnpm --filter @open-ontology/stress benchmark
 
-# SQLite only (no Docker required)
-BENCHMARK_SKIP_PG=true pnpm --filter @open-ontology/core-stress benchmark
+# SQLite-only (no Docker, no FDB client required)
+BENCHMARK_SKIP_PG=true BENCHMARK_SKIP_KV=true BENCHMARK_SKIP_FDB=true \
+  pnpm --filter @open-ontology/stress benchmark
+
+# Skip FoundationDB only
+BENCHMARK_SKIP_FDB=true pnpm --filter @open-ontology/stress benchmark
 ```
 
-**Requirements**: Docker (for PostgreSQL). If Docker is not available, the script automatically skips PostgreSQL and benchmarks SQLite only.
+**Requirements**: Docker (for PostgreSQL and FoundationDB containers).
+
+> Note: FoundationDB benchmarking also requires host-side FoundationDB client libraries (`libfdb_c`). Use `BENCHMARK_SKIP_FDB=true` to disable it.
 
 The generated report includes insertion throughput, update throughput with per-round breakdown, TripleStore query latency (Q1-Q6), and Datalog query latency (D1-D6) with system information and methodology notes.
 
@@ -78,6 +86,52 @@ STRESS_BACKEND=pg DATABASE_URL=postgresql://user:pass@localhost:5432/ontology_st
   STRESS_EMPLOYEE_COUNT=50000 pnpm --filter @open-ontology/stress stress-test
 ```
 
+### KV / FoundationDB
+
+KV-family backends (`kv`, `fdb`) do not expose a SQL layer, so update rounds are disabled (`STRESS_UPDATE_ROUNDS=0`).
+
+```bash
+# In-memory KV benchmark
+pnpm --filter @open-ontology/stress stress-test:kv
+
+# FoundationDB benchmark (requires libfdb_c + reachable cluster)
+STRESS_BACKEND=fdb STRESS_UPDATE_ROUNDS=0 FDB_CLUSTER_FILE=/path/to/fdb.cluster \
+  pnpm --filter @open-ontology/stress stress-test
+
+# Convenience script (still requires FDB_CLUSTER_FILE or default local cluster)
+FDB_CLUSTER_FILE=/path/to/fdb.cluster pnpm --filter @open-ontology/stress stress-test:fdb
+```
+
+### FoundationDB large-scale benchmark recipe
+
+Use this when re-running the 100k employee (1M triple) benchmark locally. On Apple Silicon, prefer the arm64 FoundationDB image.
+
+```bash
+# 100k employees, insert + query only (no SQL update rounds)
+FDB_IMAGE=foundationdb/foundationdb:7.3.75 \
+FDB_PLATFORM=linux/arm64 \
+STRESS_EMPLOYEE_COUNT=100000 \
+STRESS_UPDATE_ROUNDS=0 \
+STRESS_TEST_TIMEOUT=7200000 \
+STRESS_INSERT_BATCH_SIZE=200 \
+FDB_MAX_TX_ENTRIES=1000 \
+FDB_LOG_RETRIES=true \
+FDB_STORAGE_MODE=single \
+BENCHMARK_SKIP_SQLITE=true BENCHMARK_SKIP_PG=true BENCHMARK_SKIP_KV=true \
+  pnpm --filter @open-ontology/stress benchmark
+
+# Tail the benchmark logs when running via nohup
+: > /tmp/fdb-benchmark-100k.log
+nohup env FDB_IMAGE=foundationdb/foundationdb:7.3.75 FDB_PLATFORM=linux/arm64 \
+  STRESS_EMPLOYEE_COUNT=100000 STRESS_UPDATE_ROUNDS=0 STRESS_TEST_TIMEOUT=7200000 \
+  STRESS_INSERT_BATCH_SIZE=200 FDB_MAX_TX_ENTRIES=1000 FDB_LOG_RETRIES=true \
+  FDB_STORAGE_MODE=single BENCHMARK_SKIP_SQLITE=true BENCHMARK_SKIP_PG=true \
+  BENCHMARK_SKIP_KV=true pnpm --filter @open-ontology/stress benchmark \
+  >> /tmp/fdb-benchmark-100k.log 2>&1 &
+
+tail -f /tmp/fdb-benchmark-100k.log
+```
+
 ### Watch Mode
 
 ```bash
@@ -89,15 +143,21 @@ pnpm --filter @open-ontology/stress test:watch
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `STRESS_BACKEND` | `sqlite` | Backend to test: `sqlite`, `pg`, or `kv` |
+| `STRESS_BACKEND` | `sqlite` | Backend to test: `sqlite`, `pg`, `kv`, or `fdb` |
 | `STRESS_EMPLOYEE_COUNT` | `100000` | Number of employees to generate. Each produces ~10 triples. Benchmark script defaults to 1,000,000. |
-| `STRESS_UPDATE_ROUNDS` | `10` | Number of update rounds. Each round updates 5 attributes per employee. Set to 0 to skip. |
+| `STRESS_UPDATE_ROUNDS` | `10` | Number of update rounds. Each round updates 5 attributes per employee. Set to `0` to skip (required for `kv`/`fdb`). |
 | `DATABASE_URL` | _(empty)_ | PostgreSQL connection URL. **Required** when `STRESS_BACKEND=pg`. |
+| `FDB_CLUSTER_FILE` | _(empty)_ | FoundationDB cluster file path. Optional for `fdb` backend (uses FDB default if unset). |
+| `FDB_IMAGE` | `foundationdb/foundationdb:7.3.75` | Docker image tag used by `pnpm --filter @open-ontology/stress benchmark` for FoundationDB. |
+| `FDB_PLATFORM` | `linux/amd64` | Docker platform override for FoundationDB (use `linux/arm64` when an ARM image is available). |
+| `FDB_API_VERSION` | `720` | Optional FoundationDB API version override. |
+| `FDB_MAX_TX_ENTRIES` | `5000` | Max key-value entries per FDB transaction in bulk insert. Tune lower for large values, higher for small ones. |
+| `STRESS_FDB_SUBSPACE` | _(auto)_ | Optional fixed FoundationDB subspace prefix. Defaults to a unique per-run prefix. |
 | `STRESS_DROP_INDEXES` | `false` | Drop indexes before bulk insert, recreate after. SQLite only. ~3-5x speedup. |
 | `STRESS_UNSAFE_MODE` | `false` | Use `PRAGMA synchronous=OFF` and `journal_mode=MEMORY`. SQLite only. ~1.2-2x speedup. **WARNING: Data loss possible on crash.** |
 | `STRESS_TEST_KEEP_DB` | `false` | Keep the test database for inspection after the test completes. |
 
-**Note**: `STRESS_DROP_INDEXES` and `STRESS_UNSAFE_MODE` only affect the SQLite backend. They are silently ignored by PostgreSQL.
+**Note**: `STRESS_DROP_INDEXES` and `STRESS_UNSAFE_MODE` only affect the SQLite backend. They are ignored by `pg`, `kv`, and `fdb`.
 
 **Note**: Stress tests are in a separate package and excluded from normal `pnpm test` runs and CI.
 
@@ -228,33 +288,28 @@ SELECT COUNT(*) FROM triples;
 ## Architecture
 
 ```
-              STRESS_BACKEND env var
-            +---------+---------+
-            |                   |
-       "sqlite"               "pg"
-            |                   |
-    +-------+------+    +------+-------+
-    |SqliteBackend |    |PgBackend     |
-    |  (via        |    | (via make-   |
-    |  makeSqlite  |    |  PostgresqlBk|
-    |  Backend)    |    |  FromUrl)    |
-    +------+-------+    +------+-------+
-           |                   |
-           +--------+----------+
-                    |
-          DatabaseManagerLive
-            + DatabaseRegistryLive
-                    |
-            DatabaseManager
-                    |
-          +---------+-----------+
-          |                     |
-    manager.getStore()    manager.getDatalog()
-          |                     |
-    TripleStoreService    DatalogService
-    stress tests          stress tests
-    (Q1-Q6)               (D1-D6)
+                  STRESS_BACKEND env var
+        +-------------+-------------+-------------+-------------+
+        |             |             |             |             |
+     "sqlite"        "pg"         "kv"          "fdb"
+        |             |             |             |
++-------+------+ +----+--------+ +--+---------+ +--+---------+
+|SqliteBackend | |PgBackend    | |InMemory KV | |FDB KV      |
+|(StorageBackend)| |(StorageBackend)| |Hexastore | |Hexastore |
++-------+------+ +----+--------+ +--+---------+ +--+---------+
+        |             |             |             |
+        +------+------+             +------+------+
+               |                           |
+      DatabaseManager path          Direct KV path
+        (sqlite / pg)                (kv / fdb)
+               |                           |
+      manager.getStore/Datalog      TripleStore + Datalog
+               \______________________/ 
+                          |
+                   stress queries
+                      (Q1-Q6, D1-D6)
 ```
+
 
 ## Troubleshooting
 
@@ -275,10 +330,19 @@ Ensure PostgreSQL is running and `DATABASE_URL` is correct:
 psql $DATABASE_URL -c "SELECT 1"
 ```
 
+### FoundationDB Connection Issues
+
+For `STRESS_BACKEND=fdb`:
+
+- Ensure FoundationDB client library (`libfdb_c`) is installed on the host.
+- Ensure `FDB_CLUSTER_FILE` points to a reachable cluster endpoint.
+- Set `STRESS_UPDATE_ROUNDS=0` (FDB/KV stress path has no SQL update helper).
+
 ### Slow Insertion
 
 - **SQLite**: Try `STRESS_DROP_INDEXES=true STRESS_UNSAFE_MODE=true`
 - **PostgreSQL**: Check connection latency, consider local PG instance
+- **FoundationDB**: Run cluster locally / minimize network RTT for benchmarks
 
 ### No Console Output
 

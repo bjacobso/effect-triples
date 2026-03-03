@@ -4,14 +4,18 @@
  * Uses DatabaseManager (the public API) to construct TripleStore and Datalog
  * services for SQL backends — the same path production code uses.
  *
- * Supports three backends:
+ * Supports four backends:
  * - sqlite (default): File-based SQLite via better-sqlite3
  * - pg: PostgreSQL via @effect/sql-pg (requires DATABASE_URL)
  * - kv: In-memory ordered KV store with hexastore indexes
+ * - fdb: FoundationDB-backed KV store (requires reachable FDB cluster)
  *
  * Usage:
- *   STRESS_BACKEND=sqlite|pg|kv
+ *   STRESS_BACKEND=sqlite|pg|kv|fdb
+ *   STRESS_INSERT_BATCH_SIZE=N       - Employees per insert batch (default: 1000, fdb default: 200)
  *   DATABASE_URL=postgresql://... (required for pg)
+ *   FDB_CLUSTER_FILE=/path/to/fdb.cluster (optional; uses FDB default if unset)
+ *   FDB_LOG_RETRIES=true            - Log FDB transaction retries
  */
 
 import { Effect, Layer } from "effect";
@@ -32,12 +36,18 @@ import {
   makePostgresqlBackendFromUrl,
   makePostgresqlLayerFromUrl,
 } from "@open-ontology/core/storage/postgres";
-import { KvTripleStoreLive, KvDatalogLive, InMemoryKvBackendLive } from "@open-ontology/core/kv";
+import {
+  KvTripleStoreLive,
+  KvDatalogLive,
+  InMemoryKvBackendLive,
+  makeFdbKvBackend,
+  type FdbKvBackendConfig,
+} from "@open-ontology/core/kv";
 import { promises as fs } from "node:fs";
 
 // ─── Types ─────────────────────────────────────────────────────────────────
 
-export type BackendName = "sqlite" | "pg" | "kv";
+export type BackendName = "sqlite" | "pg" | "kv" | "fdb";
 
 export interface PerformanceThresholds {
   /** Max insertion time (ms) */
@@ -152,6 +162,28 @@ const KV_BASE: BaseThresholds = {
   scanMultiplier: 1,
 };
 
+const FDB_BASE: BaseThresholds = {
+  insertionTimeout: 900_000,
+  minThroughput: 200,
+  updateRoundTimeout: 3_600_000,
+  minUpdateThroughput: 10,
+  // FoundationDB via KV path has network and transaction overhead vs in-memory KV.
+  // Keep thresholds conservative; tighten with real benchmark data over time.
+  entityLookup: 1_000,
+  attributeScan: 6_500,
+  typeFilter: 6_500,
+  valueFilter: 3_000,
+  refLookup: 1_000,
+  booleanFilter: 6_500,
+  datalogSimple: 5_000,
+  datalogJoin: 8_000,
+  datalogPredicate: 8_000,
+  datalogMultiAttr: 10_000,
+  datalogAggregation: 7_000,
+  datalogRefTraversal: 8_000,
+  scanMultiplier: 1.5,
+};
+
 // ─── Backend detection ─────────────────────────────────────────────────────
 
 /**
@@ -162,11 +194,16 @@ export function getBackendName(): BackendName {
   const raw = process.env["STRESS_BACKEND"] ?? "sqlite";
   const normalized = raw.toLowerCase().trim();
 
-  if (normalized === "sqlite" || normalized === "pg" || normalized === "kv") {
+  if (
+    normalized === "sqlite" ||
+    normalized === "pg" ||
+    normalized === "kv" ||
+    normalized === "fdb"
+  ) {
     return normalized;
   }
 
-  throw new Error(`Invalid STRESS_BACKEND="${raw}". Must be one of: sqlite, pg, kv`);
+  throw new Error(`Invalid STRESS_BACKEND="${raw}". Must be one of: sqlite, pg, kv, fdb`);
 }
 
 /**
@@ -205,11 +242,57 @@ export function getUpdateRounds(): number {
 const STRESS_DATA_DIR = "./stress-data";
 const STRESS_DB_NAME = "stress-test";
 
+const getFdbClusterFile = (): string | undefined =>
+  process.env["FDB_CLUSTER_FILE"] ?? process.env["FDB_CLUSTER_FILE_PATH"];
+
+const getFdbApiVersion = (): number | undefined => {
+  const raw = process.env["FDB_API_VERSION"];
+  if (!raw) return undefined;
+  const parsed = parseInt(raw, 10);
+  if (isNaN(parsed) || parsed <= 0) {
+    throw new Error(`Invalid FDB_API_VERSION="${raw}". Must be a positive integer.`);
+  }
+  return parsed;
+};
+
+const getFdbMaxTxEntries = (): number | undefined => {
+  const raw = process.env["FDB_MAX_TX_ENTRIES"];
+  if (!raw) return undefined;
+  const parsed = parseInt(raw, 10);
+  if (isNaN(parsed) || parsed <= 0) {
+    throw new Error(`Invalid FDB_MAX_TX_ENTRIES="${raw}". Must be a positive integer.`);
+  }
+  return parsed;
+};
+
+export const getInsertBatchSize = (backend: BackendName): number => {
+  const raw = process.env["STRESS_INSERT_BATCH_SIZE"];
+  if (raw) {
+    const parsed = parseInt(raw, 10);
+    if (isNaN(parsed) || parsed <= 0) {
+      throw new Error(`Invalid STRESS_INSERT_BATCH_SIZE="${raw}". Must be a positive integer.`);
+    }
+    return parsed;
+  }
+
+  // Defaults
+  if (backend === "fdb") return 200;
+  return 1_000;
+};
+
+const makeFdbSubspace = (): Buffer => {
+  const custom = process.env["STRESS_FDB_SUBSPACE"];
+  if (custom) return Buffer.from(custom);
+
+  // Default to an isolated per-run prefix so stress runs don't collide.
+  return Buffer.from(`stress/${Date.now()}-${Math.random().toString(36).slice(2, 8)}/`);
+};
+
 /**
  * Build the Effect Layer for the given backend.
  *
  * For sqlite/pg: provides DatabaseManager (use getStoreAndDatalog() to get services).
- * For kv: provides TripleStore + Datalog directly (use getStoreAndDatalog() which handles both).
+ * For kv/fdb: provides TripleStore + Datalog directly (use getStoreAndDatalog() which handles both).
  */
 export function makeTestLayer(
   backend: BackendName,
@@ -221,6 +304,8 @@ export function makeTestLayer(
       return makePgManagerLayer() as Layer.Layer<DatabaseManager | TripleStore | Datalog>;
     case "kv":
       return makeKvTestLayer() as Layer.Layer<DatabaseManager | TripleStore | Datalog>;
+    case "fdb":
+      return makeFdbTestLayer() as Layer.Layer<DatabaseManager | TripleStore | Datalog>;
   }
 }
 
@@ -257,9 +342,34 @@ function makeKvTestLayer() {
   >;
 }
 
+function makeFdbTestLayer() {
+  const baseConfig: FdbKvBackendConfig = {
+    subspace: makeFdbSubspace(),
+    logRetries: process.env["FDB_LOG_RETRIES"] === "true",
+  };
+
+  const clusterFile = getFdbClusterFile();
+  const apiVersion = getFdbApiVersion();
+  const maxTransactionEntries = getFdbMaxTxEntries();
+
+  const fdbConfig = {
+    ...baseConfig,
+    ...(clusterFile ? { clusterFile } : {}),
+    ...(apiVersion !== undefined ? { apiVersion } : {}),
+    ...(maxTransactionEntries !== undefined ? { maxTransactionEntries } : {}),
+  } satisfies FdbKvBackendConfig;
+
+  const fdbBackend = makeFdbKvBackend(fdbConfig);
+  const storeLayer = KvTripleStoreLive.pipe(Layer.provide(fdbBackend));
+  const datalogLayer = KvDatalogLive.pipe(Layer.provide(fdbBackend));
+  return Layer.mergeAll(storeLayer, datalogLayer) as unknown as Layer.Layer<
+    DatabaseManager | TripleStore | Datalog
+  >;
+}
+
 /**
  * Get a SqlClient layer for raw SQL access (needed by the update test).
- * Only available for sqlite/pg backends. KV has no SQL layer.
+ * Only available for sqlite/pg backends. KV/FDB have no SQL layer.
  */
 export function makeSqlLayer(backend: BackendName): Layer.Layer<SqlClient.SqlClient> | null {
   switch (backend) {
@@ -275,6 +385,7 @@ export function makeSqlLayer(backend: BackendName): Layer.Layer<SqlClient.SqlCli
       return makePostgresqlLayerFromUrl(url) as unknown as Layer.Layer<SqlClient.SqlClient>;
     }
     case "kv":
+    case "fdb":
       return null;
   }
 }
@@ -292,7 +403,7 @@ export const STRESS_DATABASE = STRESS_DB_NAME;
  * Get TripleStore and Datalog services.
  *
  * For sqlite/pg: uses DatabaseManager.getStore/getDatalog (the production path).
- * For kv: reads TripleStore and Datalog directly from the layer (no DatabaseManager).
+ * For kv/fdb: reads TripleStore and Datalog directly from the layer (no DatabaseManager).
  */
 export function getStoreAndDatalog(): Effect.Effect<
   { store: TripleStoreService; datalog: DatalogService },
@@ -301,7 +412,7 @@ export function getStoreAndDatalog(): Effect.Effect<
 > {
   const backend = getBackendName();
 
-  if (backend === "kv") {
+  if (backend === "kv" || backend === "fdb") {
     return Effect.gen(function* () {
       const store = yield* TripleStore;
       const datalog = yield* Datalog;
@@ -344,6 +455,8 @@ export function getThresholds(backend: BackendName): PerformanceThresholds {
         return PG_BASE;
       case "kv":
         return KV_BASE;
+      case "fdb":
+        return FDB_BASE;
     }
   })();
 
@@ -397,6 +510,9 @@ export async function cleanupBefore(backend: BackendName): Promise<void> {
     case "kv":
       // In-memory: nothing to clean up
       break;
+    case "fdb":
+      // FDB: no pre-clean by default; run-level subspace isolation is used.
+      break;
   }
 }
 
@@ -428,6 +544,9 @@ export async function cleanupAfter(backend: BackendName): Promise<void> {
     case "kv":
       console.log(`\n  KV store: in-memory data released`);
       break;
+    case "fdb":
+      console.log(`\n  FDB store: stress run used isolated subspace`);
+      break;
   }
 }
 
@@ -452,6 +571,8 @@ export async function getDatabaseSize(backend: BackendName): Promise<string> {
       return "N/A (use psql to check table sizes)";
     case "kv":
       return "N/A (in-memory)";
+    case "fdb":
+      return "N/A (distributed KV)";
   }
 }
 
@@ -466,6 +587,8 @@ export function describeBackend(backend: BackendName): string {
       return `PostgreSQL (${process.env["DATABASE_URL"]?.replace(/:[^@]*@/, ":***@") ?? "no url"})`;
     case "kv":
       return "KV Store (in-memory, hexastore indexes)";
+    case "fdb":
+      return `FoundationDB KV (${process.env["FDB_CLUSTER_FILE"] ?? "default cluster file"})`;
   }
 }
 
