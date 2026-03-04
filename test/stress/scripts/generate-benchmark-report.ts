@@ -33,6 +33,8 @@ import { execSync, type ExecSyncOptions } from "node:child_process";
 import { existsSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { resolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
+import { GenericContainer, Wait } from "testcontainers";
+import type { StartedTestContainer } from "testcontainers";
 import type { BenchmarkResults } from "../src/benchmark-results.js";
 
 // ─── Paths ─────────────────────────────────────────────────────────────────
@@ -41,8 +43,6 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const PKG_DIR = resolve(__dirname, "..");
 const REPO_ROOT = resolve(PKG_DIR, "../..");
 const CORE_PKG_DIR = resolve(REPO_ROOT, "packages/core");
-const COMPOSE_FILE = resolve(REPO_ROOT, "docker-compose.test.yml");
-const CONTAINER_NAME = "ontology-test-pg";
 const FDB_CONTAINER_NAME = "ontology-benchmark-fdb";
 const FDB_IMAGE = process.env["FDB_IMAGE"] ?? "foundationdb/foundationdb:7.3.75";
 const FDB_HOST_PORT = 4500;
@@ -280,31 +280,50 @@ function readResults(backend: string): BenchmarkResults | null {
   return JSON.parse(readFileSync(f, "utf-8")) as BenchmarkResults;
 }
 
-// ─── Docker lifecycle ──────────────────────────────────────────────────────
+// ─── PostgreSQL lifecycle (testcontainers) ─────────────────────────────────
 
-function startPostgres(): string {
-  heading("Starting PostgreSQL container");
-  run(`docker compose -f "${COMPOSE_FILE}" up -d --wait`, { cwd: REPO_ROOT });
+const PG_IMAGE = "postgres:17-alpine";
+const PG_PORT = 5432;
+const PG_USER = "test";
+const PG_PASSWORD = "test";
+const PG_DATABASE = "test_ontology";
 
-  // Discover the randomly-assigned host port (same pattern as scripts/test-pg.sh)
-  const portOutput = runCapture(`docker port ${CONTAINER_NAME} 5432/tcp`, { cwd: REPO_ROOT });
-  const port = portOutput.split("\n")[0]?.split(":").pop();
-  if (!port) {
-    fail("Could not determine PostgreSQL port from docker port output.");
-  }
+let pgContainer: StartedTestContainer | undefined;
 
-  const url = `postgresql://test:test@localhost:${port}/test_ontology`;
+async function startPostgres(): Promise<string> {
+  heading("Starting PostgreSQL container (testcontainers)");
+
+  const container = await new GenericContainer(PG_IMAGE)
+    .withEnvironment({
+      POSTGRES_USER: PG_USER,
+      POSTGRES_PASSWORD: PG_PASSWORD,
+      POSTGRES_DB: PG_DATABASE,
+    })
+    .withExposedPorts(PG_PORT)
+    .withTmpFs({ "/var/lib/postgresql/data": "rw" })
+    .withStartupTimeout(60_000)
+    .withWaitStrategy(Wait.forLogMessage(/database system is ready to accept connections/, 2))
+    .start();
+
+  pgContainer = container;
+  const host = container.getHost();
+  const port = container.getMappedPort(PG_PORT);
+  const url = `postgresql://${PG_USER}:${PG_PASSWORD}@${host}:${port}/${PG_DATABASE}`;
+
   log(`PostgreSQL ready on port ${port}`);
   log(`  URL: ${url}`);
   return url;
 }
 
-function stopPostgres() {
+async function stopPostgres() {
   heading("Stopping PostgreSQL container");
-  try {
-    run(`docker compose -f "${COMPOSE_FILE}" down --volumes`, { cwd: REPO_ROOT });
-  } catch {
-    warn("Failed to stop PostgreSQL container (may already be stopped).");
+  if (pgContainer) {
+    try {
+      await pgContainer.stop();
+    } catch {
+      warn("Failed to stop PostgreSQL container (may already be stopped).");
+    }
+    pgContainer = undefined;
   }
 }
 
@@ -744,7 +763,7 @@ async function main() {
 
     // Start PostgreSQL if needed
     if (needsPg) {
-      pgUrl = startPostgres();
+      pgUrl = await startPostgres();
     }
 
     // Start FoundationDB if needed
@@ -836,7 +855,7 @@ async function main() {
   } finally {
     // Always tear down benchmark containers
     if (needsPg) {
-      stopPostgres();
+      await stopPostgres();
     }
     if (needsFdb) {
       stopFoundationDb();
