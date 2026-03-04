@@ -36,13 +36,8 @@ import {
   makePostgresqlBackendFromUrl,
   makePostgresqlLayerFromUrl,
 } from "@open-ontology/core/storage/postgres";
-import {
-  KvTripleStoreLive,
-  KvDatalogLive,
-  InMemoryKvBackendLive,
-  makeFdbKvBackend,
-  type FdbKvBackendConfig,
-} from "@open-ontology/core/kv";
+import { KvTripleStoreLive, KvDatalogLive, InMemoryKvBackendLive } from "@open-ontology/core/kv";
+import { makeFdbKvBackend, type FdbKvBackendConfig } from "@open-ontology/core/kv/fdb";
 import { promises as fs } from "node:fs";
 
 // ─── Types ─────────────────────────────────────────────────────────────────
