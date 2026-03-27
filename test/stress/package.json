@@ -1,9 +1,9 @@
 {
   "name": "@open-ontology/stress",
   "version": "0.1.0",
-  "type": "module",
   "private": true,
   "description": "Performance and stress tests for @open-ontology/core",
+  "type": "module",
   "scripts": {
     "stress-test": "vitest run",
     "stress-test:kv": "STRESS_BACKEND=kv STRESS_UPDATE_ROUNDS=0 NODE_OPTIONS='--max-old-space-size=4096' vitest run",
@@ -14,12 +14,12 @@
     "clean": "rm -rf dist stress-data benchmark-results-*.json"
   },
   "dependencies": {
-    "@open-ontology/core": "workspace:*",
-    "@open-ontology/domain": "workspace:*",
     "@effect/platform-node": "catalog:",
     "@effect/sql": "catalog:",
-    "@effect/sql-sqlite-node": "catalog:",
     "@effect/sql-pg": "catalog:",
+    "@effect/sql-sqlite-node": "catalog:",
+    "@open-ontology/core": "workspace:*",
+    "@open-ontology/domain": "workspace:*",
     "effect": "catalog:"
   },
   "devDependencies": {

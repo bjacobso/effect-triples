@@ -493,7 +493,7 @@ function generateMarkdown(results: BenchmarkResults[]): string {
     );
     w("");
 
-    const maxRounds = Math.max(...results.map((r) => r.updates?.perRound.length ?? 0));
+    const _maxRounds = Math.max(...results.map((r) => r.updates?.perRound.length ?? 0));
 
     for (const r of results) {
       if (!r.updates) continue;

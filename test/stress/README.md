@@ -5,6 +5,7 @@ Performance and stress tests for the Open Ontology triple store at scale, suppor
 ## Overview
 
 These tests validate that each storage backend can handle production workloads by:
+
 - Inserting ~10 million triples (1M employee records × 10 attributes)
 - Running 10 rounds of updates (retract-then-assert) across 5 attributes per employee
 - Running common TripleStore query patterns (Q1-Q6)
@@ -16,12 +17,12 @@ Tests use `DatabaseManager` — the same public API that production code uses �
 
 ## Supported Backends
 
-| Backend | Engine | Storage | Use Case |
-|---------|--------|---------|----------|
-| `sqlite` | SQLite (better-sqlite3) | File-based | Default. Production single-node deployments. |
-| `pg` | PostgreSQL (@effect/sql-pg) | Network database | Production multi-node deployments. Requires running PG server. |
-| `kv` | In-memory KV + hexastore | Memory only | Fast local algorithm benchmark (no SQL layer). |
-| `fdb` | FoundationDB KV + hexastore | Distributed KV | Distributed KV benchmark (requires FoundationDB cluster + client library). |
+| Backend  | Engine                      | Storage          | Use Case                                                                   |
+| -------- | --------------------------- | ---------------- | -------------------------------------------------------------------------- |
+| `sqlite` | SQLite (better-sqlite3)     | File-based       | Default. Production single-node deployments.                               |
+| `pg`     | PostgreSQL (@effect/sql-pg) | Network database | Production multi-node deployments. Requires running PG server.             |
+| `kv`     | In-memory KV + hexastore    | Memory only      | Fast local algorithm benchmark (no SQL layer).                             |
+| `fdb`    | FoundationDB KV + hexastore | Distributed KV   | Distributed KV benchmark (requires FoundationDB cluster + client library). |
 
 ## Benchmark Report
 
@@ -141,21 +142,21 @@ pnpm --filter @open-ontology/stress test:watch
 
 ## Environment Variables
 
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `STRESS_BACKEND` | `sqlite` | Backend to test: `sqlite`, `pg`, `kv`, or `fdb` |
-| `STRESS_EMPLOYEE_COUNT` | `100000` | Number of employees to generate. Each produces ~10 triples. Benchmark script defaults to 1,000,000. |
-| `STRESS_UPDATE_ROUNDS` | `10` | Number of update rounds. Each round updates 5 attributes per employee. Set to `0` to skip (required for `kv`/`fdb`). |
-| `DATABASE_URL` | _(empty)_ | PostgreSQL connection URL. **Required** when `STRESS_BACKEND=pg`. |
-| `FDB_CLUSTER_FILE` | _(empty)_ | FoundationDB cluster file path. Optional for `fdb` backend (uses FDB default if unset). |
-| `FDB_IMAGE` | `foundationdb/foundationdb:7.3.75` | Docker image tag used by `pnpm --filter @open-ontology/stress benchmark` for FoundationDB. |
-| `FDB_PLATFORM` | `linux/amd64` | Docker platform override for FoundationDB (use `linux/arm64` when an ARM image is available). |
-| `FDB_API_VERSION` | `720` | Optional FoundationDB API version override. |
-| `FDB_MAX_TX_ENTRIES` | `5000` | Max key-value entries per FDB transaction in bulk insert. Tune lower for large values, higher for small ones. |
-| `STRESS_FDB_SUBSPACE` | _(auto)_ | Optional fixed FoundationDB subspace prefix. Defaults to a unique per-run prefix. |
-| `STRESS_DROP_INDEXES` | `false` | Drop indexes before bulk insert, recreate after. SQLite only. ~3-5x speedup. |
-| `STRESS_UNSAFE_MODE` | `false` | Use `PRAGMA synchronous=OFF` and `journal_mode=MEMORY`. SQLite only. ~1.2-2x speedup. **WARNING: Data loss possible on crash.** |
-| `STRESS_TEST_KEEP_DB` | `false` | Keep the test database for inspection after the test completes. |
+| Variable                | Default                            | Description                                                                                                                     |
+| ----------------------- | ---------------------------------- | ------------------------------------------------------------------------------------------------------------------------------- |
+| `STRESS_BACKEND`        | `sqlite`                           | Backend to test: `sqlite`, `pg`, `kv`, or `fdb`                                                                                 |
+| `STRESS_EMPLOYEE_COUNT` | `100000`                           | Number of employees to generate. Each produces ~10 triples. Benchmark script defaults to 1,000,000.                             |
+| `STRESS_UPDATE_ROUNDS`  | `10`                               | Number of update rounds. Each round updates 5 attributes per employee. Set to `0` to skip (required for `kv`/`fdb`).            |
+| `DATABASE_URL`          | _(empty)_                          | PostgreSQL connection URL. **Required** when `STRESS_BACKEND=pg`.                                                               |
+| `FDB_CLUSTER_FILE`      | _(empty)_                          | FoundationDB cluster file path. Optional for `fdb` backend (uses FDB default if unset).                                         |
+| `FDB_IMAGE`             | `foundationdb/foundationdb:7.3.75` | Docker image tag used by `pnpm --filter @open-ontology/stress benchmark` for FoundationDB.                                      |
+| `FDB_PLATFORM`          | `linux/amd64`                      | Docker platform override for FoundationDB (use `linux/arm64` when an ARM image is available).                                   |
+| `FDB_API_VERSION`       | `720`                              | Optional FoundationDB API version override.                                                                                     |
+| `FDB_MAX_TX_ENTRIES`    | `5000`                             | Max key-value entries per FDB transaction in bulk insert. Tune lower for large values, higher for small ones.                   |
+| `STRESS_FDB_SUBSPACE`   | _(auto)_                           | Optional fixed FoundationDB subspace prefix. Defaults to a unique per-run prefix.                                               |
+| `STRESS_DROP_INDEXES`   | `false`                            | Drop indexes before bulk insert, recreate after. SQLite only. ~3-5x speedup.                                                    |
+| `STRESS_UNSAFE_MODE`    | `false`                            | Use `PRAGMA synchronous=OFF` and `journal_mode=MEMORY`. SQLite only. ~1.2-2x speedup. **WARNING: Data loss possible on crash.** |
+| `STRESS_TEST_KEEP_DB`   | `false`                            | Keep the test database for inspection after the test completes.                                                                 |
 
 **Note**: `STRESS_DROP_INDEXES` and `STRESS_UNSAFE_MODE` only affect the SQLite backend. They are ignored by `pg`, `kv`, and `fdb`.
 
@@ -189,27 +190,27 @@ The stress test generates employee records with **10 attributes each**:
 
 These tests exercise the `TripleStore.query` and `TripleStore.getEntity` APIs directly:
 
-| ID | Test | Query Pattern | Expected Results | Description |
-|----|------|--------------|------------------|-------------|
-| Q1 | Single entity lookup | `getEntity("emp:N")` | 9-10 triples | Point lookup by entity ID |
-| Q2 | Attribute scan | `query({ attribute: ":salary" })` | All employees | Full scan of one attribute |
-| Q3 | Entity type filter | `query({ entityType: "Employee" })` | All employees | Filter by entity type |
-| Q4 | Specific value | `query({ attribute: ":department", value: "Engineering" })` | 1/8 of employees | Composite attribute+value |
-| Q5 | Reference lookup | `query({ attribute: ":manager", value: ref("emp:100") })` | > 0 | Reference traversal |
-| Q6 | Boolean filter | `query({ attribute: ":active", value: true })` | 90% of employees | Boolean value filter |
+| ID  | Test                 | Query Pattern                                               | Expected Results | Description                |
+| --- | -------------------- | ----------------------------------------------------------- | ---------------- | -------------------------- |
+| Q1  | Single entity lookup | `getEntity("emp:N")`                                        | 9-10 triples     | Point lookup by entity ID  |
+| Q2  | Attribute scan       | `query({ attribute: ":salary" })`                           | All employees    | Full scan of one attribute |
+| Q3  | Entity type filter   | `query({ entityType: "Employee" })`                         | All employees    | Filter by entity type      |
+| Q4  | Specific value       | `query({ attribute: ":department", value: "Engineering" })` | 1/8 of employees | Composite attribute+value  |
+| Q5  | Reference lookup     | `query({ attribute: ":manager", value: ref("emp:100") })`   | > 0              | Reference traversal        |
+| Q6  | Boolean filter       | `query({ attribute: ":active", value: true })`              | 90% of employees | Boolean value filter       |
 
 ## Datalog Query Tests (D1-D6)
 
 These tests exercise the `Datalog.queryValidated` API with increasingly complex query patterns:
 
-| ID | Test | Datalog Pattern | Expected Results | Description |
-|----|------|----------------|------------------|-------------|
-| D1 | Simple pattern | `find: [?name], where: [[?e, :name, ?name]]` | All employees | Single pattern clause |
-| D2 | Two-variable join | `find: [?name, ?dept], where: [[?e, :name, ?name], [?e, :department, ?dept]]` | All employees | Self-join on entity variable |
-| D3 | Predicate filter | `find: [?name, ?salary], where: [..., [>=, ?salary, 150000]]` | Subset | Numeric predicate |
-| D4 | Multi-attribute | `find: [?name, ?title], where: [..., [?e, :department, "Engineering"]]` | 1/8 employees | Value-bound pattern |
-| D5 | Aggregation | `find: [?dept, (count ?e)], where: [[?e, :department, ?dept]]` | 8 rows | Group by + count |
-| D6 | Reference traversal | `find: [?empName, ?mgrName], where: [..., [?e, :manager, ?mgr], [?mgr, :name, ?mgrName]]` | ~20% employees | Ref join across entities |
+| ID  | Test                | Datalog Pattern                                                                           | Expected Results | Description                  |
+| --- | ------------------- | ----------------------------------------------------------------------------------------- | ---------------- | ---------------------------- |
+| D1  | Simple pattern      | `find: [?name], where: [[?e, :name, ?name]]`                                              | All employees    | Single pattern clause        |
+| D2  | Two-variable join   | `find: [?name, ?dept], where: [[?e, :name, ?name], [?e, :department, ?dept]]`             | All employees    | Self-join on entity variable |
+| D3  | Predicate filter    | `find: [?name, ?salary], where: [..., [>=, ?salary, 150000]]`                             | Subset           | Numeric predicate            |
+| D4  | Multi-attribute     | `find: [?name, ?title], where: [..., [?e, :department, "Engineering"]]`                   | 1/8 employees    | Value-bound pattern          |
+| D5  | Aggregation         | `find: [?dept, (count ?e)], where: [[?e, :department, ?dept]]`                            | 8 rows           | Group by + count             |
+| D6  | Reference traversal | `find: [?empName, ?mgrName], where: [..., [?e, :manager, ?mgr], [?mgr, :name, ?mgrName]]` | ~20% employees   | Ref join across entities     |
 
 ## Expected Performance
 
@@ -217,26 +218,26 @@ Performance thresholds are backend-specific to account for different storage cha
 
 ### TripleStore Queries
 
-| Metric | SQLite | PostgreSQL |
-|--------|--------|------------|
-| Insertion throughput | > 1,000/s | > 500/s |
-| Q1: Entity lookup | < 200ms | < 200ms |
-| Q2: Attribute scan | < 2,000ms | < 3,000ms |
-| Q3: Type filter | < 2,000ms | < 3,000ms |
-| Q4: Value filter | < 200ms | < 300ms |
-| Q5: Ref lookup | < 100ms | < 200ms |
-| Q6: Boolean filter | < 500ms | < 1,000ms |
+| Metric               | SQLite    | PostgreSQL |
+| -------------------- | --------- | ---------- |
+| Insertion throughput | > 1,000/s | > 500/s    |
+| Q1: Entity lookup    | < 200ms   | < 200ms    |
+| Q2: Attribute scan   | < 2,000ms | < 3,000ms  |
+| Q3: Type filter      | < 2,000ms | < 3,000ms  |
+| Q4: Value filter     | < 200ms   | < 300ms    |
+| Q5: Ref lookup       | < 100ms   | < 200ms    |
+| Q6: Boolean filter   | < 500ms   | < 1,000ms  |
 
 ### Datalog Queries
 
-| Metric | SQLite | PostgreSQL |
-|--------|--------|------------|
-| D1: Simple pattern | < 3,000ms | < 5,000ms |
-| D2: Two-variable join | < 5,000ms | < 8,000ms |
-| D3: Predicate filter | < 5,000ms | < 8,000ms |
-| D4: Multi-attribute | < 3,000ms | < 5,000ms |
-| D5: Aggregation | < 5,000ms | < 8,000ms |
-| D6: Ref traversal | < 5,000ms | < 8,000ms |
+| Metric                | SQLite    | PostgreSQL |
+| --------------------- | --------- | ---------- |
+| D1: Simple pattern    | < 3,000ms | < 5,000ms  |
+| D2: Two-variable join | < 5,000ms | < 8,000ms  |
+| D3: Predicate filter  | < 5,000ms | < 8,000ms  |
+| D4: Multi-attribute   | < 3,000ms | < 5,000ms  |
+| D5: Aggregation       | < 5,000ms | < 8,000ms  |
+| D6: Ref traversal     | < 5,000ms | < 8,000ms  |
 
 ## Implemented Optimizations (SQLite Only)
 
@@ -304,12 +305,11 @@ SELECT COUNT(*) FROM triples;
         (sqlite / pg)                (kv / fdb)
                |                           |
       manager.getStore/Datalog      TripleStore + Datalog
-               \______________________/ 
+               \______________________/
                           |
                    stress queries
                       (Q1-Q6, D1-D6)
 ```
-
 
 ## Troubleshooting
 
@@ -351,6 +351,7 @@ This package uses `disableConsoleIntercept: true` in vitest.config.ts to show re
 ## Contributing
 
 When adding new stress tests:
+
 1. Follow existing patterns in `test/triple-store-stress.test.ts`
 2. Use realistic data from `src/data-generator.ts` or create new generators
 3. Add backend-specific thresholds in `src/backend.ts`
