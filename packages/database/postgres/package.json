@@ -21,7 +21,8 @@
   },
   "dependencies": {
     "@effect/platform": "catalog:",
-    "@open-ontology/core": "workspace:*",
+    "@effect/sql": "catalog:",
+    "@effect/sql-pg": "catalog:",
     "@open-ontology/database": "workspace:*",
     "effect": "catalog:"
   },

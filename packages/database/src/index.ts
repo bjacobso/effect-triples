@@ -15,7 +15,32 @@ export * from "./types/Filter.js";
 export { type QueryState, type QueryOperator, Query } from "./types/QueryBuilder.js";
 export { StorageAdapter, type StorageAdapterService } from "./storage/StorageAdapter.js";
 export { type QueryPattern, type TransactionInfo } from "./storage/types.js";
-export { generateTransactionId, TxAttributes } from "./utils/id.js";
+export { generateId, generateTransactionId, TxAttributes } from "./utils/id.js";
+
+// SQL layer — schema, queries, migrations
+export {
+  TRIPLES_TABLE_DDL,
+  MIGRATIONS_TABLE_DDL,
+  INDEX_DDLS,
+  INDEX_NAMES,
+  ENTITY_BLOBS_TABLE_DDL,
+  ENTITY_SNAPSHOTS_TABLE_DDL,
+  SNAPSHOT_INDEX_DDLS,
+} from "./sql/schema.js";
+export {
+  packValue,
+  unpackValue,
+  rowToTriple,
+  insertTriple,
+  retractTriple,
+  getTripleById,
+  getEntityTriples,
+  queryByAttribute,
+  queryByEntityType,
+  getEntityAsOf,
+  getEntityHistory,
+} from "./sql/queries.js";
+export { type Migration, migrations, runMigrations } from "./sql/migrations.js";
 
 export {
   Variable,

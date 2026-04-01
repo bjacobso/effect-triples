@@ -26,6 +26,7 @@
   },
   "dependencies": {
     "@effect/platform": "catalog:",
+    "@effect/sql": "catalog:",
     "effect": "catalog:",
     "ulidx": "catalog:"
   },

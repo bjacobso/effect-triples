@@ -1,23 +1,10 @@
 /**
- * Transitional SQLite backend package.
+ * SQLite backend package for @open-ontology/database.
  *
- * This package is the public database-layer entrypoint for SQLite-specific
- * wiring while extraction continues out of @open-ontology/core.
+ * Provides SQLite-specific storage adapter, backend, and connection layer.
  */
 
 export { SqliteDialect } from "./dialect.js";
-export {
-  makeSqliteAdapter,
-  SqliteAdapterLive,
-  type SqliteAdapterConfig,
-} from "../../../core/src/storage/sqlite/index.js";
-export {
-  makeSqliteBackend,
-  SqliteBackendLive,
-  type SqliteBackendConfig,
-} from "../../../core/src/storage/sqlite/index.js";
-export {
-  makeSqliteLayer,
-  SqliteTestLayer,
-  SqliteLive,
-} from "../../../core/src/storage/sqlite/index.js";
+export { makeSqliteAdapter, SqliteAdapterLive, type SqliteAdapterConfig } from "./SqliteAdapter.js";
+export { makeSqliteBackend, SqliteBackendLive, type SqliteBackendConfig } from "./SqliteBackend.js";
+export { makeSqliteLayer, SqliteTestLayer, SqliteLive } from "./SqliteLayer.js";

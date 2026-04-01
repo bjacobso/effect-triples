@@ -6,6 +6,12 @@
  */
 
 import { ulid } from "ulidx";
+import type { TripleId } from "../Branded.js";
+
+/**
+ * Generate a new ULID (TripleId).
+ */
+export const generateId = (): TripleId => ulid() as TripleId;
 
 /**
  * Generate a transaction ID.
