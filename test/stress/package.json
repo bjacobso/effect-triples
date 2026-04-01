@@ -19,7 +19,12 @@
     "@effect/sql-pg": "catalog:",
     "@effect/sql-sqlite-node": "catalog:",
     "@open-ontology/core": "workspace:*",
+    "@open-ontology/database": "workspace:*",
+    "@open-ontology/database-foundationdb": "workspace:*",
+    "@open-ontology/database-postgres": "workspace:*",
+    "@open-ontology/database-sqlite": "workspace:*",
     "@open-ontology/domain": "workspace:*",
+    "@open-ontology/runtime": "workspace:*",
     "effect": "catalog:"
   },
   "devDependencies": {

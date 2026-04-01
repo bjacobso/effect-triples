@@ -1,6 +1,5 @@
-import type { TripleInput } from "@open-ontology/core";
-import { string, number, boolean, datetime, ref } from "@open-ontology/core";
-import type { TransactOp } from "@open-ontology/domain/Triple";
+import type { TripleInput, TransactOp } from "@open-ontology/database";
+import { string, number, boolean, datetime, ref } from "@open-ontology/database";
 
 /**
  * Generate employee triples for stress testing.

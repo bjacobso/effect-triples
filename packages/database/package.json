@@ -1,0 +1,36 @@
+{
+  "name": "@open-ontology/database",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "main": "dist/packages/database/src/index.js",
+  "types": "dist/packages/database/src/index.d.ts",
+  "exports": {
+    ".": {
+      "import": "./dist/packages/database/src/index.js",
+      "types": "./dist/packages/database/src/index.d.ts",
+      "default": "./src/index.ts"
+    },
+    "./types/Pattern": {
+      "import": "./dist/packages/database/src/types/Pattern.js",
+      "types": "./dist/packages/database/src/types/Pattern.d.ts",
+      "default": "./src/types/Pattern.ts"
+    }
+  },
+  "scripts": {
+    "build": "rm -rf dist && tsc",
+    "dev": "tsc --watch",
+    "test": "vitest --run",
+    "typecheck": "tsc --noEmit",
+    "clean": "rm -rf dist"
+  },
+  "dependencies": {
+    "@effect/platform": "catalog:",
+    "effect": "catalog:",
+    "ulidx": "catalog:"
+  },
+  "devDependencies": {
+    "@types/node": "catalog:",
+    "vitest": "catalog:"
+  }
+}

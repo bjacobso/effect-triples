@@ -1,0 +1,31 @@
+{
+  "name": "@open-ontology/database-cloudflare",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "main": "dist/packages/database/cloudflare/src/index.js",
+  "types": "dist/packages/database/cloudflare/src/index.d.ts",
+  "exports": {
+    ".": {
+      "import": "./dist/packages/database/cloudflare/src/index.js",
+      "types": "./dist/packages/database/cloudflare/src/index.d.ts",
+      "default": "./src/index.ts"
+    }
+  },
+  "scripts": {
+    "build": "rm -rf dist && tsc",
+    "dev": "tsc --watch",
+    "test": "vitest --run",
+    "typecheck": "tsc --noEmit",
+    "clean": "rm -rf dist"
+  },
+  "dependencies": {
+    "@open-ontology/core": "workspace:*",
+    "@open-ontology/database": "workspace:*",
+    "effect": "catalog:"
+  },
+  "devDependencies": {
+    "@types/node": "catalog:",
+    "vitest": "catalog:"
+  }
+}

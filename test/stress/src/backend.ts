@@ -23,21 +23,19 @@ import { SqlClient } from "@effect/sql";
 import { SqliteClient } from "@effect/sql-sqlite-node";
 import { NodeContext } from "@effect/platform-node";
 import {
-  TripleStore,
-  Datalog,
   DatabaseManager,
   DatabaseManagerLive,
   DatabaseRegistryLive,
-  type TripleStoreService,
-  type DatalogService,
-} from "@open-ontology/core";
-import { makeSqliteBackend } from "@open-ontology/core/storage/sqlite";
+} from "@open-ontology/database";
+import { TripleStore, type TripleStoreService } from "@open-ontology/database";
+import { Datalog, type DatalogService } from "@open-ontology/database";
+import { makeSqliteBackend } from "@open-ontology/database-sqlite";
 import {
   makePostgresqlBackendFromUrl,
   makePostgresqlLayerFromUrl,
-} from "@open-ontology/core/storage/postgres";
-import { KvTripleStoreLive, KvDatalogLive, InMemoryKvBackendLive } from "@open-ontology/core/kv";
-import { makeFdbKvBackend, type FdbKvBackendConfig } from "@open-ontology/core/kv/fdb";
+} from "@open-ontology/database-postgres";
+import { KvTripleStoreLive, KvDatalogLive, InMemoryKvBackendLive } from "@open-ontology/database";
+import { makeFdbKvBackend, type FdbKvBackendConfig } from "@open-ontology/database-foundationdb";
 import { promises as fs } from "node:fs";
 
 // ─── Types ─────────────────────────────────────────────────────────────────
