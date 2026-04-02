@@ -80,13 +80,13 @@ const layer = KvTripleStoreLive.pipe(Layer.provide(InMemoryKvBackendLive));
 
 ### Injectable capabilities
 
-`DatabaseManagerLayer` accepts runtime capabilities via `DatabaseCapabilities`. The database package provides change emission as a built-in capability. Heavier capabilities (reactive rules, workflows, snapshots) are injected by the application layer:
+`DatabaseManagerLayer` accepts runtime capabilities via `DatabaseCapabilities`. The database package provides change emission as a built-in capability. Heavier capabilities (reactive rules, processes, snapshots) are injected by the application layer:
 
 ```typescript
 import { DatabaseCapabilities } from "@open-ontology/database";
 
 const caps = Layer.succeed(DatabaseCapabilities, {
-  factories: [myReactiveRulesFactory, mySnapshotFactory],
+  factories: [myReactiveConstraintsFactory, mySnapshotFactory],
 });
 ```
 

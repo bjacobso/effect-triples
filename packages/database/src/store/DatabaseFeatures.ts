@@ -49,7 +49,7 @@ export interface DatabaseFeature {
  * Service tag providing database features to DatabaseManager.
  *
  * Application layers (node server, cloudflare worker) provide this to
- * install features like snapshots, reactive rules, workflow triggers.
+ * install features like snapshots, reactive constraints, process triggers.
  *
  * If not provided, DatabaseManager uses only the built-in change emission.
  */

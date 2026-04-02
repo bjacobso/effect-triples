@@ -1,7 +1,7 @@
 /**
  * writeEventUtils — shared helpers for building ChangeEvents from write operations.
  *
- * Both ChangeEmissionCapability and ReactiveRulesCapability need to intercept
+ * Both ChangeEmissionCapability and ReactiveConstraintsCapability need to intercept
  * writes, build ChangeEvent objects, and invoke callbacks. This module extracts
  * the common logic so it isn't duplicated across capabilities.
  *

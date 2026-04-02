@@ -79,8 +79,8 @@ interface CachedServices {
  * so they never break the underlying mutation.
  *
  * @deprecated Use `makeChangeEmissionCapability` + `composeStore` instead.
- * The `hook` parameter is ignored — use `makeReactiveRulesCapability` for
- * reactive rule evaluation.
+ * The `hook` parameter is ignored — use `makeReactiveConstraintsCapability` for
+ * reactive constraint evaluation.
  */
 export function wrapStoreWithEmitter(
   store: TripleStoreService,
@@ -104,7 +104,7 @@ export function wrapStoreWithEmitter(
  * Optionally accepts ChangeEmitter — if not provided, uses NoopChangeEmitter.
  *
  * Each database gets a full capability stack:
- * - ReactiveRules (priority 40) — compliance rule evaluation on write
+ * - ReactiveConstraints (priority 40) — constraint evaluation on write
  * - ChangeEmission (priority 50) — broadcast changes to connected clients
  */
 export const DatabaseManagerLive = Layer.scoped(
@@ -216,7 +216,7 @@ export const DatabaseManagerLive = Layer.scoped(
           makeEntitySnapshotsCapability(writer, reader),
         ];
 
-        // Add externally-injected feature capabilities (reactive rules, workflows, etc.)
+        // Add externally-injected feature capabilities (reactive constraints, processes, etc.)
         for (const feature of externalFeatures) {
           if (feature.capabilityFactory) {
             const cap = yield* feature.capabilityFactory(rawStore, datalog, runtimeNow);

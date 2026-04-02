@@ -107,7 +107,7 @@ const resolveRetractionMeta = (
 /**
  * Map snapshot errors to WriteError.
  *
- * Unlike ChangeEmission and ReactiveRules (which swallow errors), snapshot
+ * Unlike ChangeEmission and ReactiveConstraints (which swallow errors), snapshot
  * materialization errors are intentionally propagated as WriteError. This is
  * because snapshots are written inside the same database transaction as the
  * triples — if materialization fails, the transaction should be rolled back

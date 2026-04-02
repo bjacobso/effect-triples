@@ -3,10 +3,10 @@
  *
  * Responsibility: broadcast change events to the ChangeEmitter (e.g., for
  * WebSocket fanout to connected clients). This capability does NOT invoke
- * any mutation hooks — reactive rule evaluation is handled by the separate
- * ReactiveRulesCapability.
+ * any mutation hooks — reactive constraint evaluation is handled by the separate
+ * ReactiveConstraintsCapability.
  *
- * Priority: 50 (mid-stack — above ReactiveRules at 40, below EntitySnapshots at 60)
+ * Priority: 50 (mid-stack — above ReactiveConstraints at 40, below EntitySnapshots at 60)
  * Requires: none
  *
  * @see specs/core/composable-store.md
