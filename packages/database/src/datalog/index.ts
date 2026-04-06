@@ -81,4 +81,4 @@ export { DatalogLive, DatalogLayer } from "./layer.js";
 export { SqlQueryExecutorLive } from "./SqlQueryExecutor.js";
 
 // NOTE: QueryAST translation (toDatalogQuery) and type checker (typeCheckDatalogQuery)
-// live in @open-ontology/ontology-compiler — they depend on compiler/lisp infrastructure.
+// live in the compiler layer — they depend on compiler/lisp infrastructure.

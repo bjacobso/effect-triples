@@ -7,7 +7,7 @@
  * TripleStore and Datalog services.
  *
  * This shim implements the DatabaseManagerService interface so that existing
- * API handlers from @open-ontology/api work unchanged in the DO context.
+ * API handlers from @open-ontology/runtime-http work unchanged in the DO context.
  */
 
 import { Context, Effect, Layer } from "effect";

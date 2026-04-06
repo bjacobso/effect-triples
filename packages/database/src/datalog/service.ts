@@ -7,7 +7,7 @@ import type { DatalogQuery, QueryResult, WrappedQuery } from "./types.js";
 import type { QueryMetrics } from "./compiler.js";
 import type { ReadError, DatalogError, DatalogValidationError } from "../errors/index.js";
 // NOTE: typeCheck was removed from DatalogService — it's a compiler/tooling
-// concern that depends on HM types. See @open-ontology/ontology-compiler for the type checker.
+// concern that depends on HM types. See the compiler layer for the type checker.
 
 /**
  * Backend-agnostic query plan
