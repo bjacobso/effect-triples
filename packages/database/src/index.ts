@@ -6,8 +6,16 @@
 
 export * from "./Branded.js";
 export * from "./Database.js";
+export * from "./DatabaseApi.js";
+export * from "./DatabaseRpc.js";
+export * from "./DatalogApi.js";
+export * from "./DatalogRpc.js";
 export * from "./Error.js";
+export * from "./Snapshot.js";
+export * from "./SnapshotApi.js";
 export * from "./Triple.js";
+export * from "./TripleApi.js";
+export * from "./TripleRpc.js";
 export * from "./Value.js";
 export * from "./errors/index.js";
 export * from "./types/Pattern.js";
@@ -15,7 +23,22 @@ export * from "./types/Filter.js";
 export { type QueryState, type QueryOperator, Query } from "./types/QueryBuilder.js";
 export { StorageAdapter, type StorageAdapterService } from "./storage/StorageAdapter.js";
 export { type QueryPattern, type TransactionInfo } from "./storage/types.js";
-export { generateId, generateTransactionId, TxAttributes } from "./utils/id.js";
+export { generateId, generateTransactionId, TxAttributes, SystemPrefixes } from "./utils/id.js";
+export {
+  type QueryDependencies,
+  type InvalidationResult,
+  type Subscription,
+  type AffectedSubscriptions,
+  extractDependencies,
+  extractEntityType,
+  checkInvalidation,
+  isAffectedByChange,
+  hashQuery,
+  SubscriptionManager,
+  makeSubscriptionManager,
+  SubscriptionManagerLive,
+  type SubscriptionManagerService,
+} from "./subscriptions/index.js";
 
 // SQL layer — schema, queries, migrations
 export {
@@ -201,6 +224,42 @@ export {
 // NOTE: typeCheckDatalogQuery lives in core — it depends on HM types from the lisp package.
 export { type SqlDialect, CurrentDialect, SqliteDialect } from "./dialects/index.js";
 export { createParamCollector, type ParamCollector } from "./params.js";
+
+export {
+  Sparql,
+  type SparqlService,
+  type QueryDebugInfo as SparqlQueryDebugInfo,
+} from "./sparql/service.js";
+export { SparqlLive, SparqlLayer } from "./sparql/layer.js";
+export {
+  type Context as SparqlContext,
+  type SelectResult,
+  type ResultTriple,
+  type ConstructResult,
+  type DescribeResult,
+  type AskResult,
+  type QueryResult as SparqlQueryResult,
+} from "./sparql/types.js";
+export { SparqlQuery } from "./sparql/schema.js";
+export {
+  compile as compileSparql,
+  compileToSql as compileSparqlToSql,
+  type CompiledQuery as SparqlCompiledQuery,
+  type QueryMetrics as SparqlQueryMetrics,
+} from "./sparql/compiler.js";
+export {
+  isVariable as isSparqlVariable,
+  isIRI,
+  isTriplePattern,
+  isOptionalPattern,
+  isUnionPattern,
+  isFilterPattern,
+  isBindPattern,
+  isValuesPattern,
+  isMinusPattern,
+  isPropertyPathPattern,
+  isSubSelectPattern,
+} from "./sparql/schema.js";
 
 // =============================================================================
 // KV Backend + Hexastore

@@ -1,9 +1,11 @@
 import type { TripleValue, ValueType } from "@open-ontology/database";
 import {
+  MigrationError,
+  ReadError,
   StorageAdapter,
   type StorageAdapterService,
-} from "../../../core/src/storage/StorageAdapter.js";
-import { MigrationError, ReadError, WriteError } from "../../../core/src/errors/index.js";
+  WriteError,
+} from "@open-ontology/database";
 
 export { StorageAdapter, type StorageAdapterService, MigrationError, ReadError, WriteError };
 

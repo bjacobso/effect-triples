@@ -7,11 +7,7 @@
   "include": [
     "src/**/*",
     "../../../apps/cloudflare/src/storage/CloudflareAdapter.ts",
-    "../../../apps/cloudflare/src/services/CloudflareDatabaseManager.ts",
-    "../../../packages/core/src/errors/index.ts",
-    "../../../packages/core/src/storage/StorageAdapter.ts",
-    "../../../packages/core/src/storage/types.ts",
-    "../../../packages/core/src/types/Pattern.ts"
+    "../../../apps/cloudflare/src/services/CloudflareDatabaseManager.ts"
   ],
   "exclude": ["node_modules", "dist", "test"]
 }

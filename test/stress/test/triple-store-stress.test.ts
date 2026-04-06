@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { Effect, Layer, Schedule } from "effect";
 import { SqlClient } from "@effect/sql";
-import { generateId } from "@open-ontology/core";
+import { generateId } from "@open-ontology/database";
 import { string, boolean, ref } from "@open-ontology/database";
 import type { EntityId } from "@open-ontology/database";
 import type { BulkInsertOptions } from "@open-ontology/database";

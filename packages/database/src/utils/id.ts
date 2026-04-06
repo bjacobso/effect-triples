@@ -2,7 +2,7 @@
  * Minimal ID generation utilities for the database package.
  *
  * Only includes what the database layer needs directly.
- * The full id utility set lives in @open-ontology/core/utils.
+ * Runtime-owned metadata and higher-level ID helpers live in @open-ontology/runtime.
  */
 
 import { ulid } from "ulidx";

@@ -7,7 +7,7 @@
  * Requires Docker + FoundationDB client libraries to be available.
  *
  * ```bash
- * pnpm test --filter @open-ontology/core -- test/kv/integration/fdb-triplestore.test.ts
+ * pnpm test --filter @open-ontology/database-foundationdb -- test/fdb-triplestore.test.ts
  * ```
  */
 

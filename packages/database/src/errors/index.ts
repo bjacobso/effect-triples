@@ -2,7 +2,7 @@
  * Database error types.
  *
  * All error types used by the database package live here.
- * Core errors that were previously in @open-ontology/core/errors
+ * Database-layer errors extracted from the old monolithic package layout
  * are now owned by the database package.
  */
 

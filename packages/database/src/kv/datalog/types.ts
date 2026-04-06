@@ -69,8 +69,8 @@ export const emptyContext: Context = {};
 export type Relation = readonly Context[];
 
 // ─── Type Guards ───────────────────────────────────────────────────────────
-// Local implementations matching @open-ontology/domain/datalog to avoid
-// runtime import issues. These mirror the logic in packages/domain/src/Datalog.ts.
+// Local implementations matching the public datalog schema surface to avoid
+// runtime import issues. These mirror the logic in @open-ontology/database.
 
 /** Check if a term is a variable (string starting with ?) */
 export const isVariable = (term: unknown): term is string =>

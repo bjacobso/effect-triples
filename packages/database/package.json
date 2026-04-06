@@ -11,6 +11,76 @@
       "types": "./dist/packages/database/src/index.d.ts",
       "default": "./src/index.ts"
     },
+    "./Datalog": {
+      "import": "./dist/packages/database/src/Datalog.js",
+      "types": "./dist/packages/database/src/Datalog.d.ts",
+      "default": "./src/Datalog.ts"
+    },
+    "./datalog": {
+      "import": "./dist/packages/database/src/Datalog.js",
+      "types": "./dist/packages/database/src/Datalog.d.ts",
+      "default": "./src/Datalog.ts"
+    },
+    "./DatalogRpc": {
+      "import": "./dist/packages/database/src/DatalogRpc.js",
+      "types": "./dist/packages/database/src/DatalogRpc.d.ts",
+      "default": "./src/DatalogRpc.ts"
+    },
+    "./DatalogApi": {
+      "import": "./dist/packages/database/src/DatalogApi.js",
+      "types": "./dist/packages/database/src/DatalogApi.d.ts",
+      "default": "./src/DatalogApi.ts"
+    },
+    "./Database": {
+      "import": "./dist/packages/database/src/Database.js",
+      "types": "./dist/packages/database/src/Database.d.ts",
+      "default": "./src/Database.ts"
+    },
+    "./DatabaseApi": {
+      "import": "./dist/packages/database/src/DatabaseApi.js",
+      "types": "./dist/packages/database/src/DatabaseApi.d.ts",
+      "default": "./src/DatabaseApi.ts"
+    },
+    "./DatabaseRpc": {
+      "import": "./dist/packages/database/src/DatabaseRpc.js",
+      "types": "./dist/packages/database/src/DatabaseRpc.d.ts",
+      "default": "./src/DatabaseRpc.ts"
+    },
+    "./Sparql": {
+      "import": "./dist/packages/database/src/Sparql.js",
+      "types": "./dist/packages/database/src/Sparql.d.ts",
+      "default": "./src/Sparql.ts"
+    },
+    "./Snapshot": {
+      "import": "./dist/packages/database/src/Snapshot.js",
+      "types": "./dist/packages/database/src/Snapshot.d.ts",
+      "default": "./src/Snapshot.ts"
+    },
+    "./SnapshotApi": {
+      "import": "./dist/packages/database/src/SnapshotApi.js",
+      "types": "./dist/packages/database/src/SnapshotApi.d.ts",
+      "default": "./src/SnapshotApi.ts"
+    },
+    "./Triple": {
+      "import": "./dist/packages/database/src/Triple.js",
+      "types": "./dist/packages/database/src/Triple.d.ts",
+      "default": "./src/Triple.ts"
+    },
+    "./TripleRpc": {
+      "import": "./dist/packages/database/src/TripleRpc.js",
+      "types": "./dist/packages/database/src/TripleRpc.d.ts",
+      "default": "./src/TripleRpc.ts"
+    },
+    "./TripleApi": {
+      "import": "./dist/packages/database/src/TripleApi.js",
+      "types": "./dist/packages/database/src/TripleApi.d.ts",
+      "default": "./src/TripleApi.ts"
+    },
+    "./subscriptions": {
+      "import": "./dist/packages/database/src/subscriptions/index.js",
+      "types": "./dist/packages/database/src/subscriptions/index.d.ts",
+      "default": "./src/subscriptions/index.ts"
+    },
     "./types/Pattern": {
       "import": "./dist/packages/database/src/types/Pattern.js",
       "types": "./dist/packages/database/src/types/Pattern.d.ts",
@@ -26,11 +96,13 @@
   },
   "dependencies": {
     "@effect/platform": "catalog:",
+    "@effect/rpc": "catalog:",
     "@effect/sql": "catalog:",
     "effect": "catalog:",
     "ulidx": "catalog:"
   },
   "devDependencies": {
+    "@effect/sql-sqlite-node": "catalog:",
     "@types/node": "catalog:",
     "vitest": "catalog:"
   }

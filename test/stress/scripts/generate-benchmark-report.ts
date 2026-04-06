@@ -42,7 +42,7 @@ import type { BenchmarkResults } from "../src/benchmark-results.js";
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const PKG_DIR = resolve(__dirname, "..");
 const REPO_ROOT = resolve(PKG_DIR, "../..");
-const CORE_PKG_DIR = resolve(REPO_ROOT, "packages/core");
+const FDB_PKG_DIR = resolve(REPO_ROOT, "packages/database/foundationdb");
 const FDB_CONTAINER_NAME = "ontology-benchmark-fdb";
 const FDB_IMAGE = process.env["FDB_IMAGE"] ?? "foundationdb/foundationdb:7.3.75";
 const FDB_HOST_PORT = 4500;
@@ -122,7 +122,7 @@ function fdbClientAvailable(): boolean {
   try {
     runCapture(
       `node -e "import('foundationdb').then((fdb)=>{fdb.setAPIVersion(720);console.log('ok')}).catch(()=>process.exit(1))"`,
-      { cwd: CORE_PKG_DIR, stdio: "pipe" },
+      { cwd: FDB_PKG_DIR, stdio: "pipe" },
     );
     return true;
   } catch {
