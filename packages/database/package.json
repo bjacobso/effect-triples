@@ -97,11 +97,11 @@
   "dependencies": {
     "@effect/platform": "catalog:",
     "@effect/rpc": "catalog:",
-    "@effect/sql": "catalog:",
     "effect": "catalog:",
     "ulidx": "catalog:"
   },
   "devDependencies": {
+    "@effect/sql": "catalog:",
     "@effect/sql-sqlite-node": "catalog:",
     "@types/node": "catalog:",
     "vitest": "catalog:"

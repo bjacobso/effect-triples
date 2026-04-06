@@ -21,6 +21,7 @@
     "@open-ontology/database": "workspace:*",
     "@open-ontology/database-foundationdb": "workspace:*",
     "@open-ontology/database-postgres": "workspace:*",
+    "@open-ontology/database-sql": "workspace:*",
     "@open-ontology/database-sqlite": "workspace:*",
     "@open-ontology/runtime": "workspace:*",
     "effect": "catalog:"

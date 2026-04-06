@@ -12,28 +12,32 @@ import {
   type DatabaseManagerService,
   type Database,
   type ClearResult,
-} from "./DatabaseManager.js";
-import { TripleStore, type TripleStoreService } from "./TripleStore.js";
-import { TripleStoreLive } from "./TripleStoreAdapterLayer.js";
-import { Datalog, type DatalogService } from "../datalog/service.js";
-import { DatalogLive } from "../datalog/layer.js";
-import { SqlQueryExecutorLive } from "../datalog/SqlQueryExecutor.js";
-import { DatabaseNotFound, InternalError } from "../Error.js";
-import { StorageBackend } from "./StorageBackend.js";
-import { CurrentDialect } from "../dialects/index.js";
-import { DatabaseRegistry } from "./DatabaseRegistry.js";
-import { ChangeEmitter, type ChangeEmitterService } from "./ChangeEmitter.js";
-import { type StoreCapability, composeStore } from "./StoreCapability.js";
-import { makeChangeEmissionCapability } from "./ChangeEmissionCapability.js";
-import { TripleStoreRuntime } from "./TripleStoreRuntime.js";
-import { DatabaseFeatures } from "./DatabaseFeatures.js";
-import {
+  TripleStore,
+  type TripleStoreService,
+  TripleStoreLive,
+  Datalog,
+  type DatalogService,
+  DatabaseNotFound,
+  InternalError,
+  CurrentDialect,
+  DatabaseRegistry,
+  ChangeEmitter,
+  type ChangeEmitterService,
+  composeStore,
+  type StoreCapability,
+  makeChangeEmissionCapability,
+  TripleStoreRuntime,
+  DatabaseFeatures,
   SnapshotWriter,
   SnapshotService,
   SnapshotWriterLive,
   SnapshotServiceLive,
   makeEntitySnapshotsCapability,
-} from "../snapshots/index.js";
+  DatabaseAlreadyExists,
+} from "@open-ontology/database";
+import { DatalogLive } from "./DatalogSqlLayer.js";
+import { SqlQueryExecutorLive } from "./SqlQueryExecutor.js";
+import { StorageBackend } from "./StorageBackend.js";
 
 // =============================================================================
 // Connection Pool Configuration
@@ -64,7 +68,7 @@ const mapToInternalError = <A, E, R>(
 interface CachedServices {
   store: TripleStoreService;
   datalog: DatalogService;
-  snapshotService: import("../snapshots/SnapshotService.js").SnapshotServiceShape;
+  snapshotService: import("@open-ontology/database").SnapshotServiceShape;
   scope: Scope.CloseableScope;
   lastAccessedAt: number;
 }
@@ -79,7 +83,7 @@ interface CachedServices {
  * so they never break the underlying mutation.
  *
  * @deprecated Use `makeChangeEmissionCapability` + `composeStore` instead.
- * The `hook` parameter is ignored — use `makeReactiveConstraintsCapability` for
+ * The `hook` parameter is ignored -- use `makeReactiveConstraintsCapability` for
  * reactive constraint evaluation.
  */
 export function wrapStoreWithEmitter(
@@ -101,11 +105,11 @@ export function wrapStoreWithEmitter(
  *
  * Provides the DatabaseManager service.
  * Requires StorageBackend for database operations and DatabaseRegistry for metadata.
- * Optionally accepts ChangeEmitter — if not provided, uses NoopChangeEmitter.
+ * Optionally accepts ChangeEmitter -- if not provided, uses NoopChangeEmitter.
  *
  * Each database gets a full capability stack:
- * - ReactiveConstraints (priority 40) — constraint evaluation on write
- * - ChangeEmission (priority 50) — broadcast changes to connected clients
+ * - ReactiveConstraints (priority 40) -- constraint evaluation on write
+ * - ChangeEmission (priority 50) -- broadcast changes to connected clients
  */
 export const DatabaseManagerLive = Layer.scoped(
   DatabaseManager,
@@ -122,7 +126,7 @@ export const DatabaseManagerLive = Layer.scoped(
     const runtimeNow = yield* Effect.serviceOption(TripleStoreRuntime).pipe(
       Effect.map((opt) => (opt._tag === "Some" ? opt.value.now : () => Date.now())),
     );
-    // Resolve injectable features (optional — empty if not provided)
+    // Resolve injectable features (optional -- empty if not provided)
     const externalFeatures = yield* Effect.serviceOption(DatabaseFeatures).pipe(
       Effect.map((opt) => (opt._tag === "Some" ? opt.value.features : [])),
     );
@@ -332,10 +336,7 @@ export const DatabaseManagerLive = Layer.scoped(
     const create = (
       name: string,
       description?: string,
-    ): Effect.Effect<
-      Database,
-      import("@open-ontology/database").DatabaseAlreadyExists | InternalError
-    > =>
+    ): Effect.Effect<Database, DatabaseAlreadyExists | InternalError> =>
       Effect.gen(function* () {
         // Register in the registry (this checks for duplicates)
         const database = yield* registry.register(name, description);
@@ -469,7 +470,7 @@ export const DatabaseManagerLive = Layer.scoped(
     const getSnapshotService = (
       name: string,
     ): Effect.Effect<
-      import("../snapshots/SnapshotService.js").SnapshotServiceShape | null,
+      import("@open-ontology/database").SnapshotServiceShape | null,
       DatabaseNotFound | InternalError
     > =>
       Effect.gen(function* () {

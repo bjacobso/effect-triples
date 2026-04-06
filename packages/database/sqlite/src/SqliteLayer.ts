@@ -1,7 +1,7 @@
 import { Effect, Layer } from "effect";
 import { SqlClient } from "@effect/sql";
 import { SqliteClient } from "@effect/sql-sqlite-node";
-import { runMigrations } from "@open-ontology/database";
+import { runMigrations } from "@open-ontology/database-sql";
 
 // Create SQLite layer with WAL mode for better concurrent read performance
 export const makeSqliteLayer = (filename: string) =>

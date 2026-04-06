@@ -7,8 +7,7 @@
 
 import { Context, Effect, Layer } from "effect";
 import { SqlClient } from "@effect/sql";
-import type { SqlDialect } from "../dialects/index.js";
-import type { StorageAdapter } from "../storage/StorageAdapter.js";
+import type { SqlDialect, StorageAdapter } from "@open-ontology/database";
 
 // =============================================================================
 // Service Interface

@@ -1,8 +1,15 @@
 import { Effect, Option } from "effect";
 import { SqlClient } from "@effect/sql";
-import type { TripleRow, Triple, TripleId, EntityId, Attribute } from "../Triple.js";
-import type { TripleValue, ValueType } from "../Value.js";
-import { ReadError, WriteError } from "../errors/index.js";
+import type {
+  TripleRow,
+  Triple,
+  TripleId,
+  EntityId,
+  Attribute,
+  TripleValue,
+  ValueType,
+} from "@open-ontology/database";
+import { ReadError, WriteError } from "@open-ontology/database";
 
 // Convert TripleValue to database columns
 export const packValue = (

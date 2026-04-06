@@ -105,6 +105,7 @@ export { emptyContext } from "./types.js";
 // SQL Compiler
 export { compile, compileToSql, type CompiledQuery, type QueryMetrics } from "./compiler.js";
 
-// Service and Layer
+// Service (Layer implementations live in @open-ontology/database-sql)
 export { Sparql, type SparqlService, type QueryDebugInfo } from "./service.js";
-export { SparqlLive, SparqlLayer } from "./layer.js";
+
+// NOTE: SparqlLive and SparqlLayer have moved to @open-ontology/database-sql.

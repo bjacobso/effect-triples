@@ -1,5 +1,5 @@
 /**
- * SPARQL layer implementation
+ * SPARQL SQL layer implementation
  *
  * Connects the SPARQL query engine to the TripleStore service.
  * Uses SQL compilation for efficient query execution.
@@ -7,12 +7,23 @@
 
 import { Effect, Layer, Schema } from "effect";
 import { SqlClient } from "@effect/sql";
-import { TripleStore } from "../store/TripleStore.js";
-import { Sparql, type SparqlService, type QueryDebugInfo } from "./service.js";
-import * as SparqlSchema from "./schema.js";
-import * as Compiler from "./compiler.js";
-import type { SparqlQuery, Context, QueryResult, SelectResult } from "./types.js";
-import { SparqlValidationError, SparqlError, ReadError } from "../errors/index.js";
+import {
+  TripleStore,
+  Sparql,
+  type SparqlService,
+  type SparqlQueryDebugInfo as QueryDebugInfo,
+  SparqlQuery,
+  compileSparql,
+  type SparqlCompiledQuery as CompiledQuery,
+  SparqlValidationError,
+  SparqlError,
+  ReadError,
+} from "@open-ontology/database";
+import type {
+  SparqlContext as Context,
+  SparqlQueryResult as QueryResult,
+  SelectResult,
+} from "@open-ontology/database";
 
 // =============================================================================
 // Result Row Type
@@ -89,7 +100,7 @@ export const SparqlLive = Layer.effect(
     const query = (rawQuery: unknown, debug = false) =>
       Effect.gen(function* () {
         // 1. Validate query with Effect Schema
-        const parseResult = Schema.decodeUnknownEither(SparqlSchema.SparqlQuery)(rawQuery);
+        const parseResult = Schema.decodeUnknownEither(SparqlQuery)(rawQuery);
 
         if (parseResult._tag === "Left") {
           return yield* Effect.fail(
@@ -104,9 +115,9 @@ export const SparqlLive = Layer.effect(
         const q = parseResult.right;
 
         // 2. Compile to SQL (with metrics if debug=true)
-        let compiled: Compiler.CompiledQuery;
+        let compiled: CompiledQuery;
         try {
-          compiled = Compiler.compile(q, undefined, debug);
+          compiled = compileSparql(q, undefined, debug);
         } catch (error) {
           return yield* Effect.fail(
             new SparqlError({
@@ -172,12 +183,12 @@ export const SparqlLive = Layer.effect(
     /**
      * Execute a pre-validated SPARQL query (skip validation)
      */
-    const queryValidated = (q: SparqlQuery, debug = false) =>
+    const queryValidated = (q: typeof SparqlQuery.Type, debug = false) =>
       Effect.gen(function* () {
         // 1. Compile to SQL (with metrics if debug=true)
-        let compiled: Compiler.CompiledQuery;
+        let compiled: CompiledQuery;
         try {
-          compiled = Compiler.compile(q, undefined, debug);
+          compiled = compileSparql(q, undefined, debug);
         } catch (error) {
           return yield* Effect.fail(
             new SparqlError({

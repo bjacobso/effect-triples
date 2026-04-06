@@ -2,6 +2,7 @@
  * Unified database package.
  *
  * Owns the collapsed public database surface.
+ * SQL-bound code (layers, migrations, storage backends) lives in @open-ontology/database-sql.
  */
 
 export * from "./Branded.js";
@@ -39,31 +40,6 @@ export {
   SubscriptionManagerLive,
   type SubscriptionManagerService,
 } from "./subscriptions/index.js";
-
-// SQL layer — schema, queries, migrations
-export {
-  TRIPLES_TABLE_DDL,
-  MIGRATIONS_TABLE_DDL,
-  INDEX_DDLS,
-  INDEX_NAMES,
-  ENTITY_BLOBS_TABLE_DDL,
-  ENTITY_SNAPSHOTS_TABLE_DDL,
-  SNAPSHOT_INDEX_DDLS,
-} from "./sql/schema.js";
-export {
-  packValue,
-  unpackValue,
-  rowToTriple,
-  insertTriple,
-  retractTriple,
-  getTripleById,
-  getEntityTriples,
-  queryByAttribute,
-  queryByEntityType,
-  getEntityAsOf,
-  getEntityHistory,
-} from "./sql/queries.js";
-export { type Migration, migrations, runMigrations } from "./sql/migrations.js";
 
 export {
   Variable,
@@ -109,8 +85,6 @@ export {
   type BulkInsertOptions,
 } from "./store/TripleStore.js";
 export { TripleStoreLive, TripleStoreAdapterLive } from "./store/TripleStoreAdapterLayer.js";
-export { DatabaseManagerLive, wrapStoreWithEmitter } from "./store/DatabaseManagerLayer.js";
-export { DatabaseRegistryLive } from "./store/DatabaseRegistryLayer.js";
 export {
   DatabaseManager,
   type DatabaseManagerService,
@@ -122,7 +96,6 @@ export {
   type DatabaseRegistryService,
   type DatabaseAccessEntry,
 } from "./store/DatabaseRegistry.js";
-export { StorageBackend, type StorageBackendService } from "./store/StorageBackend.js";
 export {
   ChangeEmitter,
   type ChangeEmitterService,
@@ -187,8 +160,6 @@ export {
   type QueryDebugInfo,
   type WrappedQueryResult,
 } from "./datalog/service.js";
-export { DatalogLive, DatalogLayer } from "./datalog/layer.js";
-export { SqlQueryExecutorLive } from "./datalog/SqlQueryExecutor.js";
 export {
   QueryExecutor,
   type QueryExecutorService,
@@ -220,8 +191,8 @@ export {
   evaluatePredicate,
   evaluatePredicateSync,
 } from "./datalog/predicates.js";
-// NOTE: toDatalogQuery (QueryAST→DatalogQuery) lives in core — it's a compiler concern.
-// NOTE: typeCheckDatalogQuery lives in core — it depends on HM types from the lisp package.
+// NOTE: toDatalogQuery (QueryAST->DatalogQuery) lives in core -- it's a compiler concern.
+// NOTE: typeCheckDatalogQuery lives in core -- it depends on HM types from the lisp package.
 export { type SqlDialect, CurrentDialect, SqliteDialect } from "./dialects/index.js";
 export { createParamCollector, type ParamCollector } from "./params.js";
 
@@ -230,7 +201,6 @@ export {
   type SparqlService,
   type QueryDebugInfo as SparqlQueryDebugInfo,
 } from "./sparql/service.js";
-export { SparqlLive, SparqlLayer } from "./sparql/layer.js";
 export {
   type Context as SparqlContext,
   type SelectResult,

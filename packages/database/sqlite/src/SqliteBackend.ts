@@ -8,7 +8,8 @@
 import { Config, Effect, Layer } from "effect";
 import { SqliteClient } from "@effect/sql-sqlite-node";
 import { FileSystem } from "@effect/platform";
-import { StorageBackend, type StorageBackendService, SqliteDialect } from "@open-ontology/database";
+import { SqliteDialect } from "@open-ontology/database";
+import { StorageBackend, type StorageBackendService } from "@open-ontology/database-sql";
 import { SqliteAdapterLive } from "./SqliteAdapter.js";
 
 // =============================================================================

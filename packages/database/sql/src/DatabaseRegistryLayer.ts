@@ -10,9 +10,11 @@ import {
   DatabaseRegistry,
   type DatabaseRegistryService,
   type DatabaseAccessEntry,
-} from "./DatabaseRegistry.js";
-import type { Database } from "./DatabaseManager.js";
-import { DatabaseNotFound, DatabaseAlreadyExists, InternalError } from "@open-ontology/database";
+  type Database,
+  DatabaseNotFound,
+  DatabaseAlreadyExists,
+  InternalError,
+} from "@open-ontology/database";
 import { StorageBackend } from "./StorageBackend.js";
 
 // =============================================================================

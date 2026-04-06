@@ -9,11 +9,8 @@
 import { Context, Effect, Layer, Redacted } from "effect";
 import { SqlClient } from "@effect/sql";
 import { PgClient } from "@effect/sql-pg";
-import {
-  StorageBackend,
-  type StorageBackendService,
-  type SqlDialect,
-} from "@open-ontology/database";
+import { type SqlDialect } from "@open-ontology/database";
+import { StorageBackend, type StorageBackendService } from "@open-ontology/database-sql";
 import { PostgresqlDialect } from "./dialect.js";
 import { PostgresqlAdapterLive } from "./PostgresqlAdapter.js";
 

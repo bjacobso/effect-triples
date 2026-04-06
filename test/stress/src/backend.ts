@@ -22,13 +22,10 @@ import { Effect, Layer } from "effect";
 import { SqlClient } from "@effect/sql";
 import { SqliteClient } from "@effect/sql-sqlite-node";
 import { NodeContext } from "@effect/platform-node";
-import {
-  DatabaseManager,
-  DatabaseManagerLive,
-  DatabaseRegistryLive,
-} from "@open-ontology/database";
+import { DatabaseManager } from "@open-ontology/database";
 import { TripleStore, type TripleStoreService } from "@open-ontology/database";
 import { Datalog, type DatalogService } from "@open-ontology/database";
+import { DatabaseManagerLive, DatabaseRegistryLive } from "@open-ontology/database-sql";
 import { makeSqliteBackend } from "@open-ontology/database-sqlite";
 import {
   makePostgresqlBackendFromUrl,

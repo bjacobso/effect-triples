@@ -1,5 +1,5 @@
 /**
- * Datalog layer implementation
+ * Datalog SQL layer implementation
  *
  * Connects the Datalog query engine to the QueryExecutor service.
  * The QueryExecutor abstraction allows both SQL-based and KV-based
@@ -7,22 +7,28 @@
  */
 
 import { Effect, Layer, Schema } from "effect";
-import { TripleStore } from "../store/TripleStore.js";
 import {
+  TripleStore,
   Datalog,
   type DatalogService,
-  type QueryDebugInfo,
-  type QueryPlan,
-  type WrappedQueryResult,
-} from "./service.js";
-import * as DatalogSchema from "./schema.js";
-import * as Compiler from "./compiler.js";
-import { compileWrapped, type CompiledWrappedQuery } from "./wrapper.js";
-import { QueryExecutor } from "../storage/QueryExecutor.js";
-import { CurrentDialect } from "../dialects/index.js";
-import { SqliteDialect } from "../dialects/sqlite.js";
-import type { DatalogQuery, QueryResult, WrappedQuery } from "./types.js";
-import { DatalogValidationError, DatalogError, ReadError } from "../errors/index.js";
+  QueryExecutor,
+  CurrentDialect,
+  SqliteDialect,
+  DatalogQuery,
+  WrappedQuery,
+  compileWrapped,
+  type CompiledWrappedQuery,
+  type QueryMetrics,
+  DatalogValidationError,
+  DatalogError,
+  ReadError,
+} from "@open-ontology/database";
+import type {
+  QueryPlan,
+  QueryDebugInfo,
+  WrappedQueryResult,
+  QueryResult,
+} from "@open-ontology/database";
 
 // =============================================================================
 // Layer Implementation
@@ -34,8 +40,8 @@ import { DatalogValidationError, DatalogError, ReadError } from "../errors/index
  * Provides the Datalog service using QueryExecutor for query execution.
  * Requires both TripleStore and QueryExecutor services.
  *
- * For SQL backends: use SqlQueryExecutorLive which compiles Datalog → SQL.
- * For KV backends: use the KV-specific executor from ../../../core/src/errors/index.js/kv.
+ * For SQL backends: use SqlQueryExecutorLive which compiles Datalog -> SQL.
+ * For KV backends: use the KV-specific executor from kv/.
  */
 export const DatalogLive = Layer.effect(
   Datalog,
@@ -44,7 +50,7 @@ export const DatalogLive = Layer.effect(
     // TripleStore is still required for type-check (reads entity type schemas)
     yield* TripleStore;
 
-    // Resolve dialect from context (optional — defaults to SQLite)
+    // Resolve dialect from context (optional -- defaults to SQLite)
     const dialectOpt = yield* Effect.serviceOption(CurrentDialect);
     const dialect = dialectOpt._tag === "Some" ? dialectOpt.value : SqliteDialect;
 
@@ -54,7 +60,7 @@ export const DatalogLive = Layer.effect(
     const query = (rawQuery: unknown, debug = false) =>
       Effect.gen(function* () {
         // 1. Validate query with Effect Schema
-        const parseResult = Schema.decodeUnknownEither(DatalogSchema.DatalogQuery)(rawQuery);
+        const parseResult = Schema.decodeUnknownEither(DatalogQuery)(rawQuery);
 
         if (parseResult._tag === "Left") {
           return yield* Effect.fail(
@@ -90,7 +96,7 @@ export const DatalogLive = Layer.effect(
     /**
      * Execute a pre-validated Datalog query (skip validation)
      */
-    const queryValidated = (q: DatalogQuery, debug = false) =>
+    const queryValidated = (q: typeof DatalogQuery.Type, debug = false) =>
       Effect.gen(function* () {
         // Prefer executeValidated() to avoid duplicate schema decode when supported.
         const run = executor.executeValidated
@@ -120,7 +126,7 @@ export const DatalogLive = Layer.effect(
     /**
      * Execute a wrapped query with subquery semantics
      */
-    const queryWrapped = (q: WrappedQuery, debug = false) =>
+    const queryWrapped = (q: typeof WrappedQuery.Type, debug = false) =>
       Effect.gen(function* () {
         const result = yield* executor.executeWrapped(q, debug).pipe(
           Effect.mapError(
@@ -140,7 +146,7 @@ export const DatalogLive = Layer.effect(
      */
     const explain = (rawQuery: unknown) =>
       Effect.gen(function* () {
-        const parseResult = Schema.decodeUnknownEither(DatalogSchema.DatalogQuery)(rawQuery);
+        const parseResult = Schema.decodeUnknownEither(DatalogQuery)(rawQuery);
         if (parseResult._tag === "Left") {
           return yield* Effect.fail(
             new DatalogValidationError({
@@ -161,7 +167,7 @@ export const DatalogLive = Layer.effect(
           ),
         );
 
-        return result as { queryPlan: QueryPlan; metrics?: Compiler.QueryMetrics };
+        return result as { queryPlan: QueryPlan; metrics?: QueryMetrics };
       }).pipe(Effect.withSpan("datalog.explain"));
 
     /**
@@ -170,7 +176,7 @@ export const DatalogLive = Layer.effect(
      */
     const explainWrapped = (rawQuery: unknown) =>
       Effect.gen(function* () {
-        const parseResult = Schema.decodeUnknownEither(DatalogSchema.WrappedQuery)(rawQuery);
+        const parseResult = Schema.decodeUnknownEither(WrappedQuery)(rawQuery);
         if (parseResult._tag === "Left") {
           return yield* Effect.fail(
             new DatalogValidationError({
@@ -224,15 +230,5 @@ export const DatalogLive = Layer.effect(
 
 /**
  * Combined layer that provides both Datalog and TripleStore
- *
- * Use this when you want to provide Datalog with all its dependencies:
- * ```typescript
- * const layer = DatalogLive.pipe(
- *   Layer.provide(SqlQueryExecutorLive),
- *   Layer.provide(TripleStoreLive),
- *   Layer.provide(SqliteAdapterLive),
- *   Layer.provide(SqliteClient.layer({ filename: ":memory:" }))
- * )
- * ```
  */
 export const DatalogLayer = DatalogLive;

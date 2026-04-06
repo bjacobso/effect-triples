@@ -1,6 +1,6 @@
 import { Effect, Layer, Redacted } from "effect";
 import { PgClient } from "@effect/sql-pg";
-import { runMigrations } from "@open-ontology/database";
+import { runMigrations } from "@open-ontology/database-sql";
 
 /**
  * PostgreSQL connection configuration.

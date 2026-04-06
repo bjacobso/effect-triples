@@ -1,30 +1,27 @@
 {
-  "name": "@open-ontology/database-sqlite",
+  "name": "@open-ontology/database-sql",
   "version": "0.0.0",
   "private": true,
   "type": "module",
-  "main": "dist/packages/database/sqlite/src/index.js",
-  "types": "dist/packages/database/sqlite/src/index.d.ts",
+  "main": "dist/packages/database/sql/src/index.js",
+  "types": "dist/packages/database/sql/src/index.d.ts",
   "exports": {
     ".": {
-      "import": "./dist/packages/database/sqlite/src/index.js",
-      "types": "./dist/packages/database/sqlite/src/index.d.ts",
+      "import": "./dist/packages/database/sql/src/index.js",
+      "types": "./dist/packages/database/sql/src/index.d.ts",
       "default": "./src/index.ts"
     }
   },
   "scripts": {
     "build": "rm -rf dist && tsc",
     "dev": "tsc --watch",
-    "test": "vitest --run",
+    "test": "vitest --run --passWithNoTests",
     "typecheck": "tsc --noEmit",
     "clean": "rm -rf dist"
   },
   "dependencies": {
-    "@effect/platform": "catalog:",
     "@effect/sql": "catalog:",
-    "@effect/sql-sqlite-node": "catalog:",
     "@open-ontology/database": "workspace:*",
-    "@open-ontology/database-sql": "workspace:*",
     "effect": "catalog:"
   },
   "devDependencies": {

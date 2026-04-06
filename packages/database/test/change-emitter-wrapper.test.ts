@@ -5,7 +5,7 @@
  */
 import { describe, it, expect } from "vitest";
 import { Effect, Option } from "effect";
-import { wrapStoreWithEmitter } from "../src/index.js";
+import { wrapStoreWithEmitter } from "../sql/src/index.js";
 import type {
   TripleStoreService,
   ChangeEmitterService,

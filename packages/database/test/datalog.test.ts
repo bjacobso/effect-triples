@@ -2,12 +2,11 @@ import { describe, it, expect } from "vitest";
 import { Effect, Layer } from "effect";
 import { SqliteClient } from "@effect/sql-sqlite-node";
 import { SqlClient } from "@effect/sql";
+import { DatalogLive, SqlQueryExecutorLive } from "../sql/src/index.js";
 import {
   TripleStore,
   TripleStoreLive,
   Datalog,
-  DatalogLive,
-  SqlQueryExecutorLive,
   string,
   number,
   ref,

@@ -14,19 +14,17 @@ import {
   QueryExecutor,
   type QueryExecutorService,
   type QueryContext,
-  type QueryPlan,
-  type QueryMetrics,
-  type QueryDebugInfo,
-} from "../storage/QueryExecutor.js";
-import type { QueryResult } from "../storage/QueryExecutor.js";
-import { CurrentDialect } from "../dialects/index.js";
-import { ReadError } from "../errors/index.js";
-import * as DatalogSchema from "./schema.js";
-import * as Compiler from "./compiler.js";
-import { compileWrapped, type CompiledWrappedQuery } from "./wrapper.js";
-import { SqliteDialect } from "../dialects/sqlite.js";
-import { createPaginationCursor } from "../Branded.js";
-import type { DatalogQuery } from "./types.js";
+  type QueryExecutorMetrics,
+  CurrentDialect,
+  ReadError,
+  DatalogQuery,
+  compile,
+  compileWrapped,
+  type CompiledQuery,
+  type CompiledWrappedQuery,
+  SqliteDialect,
+  createPaginationCursor,
+} from "@open-ontology/database";
 
 // =============================================================================
 // Result Row Type
@@ -73,6 +71,26 @@ const rowToContext = (row: ResultRow, columnMap: Map<string, string>): QueryCont
 // Query Plan Builder
 // =============================================================================
 
+interface QueryPlan {
+  readonly backend: string;
+  readonly steps: ReadonlyArray<{
+    readonly label: string;
+    readonly query: string;
+    readonly params?: readonly unknown[];
+  }>;
+}
+
+interface QueryDebugInfo {
+  readonly metrics: QueryExecutorMetrics;
+  readonly executionTimeMs: number;
+  readonly resultCount: number;
+  readonly queryPlan?: QueryPlan;
+  readonly generatedSql?: string;
+  readonly params?: readonly unknown[];
+}
+
+type QueryResult = readonly QueryContext[];
+
 const buildQueryPlan = (
   dialectName: string,
   mainSql: string,
@@ -95,14 +113,14 @@ const buildQueryPlan = (
 
 /**
  * SQL-based QueryExecutor implementation.
- * Compiles Datalog → SQL and executes via SqlClient.
+ * Compiles Datalog -> SQL and executes via SqlClient.
  */
 export const SqlQueryExecutorLive = Layer.effect(
   QueryExecutor,
   Effect.gen(function* () {
     const sql = yield* SqlClient.SqlClient;
 
-    // Resolve dialect from context (optional — defaults to SQLite)
+    // Resolve dialect from context (optional -- defaults to SQLite)
     const dialectOpt = yield* Effect.serviceOption(CurrentDialect);
     const dialect = dialectOpt._tag === "Some" ? dialectOpt.value : SqliteDialect;
 
@@ -111,12 +129,12 @@ export const SqlQueryExecutorLive = Layer.effect(
       debug = false,
     ) =>
       Effect.gen(function* () {
-        const q = validatedQuery as DatalogQuery;
+        const q = validatedQuery as typeof DatalogQuery.Type;
 
         // 1. Compile to SQL
-        let compiled: Compiler.CompiledQuery;
+        let compiled: CompiledQuery;
         try {
-          compiled = Compiler.compile(q, dialect, debug);
+          compiled = compile(q, dialect, debug);
         } catch (error) {
           return yield* Effect.fail(
             new ReadError({
@@ -145,7 +163,7 @@ export const SqlQueryExecutorLive = Layer.effect(
         // 4. Return with optional debug info
         if (debug && compiled.metrics) {
           const debugInfo: QueryDebugInfo = {
-            metrics: compiled.metrics as QueryMetrics,
+            metrics: compiled.metrics as QueryExecutorMetrics,
             executionTimeMs: execTime,
             resultCount: results.length,
             generatedSql: compiled.sql,
@@ -161,7 +179,7 @@ export const SqlQueryExecutorLive = Layer.effect(
     const execute: QueryExecutorService["execute"] = (rawQuery, debug = false) =>
       Effect.gen(function* () {
         // Validate query with Effect Schema
-        const parseResult = Schema.decodeUnknownEither(DatalogSchema.DatalogQuery)(rawQuery);
+        const parseResult = Schema.decodeUnknownEither(DatalogQuery)(rawQuery);
 
         if (parseResult._tag === "Left") {
           return yield* Effect.fail(
@@ -178,7 +196,7 @@ export const SqlQueryExecutorLive = Layer.effect(
     const executeWrapped: QueryExecutorService["executeWrapped"] = (rawQuery, debug = false) =>
       Effect.gen(function* () {
         // Cast to WrappedQuery (expected to be pre-validated by DatalogLive)
-        const q = rawQuery as import("./types.js").WrappedQuery;
+        const q = rawQuery as import("@open-ontology/database").WrappedQuery;
 
         // 1. Compile to SQL with CTE wrapper
         let compiled: CompiledWrappedQuery;
@@ -280,7 +298,7 @@ export const SqlQueryExecutorLive = Layer.effect(
 
     const explain: QueryExecutorService["explain"] = (rawQuery) =>
       Effect.gen(function* () {
-        const parseResult = Schema.decodeUnknownEither(DatalogSchema.DatalogQuery)(rawQuery);
+        const parseResult = Schema.decodeUnknownEither(DatalogQuery)(rawQuery);
         if (parseResult._tag === "Left") {
           return yield* Effect.fail(
             new ReadError({
@@ -290,9 +308,9 @@ export const SqlQueryExecutorLive = Layer.effect(
           );
         }
 
-        let compiled: Compiler.CompiledQuery;
+        let compiled: CompiledQuery;
         try {
-          compiled = Compiler.compile(parseResult.right, dialect, true);
+          compiled = compile(parseResult.right, dialect, true);
         } catch (error) {
           return yield* Effect.fail(
             new ReadError({
@@ -304,7 +322,7 @@ export const SqlQueryExecutorLive = Layer.effect(
 
         return {
           queryPlan: buildQueryPlan(dialect.name, compiled.sql, compiled.params),
-          ...(compiled.metrics && { metrics: compiled.metrics as QueryMetrics }),
+          ...(compiled.metrics && { metrics: compiled.metrics as QueryExecutorMetrics }),
         };
       });
 

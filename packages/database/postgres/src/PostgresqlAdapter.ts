@@ -15,10 +15,9 @@ import {
   WriteError,
   ReadError,
   MigrationError,
-  packValue,
-  runMigrations,
   createParamCollector,
 } from "@open-ontology/database";
+import { packValue, runMigrations } from "@open-ontology/database-sql";
 import { isVariable } from "@open-ontology/database/types/Pattern";
 import { PostgresqlDialect } from "./dialect.js";
 

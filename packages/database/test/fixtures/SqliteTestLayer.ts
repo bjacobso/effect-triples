@@ -43,7 +43,8 @@ import { SqliteClient } from "@effect/sql-sqlite-node";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import * as os from "node:os";
-import { DatalogLive, SqlQueryExecutorLive, TripleStoreLive } from "../../src/index.js";
+import { TripleStoreLive } from "../../src/index.js";
+import { DatalogLive, SqlQueryExecutorLive } from "../../sql/src/index.js";
 import { SqliteAdapterLive } from "../../sqlite/src/index.js";
 
 // ─── Pre-composed layers (in-memory, most common) ──────────────────────────

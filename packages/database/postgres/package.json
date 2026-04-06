@@ -24,6 +24,7 @@
     "@effect/sql": "catalog:",
     "@effect/sql-pg": "catalog:",
     "@open-ontology/database": "workspace:*",
+    "@open-ontology/database-sql": "workspace:*",
     "effect": "catalog:"
   },
   "devDependencies": {

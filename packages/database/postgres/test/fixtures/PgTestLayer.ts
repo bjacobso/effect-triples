@@ -34,12 +34,8 @@
 import { Context, Effect, Layer } from "effect";
 import { GenericContainer, Wait } from "testcontainers";
 import type { StartedTestContainer } from "testcontainers";
-import {
-  CurrentDialect,
-  DatalogLive,
-  SqlQueryExecutorLive,
-  TripleStoreLive,
-} from "@open-ontology/database";
+import { CurrentDialect, TripleStoreLive } from "@open-ontology/database";
+import { DatalogLive, SqlQueryExecutorLive } from "@open-ontology/database-sql";
 import {
   makePostgresqlLayerFromUrl,
   PostgresqlAdapterLive,

@@ -12,15 +12,12 @@ import {
   StorageAdapter,
   type StorageAdapterService,
   type TripleRow,
-  packValue,
   WriteError,
   ReadError,
   MigrationError,
-  runMigrations,
-  INDEX_DDLS,
-  INDEX_NAMES,
   generateId,
 } from "@open-ontology/database";
+import { packValue, runMigrations, INDEX_DDLS, INDEX_NAMES } from "@open-ontology/database-sql";
 import { isVariable } from "@open-ontology/database/types/Pattern";
 
 // =============================================================================

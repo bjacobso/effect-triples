@@ -70,15 +70,14 @@ export {
   evaluatePredicateSync,
 } from "./predicates.js";
 
-// Service and Layer
+// Service (Layer implementations live in @open-ontology/database-sql)
 export {
   Datalog,
   type DatalogService,
   type QueryPlan,
   type WrappedQueryResult,
 } from "./service.js";
-export { DatalogLive, DatalogLayer } from "./layer.js";
-export { SqlQueryExecutorLive } from "./SqlQueryExecutor.js";
 
+// NOTE: DatalogLive and SqlQueryExecutorLive have moved to @open-ontology/database-sql.
 // NOTE: QueryAST translation (toDatalogQuery) and type checker (typeCheckDatalogQuery)
 // live in the compiler layer — they depend on compiler/lisp infrastructure.

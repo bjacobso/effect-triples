@@ -1,6 +1,6 @@
 import { Effect } from "effect";
 import { SqlClient } from "@effect/sql";
-import { MigrationError } from "../errors/index.js";
+import { MigrationError } from "@open-ontology/database";
 import {
   TRIPLES_TABLE_DDL,
   MIGRATIONS_TABLE_DDL,
