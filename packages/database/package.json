@@ -3,93 +3,93 @@
   "version": "0.0.0",
   "private": true,
   "type": "module",
-  "main": "dist/packages/database/src/index.js",
-  "types": "dist/packages/database/src/index.d.ts",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
   "exports": {
     ".": {
-      "import": "./dist/packages/database/src/index.js",
-      "types": "./dist/packages/database/src/index.d.ts",
+      "import": "./dist/index.js",
+      "types": "./dist/index.d.ts",
       "default": "./src/index.ts"
     },
     "./Datalog": {
-      "import": "./dist/packages/database/src/Datalog.js",
-      "types": "./dist/packages/database/src/Datalog.d.ts",
+      "import": "./dist/Datalog.js",
+      "types": "./dist/Datalog.d.ts",
       "default": "./src/Datalog.ts"
     },
     "./datalog": {
-      "import": "./dist/packages/database/src/Datalog.js",
-      "types": "./dist/packages/database/src/Datalog.d.ts",
+      "import": "./dist/Datalog.js",
+      "types": "./dist/Datalog.d.ts",
       "default": "./src/Datalog.ts"
     },
     "./DatalogRpc": {
-      "import": "./dist/packages/database/src/DatalogRpc.js",
-      "types": "./dist/packages/database/src/DatalogRpc.d.ts",
+      "import": "./dist/DatalogRpc.js",
+      "types": "./dist/DatalogRpc.d.ts",
       "default": "./src/DatalogRpc.ts"
     },
     "./DatalogApi": {
-      "import": "./dist/packages/database/src/DatalogApi.js",
-      "types": "./dist/packages/database/src/DatalogApi.d.ts",
+      "import": "./dist/DatalogApi.js",
+      "types": "./dist/DatalogApi.d.ts",
       "default": "./src/DatalogApi.ts"
     },
     "./Database": {
-      "import": "./dist/packages/database/src/Database.js",
-      "types": "./dist/packages/database/src/Database.d.ts",
+      "import": "./dist/Database.js",
+      "types": "./dist/Database.d.ts",
       "default": "./src/Database.ts"
     },
     "./DatabaseApi": {
-      "import": "./dist/packages/database/src/DatabaseApi.js",
-      "types": "./dist/packages/database/src/DatabaseApi.d.ts",
+      "import": "./dist/DatabaseApi.js",
+      "types": "./dist/DatabaseApi.d.ts",
       "default": "./src/DatabaseApi.ts"
     },
     "./DatabaseRpc": {
-      "import": "./dist/packages/database/src/DatabaseRpc.js",
-      "types": "./dist/packages/database/src/DatabaseRpc.d.ts",
+      "import": "./dist/DatabaseRpc.js",
+      "types": "./dist/DatabaseRpc.d.ts",
       "default": "./src/DatabaseRpc.ts"
     },
     "./Sparql": {
-      "import": "./dist/packages/database/src/Sparql.js",
-      "types": "./dist/packages/database/src/Sparql.d.ts",
+      "import": "./dist/Sparql.js",
+      "types": "./dist/Sparql.d.ts",
       "default": "./src/Sparql.ts"
     },
     "./Snapshot": {
-      "import": "./dist/packages/database/src/Snapshot.js",
-      "types": "./dist/packages/database/src/Snapshot.d.ts",
+      "import": "./dist/Snapshot.js",
+      "types": "./dist/Snapshot.d.ts",
       "default": "./src/Snapshot.ts"
     },
     "./SnapshotApi": {
-      "import": "./dist/packages/database/src/SnapshotApi.js",
-      "types": "./dist/packages/database/src/SnapshotApi.d.ts",
+      "import": "./dist/SnapshotApi.js",
+      "types": "./dist/SnapshotApi.d.ts",
       "default": "./src/SnapshotApi.ts"
     },
     "./Triple": {
-      "import": "./dist/packages/database/src/Triple.js",
-      "types": "./dist/packages/database/src/Triple.d.ts",
+      "import": "./dist/Triple.js",
+      "types": "./dist/Triple.d.ts",
       "default": "./src/Triple.ts"
     },
     "./TripleRpc": {
-      "import": "./dist/packages/database/src/TripleRpc.js",
-      "types": "./dist/packages/database/src/TripleRpc.d.ts",
+      "import": "./dist/TripleRpc.js",
+      "types": "./dist/TripleRpc.d.ts",
       "default": "./src/TripleRpc.ts"
     },
     "./TripleApi": {
-      "import": "./dist/packages/database/src/TripleApi.js",
-      "types": "./dist/packages/database/src/TripleApi.d.ts",
+      "import": "./dist/TripleApi.js",
+      "types": "./dist/TripleApi.d.ts",
       "default": "./src/TripleApi.ts"
     },
     "./subscriptions": {
-      "import": "./dist/packages/database/src/subscriptions/index.js",
-      "types": "./dist/packages/database/src/subscriptions/index.d.ts",
+      "import": "./dist/subscriptions/index.js",
+      "types": "./dist/subscriptions/index.d.ts",
       "default": "./src/subscriptions/index.ts"
     },
     "./types/Pattern": {
-      "import": "./dist/packages/database/src/types/Pattern.js",
-      "types": "./dist/packages/database/src/types/Pattern.d.ts",
+      "import": "./dist/types/Pattern.js",
+      "types": "./dist/types/Pattern.d.ts",
       "default": "./src/types/Pattern.ts"
     }
   },
   "scripts": {
-    "build": "rm -rf dist && tsc",
-    "dev": "tsc --watch",
+    "build": "tsdown",
+    "dev": "tsdown --watch",
     "test": "vitest --run",
     "typecheck": "tsc --noEmit",
     "clean": "rm -rf dist"

@@ -11,8 +11,8 @@
     }
   },
   "scripts": {
-    "build": "tsc",
-    "dev": "tsc --watch",
+    "build": "tsdown",
+    "dev": "tsdown --watch",
     "test": "vitest --run",
     "typecheck": "tsc --noEmit",
     "clean": "rm -rf dist"

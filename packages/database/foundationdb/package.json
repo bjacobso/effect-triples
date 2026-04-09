@@ -3,18 +3,18 @@
   "version": "0.0.0",
   "private": true,
   "type": "module",
-  "main": "dist/packages/database/foundationdb/src/index.js",
-  "types": "dist/packages/database/foundationdb/src/index.d.ts",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
   "exports": {
     ".": {
-      "import": "./dist/packages/database/foundationdb/src/index.js",
-      "types": "./dist/packages/database/foundationdb/src/index.d.ts",
+      "import": "./dist/index.js",
+      "types": "./dist/index.d.ts",
       "default": "./src/index.ts"
     }
   },
   "scripts": {
-    "build": "rm -rf dist && tsc",
-    "dev": "tsc --watch",
+    "build": "tsdown && tsc --declaration --emitDeclarationOnly --rootDir src --outDir dist",
+    "dev": "tsdown --watch",
     "test": "vitest --run",
     "typecheck": "tsc --noEmit",
     "clean": "rm -rf dist"
