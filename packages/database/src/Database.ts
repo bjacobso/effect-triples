@@ -217,6 +217,7 @@ export const ExampleType = Schema.Literal(
   "dnd",
   "real-estate",
   "bizops",
+  "immigration-law",
 );
 export type ExampleType = typeof ExampleType.Type;
 
