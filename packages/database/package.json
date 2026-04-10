@@ -4,86 +4,86 @@
   "private": true,
   "type": "module",
   "main": "dist/index.js",
-  "types": "dist/index.d.ts",
+  "types": "./src/index.ts",
   "exports": {
     ".": {
       "import": "./dist/index.js",
-      "types": "./dist/index.d.ts",
+      "types": "./src/index.ts",
       "default": "./src/index.ts"
     },
     "./Datalog": {
       "import": "./dist/Datalog.js",
-      "types": "./dist/Datalog.d.ts",
+      "types": "./src/Datalog.ts",
       "default": "./src/Datalog.ts"
     },
     "./datalog": {
       "import": "./dist/Datalog.js",
-      "types": "./dist/Datalog.d.ts",
+      "types": "./src/Datalog.ts",
       "default": "./src/Datalog.ts"
     },
     "./DatalogRpc": {
       "import": "./dist/DatalogRpc.js",
-      "types": "./dist/DatalogRpc.d.ts",
+      "types": "./src/DatalogRpc.ts",
       "default": "./src/DatalogRpc.ts"
     },
     "./DatalogApi": {
       "import": "./dist/DatalogApi.js",
-      "types": "./dist/DatalogApi.d.ts",
+      "types": "./src/DatalogApi.ts",
       "default": "./src/DatalogApi.ts"
     },
     "./Database": {
       "import": "./dist/Database.js",
-      "types": "./dist/Database.d.ts",
+      "types": "./src/Database.ts",
       "default": "./src/Database.ts"
     },
     "./DatabaseApi": {
       "import": "./dist/DatabaseApi.js",
-      "types": "./dist/DatabaseApi.d.ts",
+      "types": "./src/DatabaseApi.ts",
       "default": "./src/DatabaseApi.ts"
     },
     "./DatabaseRpc": {
       "import": "./dist/DatabaseRpc.js",
-      "types": "./dist/DatabaseRpc.d.ts",
+      "types": "./src/DatabaseRpc.ts",
       "default": "./src/DatabaseRpc.ts"
     },
     "./Sparql": {
       "import": "./dist/Sparql.js",
-      "types": "./dist/Sparql.d.ts",
+      "types": "./src/Sparql.ts",
       "default": "./src/Sparql.ts"
     },
     "./Snapshot": {
       "import": "./dist/Snapshot.js",
-      "types": "./dist/Snapshot.d.ts",
+      "types": "./src/Snapshot.ts",
       "default": "./src/Snapshot.ts"
     },
     "./SnapshotApi": {
       "import": "./dist/SnapshotApi.js",
-      "types": "./dist/SnapshotApi.d.ts",
+      "types": "./src/SnapshotApi.ts",
       "default": "./src/SnapshotApi.ts"
     },
     "./Triple": {
       "import": "./dist/Triple.js",
-      "types": "./dist/Triple.d.ts",
+      "types": "./src/Triple.ts",
       "default": "./src/Triple.ts"
     },
     "./TripleRpc": {
       "import": "./dist/TripleRpc.js",
-      "types": "./dist/TripleRpc.d.ts",
+      "types": "./src/TripleRpc.ts",
       "default": "./src/TripleRpc.ts"
     },
     "./TripleApi": {
       "import": "./dist/TripleApi.js",
-      "types": "./dist/TripleApi.d.ts",
+      "types": "./src/TripleApi.ts",
       "default": "./src/TripleApi.ts"
     },
     "./subscriptions": {
       "import": "./dist/subscriptions/index.js",
-      "types": "./dist/subscriptions/index.d.ts",
+      "types": "./src/subscriptions/index.ts",
       "default": "./src/subscriptions/index.ts"
     },
     "./types/Pattern": {
       "import": "./dist/types/Pattern.js",
-      "types": "./dist/types/Pattern.d.ts",
+      "types": "./src/types/Pattern.ts",
       "default": "./src/types/Pattern.ts"
     }
   },
