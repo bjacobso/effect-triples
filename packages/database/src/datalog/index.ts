@@ -79,5 +79,5 @@ export {
 } from "./service.js";
 
 // NOTE: DatalogLive and SqlQueryExecutorLive have moved to @open-ontology/database-sql.
-// NOTE: QueryAST translation (toDatalogQuery) and type checker (typeCheckDatalogQuery)
+// NOTE: QueryPlan translation (toDatalogQuery) and type checker (typeCheckDatalogQuery)
 // live in the compiler layer — they depend on compiler/lisp infrastructure.

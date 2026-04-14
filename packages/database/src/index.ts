@@ -191,7 +191,7 @@ export {
   evaluatePredicate,
   evaluatePredicateSync,
 } from "./datalog/predicates.js";
-// NOTE: toDatalogQuery (QueryAST->DatalogQuery) lives in core -- it's a compiler concern.
+// NOTE: toDatalogQuery (QueryPlan->DatalogQuery) lives in core -- it's a compiler concern.
 // NOTE: typeCheckDatalogQuery lives in core -- it depends on HM types from the lisp package.
 export { type SqlDialect, CurrentDialect, SqliteDialect } from "./dialects/index.js";
 export { createParamCollector, type ParamCollector } from "./params.js";
