@@ -13,6 +13,7 @@ import { KvTripleStoreLive } from "../../../src/kv/layers/KvTripleStoreLive.js";
 import { KvDatalogLive } from "../../../src/kv/layers/KvDatalogLive.js";
 import { KvBackend } from "../../../src/kv/kv/KvBackend.js";
 import { makeTestKvBackend } from "../../../src/kv/kv/InMemoryKvBackend.js";
+import { TripleStoreRuntimeLayer } from "../../../src/store/TripleStoreRuntime.js";
 
 // ─── Test setup ────────────────────────────────────────────────────────────
 
@@ -26,7 +27,11 @@ const makeTestLayer = () => {
     KvBackend,
     Effect.sync(() => makeTestKvBackend()),
   );
-  return KvDatalogLive.pipe(Layer.provideMerge(KvTripleStoreLive), Layer.provide(freshKvBackend));
+  return KvDatalogLive.pipe(
+    Layer.provideMerge(KvTripleStoreLive),
+    Layer.provide(TripleStoreRuntimeLayer),
+    Layer.provide(freshKvBackend),
+  );
 };
 
 const runTest = <A, E>(effect: Effect.Effect<A, E, TripleStore | Datalog>): Promise<A> =>

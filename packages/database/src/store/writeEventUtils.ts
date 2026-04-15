@@ -36,7 +36,7 @@ export type WriteEventCallback = (event: ChangeEvent) => Effect.Effect<void>;
 export const makeWriteInterceptors = (
   inner: TripleStoreService,
   onEvent: WriteEventCallback,
-  now: () => number = () => Date.now(),
+  now: Effect.Effect<number>,
 ): Pick<
   TripleStoreService,
   "assert" | "assertBatch" | "retract" | "retractByPattern" | "transact"
@@ -59,16 +59,18 @@ export const makeWriteInterceptors = (
     pipe(
       inner.assertBatch(inputs, options),
       Effect.tap((triples) => {
-        const changes: TripleChange[] = inputs.map((input) => ({
-          operation: "assert" as const,
-          entityId: input.entityId,
-          attribute: input.attribute,
-        }));
-        const first = triples[0];
-        return onEvent({
-          txId: first ? Option.getOrElse(first.txId, () => "") : "",
-          timestamp: first?.createdAt ?? now(),
-          changes,
+        return Effect.gen(function* () {
+          const changes: TripleChange[] = inputs.map((input) => ({
+            operation: "assert" as const,
+            entityId: input.entityId,
+            attribute: input.attribute,
+          }));
+          const first = triples[0];
+          return yield* onEvent({
+            txId: first ? Option.getOrElse(first.txId, () => "") : "",
+            timestamp: first?.createdAt ?? (yield* now),
+            changes,
+          });
         });
       }),
     ),
@@ -81,16 +83,18 @@ export const makeWriteInterceptors = (
         pipe(
           inner.retract(id),
           Effect.tap(() =>
-            onEvent({
-              txId: "",
-              timestamp: now(),
-              changes: [
-                {
-                  operation: "retract" as const,
-                  entityId: triple?.entityId ?? "",
-                  attribute: triple?.attribute ?? "",
-                },
-              ],
+            Effect.gen(function* () {
+              return yield* onEvent({
+                txId: "",
+                timestamp: yield* now,
+                changes: [
+                  {
+                    operation: "retract" as const,
+                    entityId: triple?.entityId ?? "",
+                    attribute: triple?.attribute ?? "",
+                  },
+                ],
+              });
             }),
           ),
         ),
@@ -101,16 +105,18 @@ export const makeWriteInterceptors = (
     pipe(
       inner.retractByPattern(pattern),
       Effect.tap(() =>
-        onEvent({
-          txId: "",
-          timestamp: now(),
-          changes: [
-            {
-              operation: "retract" as const,
-              entityId: typeof pattern.entityId === "string" ? pattern.entityId : "",
-              attribute: typeof pattern.attribute === "string" ? pattern.attribute : "",
-            },
-          ],
+        Effect.gen(function* () {
+          return yield* onEvent({
+            txId: "",
+            timestamp: yield* now,
+            changes: [
+              {
+                operation: "retract" as const,
+                entityId: typeof pattern.entityId === "string" ? pattern.entityId : "",
+                attribute: typeof pattern.attribute === "string" ? pattern.attribute : "",
+              },
+            ],
+          });
         }),
       ),
     ),
@@ -156,7 +162,7 @@ export const makeWriteInterceptors = (
         }
       }
 
-      const event: ChangeEvent = { txId: result.txId, timestamp: now(), changes };
+      const event: ChangeEvent = { txId: result.txId, timestamp: yield* now, changes };
       yield* onEvent(event);
 
       return result;

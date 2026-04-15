@@ -7,7 +7,6 @@
  */
 
 import { Effect, Layer, Option, Stream } from "effect";
-import { ulid } from "ulidx";
 import type { Triple, TripleInput, TripleId, EntityId, TransactOp } from "@open-ontology/database";
 import type { TripleValue } from "@open-ontology/database";
 import type { Pattern } from "../../types/Pattern.js";
@@ -24,6 +23,7 @@ import { WriteError, ReadError } from "../../errors/index.js";
 import { KvBackend } from "../kv/KvBackend.js";
 import { createKvTripleStore, type Datom } from "../hexastore/KvTripleStore.js";
 import type { ScanPattern } from "../hexastore/scan.js";
+import { TripleStoreRuntime } from "../../store/TripleStoreRuntime.js";
 
 // ─── Datom ↔ Triple conversion ─────────────────────────────────────────────
 
@@ -191,14 +191,15 @@ const tripleValueEquals = (tv: TripleValue, raw: unknown): boolean => {
 
 const makeKvTripleStoreService = Effect.gen(function* () {
   const kvBackend = yield* KvBackend;
+  const runtime = yield* TripleStoreRuntime;
   const hexaStore = createKvTripleStore(kvBackend);
 
   const service: TripleStoreService = {
     assert: (input: TripleInput) =>
       Effect.gen(function* () {
-        const tripleId = ulid();
-        const txId = ulid();
-        const now = Date.now();
+        const tripleId = yield* runtime.nextTripleId;
+        const txId = yield* runtime.nextTxId;
+        const now = yield* runtime.now;
         const datom = tripleInputToDatom(input, tripleId, txId, now);
         yield* hexaStore.assert(datom);
         return datomToTriple(datom);
@@ -210,9 +211,14 @@ const makeKvTripleStoreService = Effect.gen(function* () {
 
     assertBatch: (inputs: readonly TripleInput[], _options?: BulkInsertOptions) =>
       Effect.gen(function* () {
-        const txId = ulid();
-        const now = Date.now();
-        const datoms = inputs.map((input) => tripleInputToDatom(input, ulid(), txId, now));
+        const txId = yield* runtime.nextTxId;
+        const now = yield* runtime.now;
+        const datoms = yield* Effect.forEach(inputs, (input) =>
+          Effect.gen(function* () {
+            const tripleId = yield* runtime.nextTripleId;
+            return tripleInputToDatom(input, tripleId, txId, now);
+          }),
+        );
         yield* hexaStore.assertBatch(datoms);
         return datoms.map(datomToTriple);
       }).pipe(
@@ -223,7 +229,7 @@ const makeKvTripleStoreService = Effect.gen(function* () {
 
     retract: (id: TripleId) =>
       Effect.gen(function* () {
-        const retracted = yield* hexaStore.retract(id, Date.now(), ulid());
+        const retracted = yield* hexaStore.retract(id, yield* runtime.now, yield* runtime.nextTxId);
         if (!retracted) {
           yield* Effect.fail(
             new WriteError({ message: `Triple not found or already retracted: ${id}` }),
@@ -242,8 +248,8 @@ const makeKvTripleStoreService = Effect.gen(function* () {
         const syncDatoms = hexaStore.scanCollect(scanPat);
         const datoms = syncDatoms ?? (yield* hexaStore.scanCollectAsync(scanPat));
         let count = 0;
-        const now = Date.now();
-        const txId = ulid();
+        const now = yield* runtime.now;
+        const txId = yield* runtime.nextTxId;
         for (const datom of datoms) {
           const ok = yield* hexaStore.retract(datom.tripleId, now, txId);
           if (ok) count++;
@@ -259,8 +265,8 @@ const makeKvTripleStoreService = Effect.gen(function* () {
 
     transact: (operations: readonly TransactOp[], meta?: TransactionMeta) =>
       Effect.gen(function* () {
-        const txId = ulid();
-        const now = Date.now();
+        const txId = yield* runtime.nextTxId;
+        const now = yield* runtime.now;
         const asserted: Triple[] = [];
         let retractedCount = 0;
 
@@ -275,7 +281,7 @@ const makeKvTripleStoreService = Effect.gen(function* () {
                   entityType: op.entityType,
                   createdBy: meta?.user,
                 },
-                ulid(),
+                yield* runtime.nextTripleId,
                 txId,
                 now,
               );
@@ -539,7 +545,9 @@ const extractSortValue = (tv: TripleValue): string | number | boolean | null => 
  * Layer that provides TripleStoreService backed by the KV hexastore.
  * Requires KvBackend.
  */
-export const KvTripleStoreLive: Layer.Layer<TripleStore, never, KvBackend> = Layer.effect(
-  TripleStore,
-  makeKvTripleStoreService,
-) as unknown as Layer.Layer<TripleStore, never, KvBackend>;
+export const KvTripleStoreLive: Layer.Layer<TripleStore, never, KvBackend | TripleStoreRuntime> =
+  Layer.effect(TripleStore, makeKvTripleStoreService) as unknown as Layer.Layer<
+    TripleStore,
+    never,
+    KvBackend | TripleStoreRuntime
+  >;

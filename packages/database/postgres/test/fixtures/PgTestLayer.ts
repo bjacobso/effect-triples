@@ -34,7 +34,7 @@
 import { Context, Effect, Layer } from "effect";
 import { GenericContainer, Wait } from "testcontainers";
 import type { StartedTestContainer } from "testcontainers";
-import { CurrentDialect, TripleStoreLive } from "@open-ontology/database";
+import { CurrentDialect, TripleStoreLive, TripleStoreRuntimeLayer } from "@open-ontology/database";
 import { DatalogLive, SqlQueryExecutorLive } from "@open-ontology/database-sql";
 import {
   makePostgresqlLayerFromUrl,
@@ -131,6 +131,7 @@ export const PgTestLayer = TripleStoreLive.pipe(
   Layer.provideMerge(PostgresqlAdapterLive),
   Layer.provide(PgSqlClientLayer),
   Layer.provide(PgContainerLayer),
+  Layer.provide(TripleStoreRuntimeLayer),
 );
 
 /**
@@ -148,6 +149,7 @@ export const PgFullTestLayer = Layer.mergeAll(
   Layer.provide(Layer.succeed(CurrentDialect, PostgresqlDialect)),
   Layer.provide(PgSqlClientLayer),
   Layer.provide(PgContainerLayer),
+  Layer.provide(TripleStoreRuntimeLayer),
 );
 
 // ─── Utility ───────────────────────────────────────────────────────────────

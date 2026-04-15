@@ -19,11 +19,13 @@ export interface StorageAdapterService {
     input: TripleInput,
     txId: string | null,
     timestamp: number,
+    id: string,
   ) => Effect.Effect<TripleRow, WriteError>;
   readonly batchInsert: (
     inputs: readonly TripleInput[],
     txId: string,
     timestamp: number,
+    ids: readonly string[],
   ) => Effect.Effect<readonly TripleRow[], WriteError>;
   readonly retract: (
     id: string,

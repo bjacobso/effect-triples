@@ -34,6 +34,8 @@ import {
   SnapshotServiceLive,
   makeEntitySnapshotsCapability,
   DatabaseAlreadyExists,
+  getTripleStoreRuntime,
+  IdGenerator,
 } from "@open-ontology/database";
 import { DatalogLive } from "./DatalogSqlLayer.js";
 import { SqlQueryExecutorLive } from "./SqlQueryExecutor.js";
@@ -89,10 +91,10 @@ interface CachedServices {
 export function wrapStoreWithEmitter(
   store: TripleStoreService,
   emitter: ChangeEmitterService,
+  now: () => number,
   _hook?: unknown,
-  now: () => number = () => Date.now(),
 ): TripleStoreService {
-  const cap = makeChangeEmissionCapability(emitter, now);
+  const cap = makeChangeEmissionCapability(emitter, Effect.sync(now));
   return cap.wrap(store);
 }
 
@@ -123,9 +125,10 @@ export const DatabaseManagerLive = Layer.scoped(
         opt._tag === "Some" ? opt.value : ({ emit: () => Effect.void } as ChangeEmitterService),
       ),
     );
-    const runtimeNow = yield* Effect.serviceOption(TripleStoreRuntime).pipe(
-      Effect.map((opt) => (opt._tag === "Some" ? opt.value.now : () => Date.now())),
-    );
+    const runtime = yield* getTripleStoreRuntime;
+    const ids = yield* IdGenerator;
+    const runtimeNow = runtime.now;
+    const runtimeLayer = Layer.succeed(TripleStoreRuntime, runtime);
     // Resolve injectable features (optional -- empty if not provided)
     const externalFeatures = yield* Effect.serviceOption(DatabaseFeatures).pipe(
       Effect.map((opt) => (opt._tag === "Some" ? opt.value.features : [])),
@@ -140,7 +143,7 @@ export const DatabaseManagerLive = Layer.scoped(
         yield* Effect.sleep(CLEANUP_INTERVAL_MS);
 
         const cache = yield* Ref.get(cacheRef);
-        const now = Date.now();
+        const now = yield* runtimeNow;
 
         for (const [dbName, services] of HashMap.toEntries(cache)) {
           const idleTime = now - services.lastAccessedAt;
@@ -170,6 +173,7 @@ export const DatabaseManagerLive = Layer.scoped(
       const storeLayer = TripleStoreLive.pipe(
         Layer.provide(adapterLayer),
         Layer.provide(dialectLayer),
+        Layer.provide(runtimeLayer),
       );
 
       const executorLayer = SqlQueryExecutorLive.pipe(
@@ -223,7 +227,9 @@ export const DatabaseManagerLive = Layer.scoped(
         // Add externally-injected feature capabilities (reactive constraints, processes, etc.)
         for (const feature of externalFeatures) {
           if (feature.capabilityFactory) {
-            const cap = yield* feature.capabilityFactory(rawStore, datalog, runtimeNow);
+            const cap = yield* feature
+              .capabilityFactory(rawStore, datalog, runtimeNow)
+              .pipe(Effect.provideService(IdGenerator, ids));
             if (cap) {
               capabilities.push(cap);
             }
@@ -237,7 +243,7 @@ export const DatabaseManagerLive = Layer.scoped(
           datalog,
           snapshotService: reader,
           scope: databaseScope,
-          lastAccessedAt: Date.now(),
+          lastAccessedAt: yield* runtimeNow,
         };
       });
 
@@ -255,7 +261,7 @@ export const DatabaseManagerLive = Layer.scoped(
           // Update last accessed time
           const updatedServices = {
             ...cached.value,
-            lastAccessedAt: Date.now(),
+            lastAccessedAt: yield* runtimeNow,
           };
           yield* Ref.update(cacheRef, HashMap.set(name, updatedServices));
           yield* Effect.logDebug(`Database connection reused from cache: ${name}`);

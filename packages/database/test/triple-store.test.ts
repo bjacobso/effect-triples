@@ -1,18 +1,28 @@
 import { describe, it, expect } from "vitest";
 import { Effect, Layer, Option } from "effect";
+import { SqliteClient } from "@effect/sql-sqlite-node";
 import {
   TripleStore,
+  TripleStoreLive,
   TripleStoreRuntime,
+  DeterministicTripleStoreRuntimeLive,
   TxAttributes,
   string,
   number,
   boolean,
   ref,
 } from "../src/index.js";
+import { SqliteAdapterLive } from "../sqlite/src/index.js";
 import type { EntityId, TripleId } from "../src/index.js";
 import { SqliteTestLayer } from "./fixtures/SqliteTestLayer.js";
 
 const TestLayer = SqliteTestLayer;
+const makeRuntimeTestLayer = (runtimeLayer: Layer.Layer<TripleStoreRuntime>) =>
+  TripleStoreLive.pipe(
+    Layer.provide(SqliteAdapterLive),
+    Layer.provide(SqliteClient.layer({ filename: ":memory:" })),
+    Layer.provide(runtimeLayer),
+  );
 
 describe("TripleStore", () => {
   describe("assert", () => {
@@ -215,13 +225,15 @@ describe("TripleStore", () => {
     it("should use injected clock and tx-id generator for writes", async () => {
       let now = 1_000;
       let txCounter = 0;
+      let tripleCounter = 0;
 
       const RuntimeLayer = Layer.succeed(TripleStoreRuntime, {
-        now: () => {
+        now: Effect.sync(() => {
           now += 10;
           return now;
-        },
-        nextTxId: () => `tx:det-${++txCounter}`,
+        }),
+        nextTripleId: Effect.sync(() => `triple:det-${++tripleCounter}` as TripleId),
+        nextTxId: Effect.sync(() => `tx:det-${++txCounter}`),
       });
 
       const result = await Effect.runPromise(
@@ -236,6 +248,8 @@ describe("TripleStore", () => {
           expect(batch).toHaveLength(2);
           expect(batch[0]!.createdAt).toBe(1010);
           expect(batch[1]!.createdAt).toBe(1010);
+          expect(batch[0]!.id).toBe("triple:det-1");
+          expect(batch[1]!.id).toBe("triple:det-2");
           expect(Option.getOrNull(batch[0]!.txId)).toBe("tx:det-1");
 
           const tx = yield* store.transact([
@@ -251,6 +265,7 @@ describe("TripleStore", () => {
 
           const txMeta = yield* store.query({ entityId: tx.txId, attribute: TxAttributes.INSTANT });
           expect(txMeta).toHaveLength(1);
+          expect(txMeta[0]!.id).toBe("triple:det-4");
           expect(txMeta[0]!.value).toEqual({ type: "datetime", value: 1020 });
 
           yield* store.retract(batch[0]!.id);
@@ -259,10 +274,40 @@ describe("TripleStore", () => {
           expect(retracted).toBeDefined();
           expect(Option.getOrNull(retracted!.retractTxId)).toBe("tx:det-3");
           expect(Option.getOrNull(retracted!.retractedAt)).toBe(1030);
-        }).pipe(Effect.provide(TestLayer), Effect.provide(RuntimeLayer)),
+        }).pipe(Effect.provide(makeRuntimeTestLayer(RuntimeLayer))),
       );
 
       expect(result).toBeUndefined();
+    });
+
+    it("should provide deterministic clock, tx ids, and triple ids", async () => {
+      const RuntimeLayer = DeterministicTripleStoreRuntimeLive({
+        now: 123_456,
+        idSeed: "unit",
+      });
+
+      await Effect.runPromise(
+        Effect.gen(function* () {
+          const store = yield* TripleStore;
+
+          const triple = yield* store.assert({
+            entityId: "person-1",
+            attribute: ":name",
+            value: string("Alice"),
+          });
+
+          expect(triple.id).toBe("_triple/unit-000001");
+          expect(triple.createdAt).toBe(123_456);
+          expect(Option.getOrNull(triple.txId)).toBe("_tx/unit-000001");
+
+          const tx = yield* store.transact([
+            { op: "assert", entityId: "person-2", attribute: ":name", value: string("Bob") },
+          ]);
+
+          expect(tx.txId).toBe("_tx/unit-000002");
+          expect(tx.triples[0]!.id).toBe("_triple/unit-000002");
+        }).pipe(Effect.provide(makeRuntimeTestLayer(RuntimeLayer))),
+      );
     });
   });
 

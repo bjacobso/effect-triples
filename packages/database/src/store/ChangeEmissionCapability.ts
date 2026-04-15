@@ -28,7 +28,7 @@ import { makeWriteInterceptors } from "./writeEventUtils.js";
  */
 export const makeChangeEmissionCapability = (
   emitter: ChangeEmitterService,
-  now: () => number = () => Date.now(),
+  now: Effect.Effect<number>,
 ): StoreCapability => ({
   name: "ChangeEmission",
   priority: 50,

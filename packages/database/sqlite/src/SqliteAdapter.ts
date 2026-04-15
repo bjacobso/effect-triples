@@ -15,7 +15,6 @@ import {
   WriteError,
   ReadError,
   MigrationError,
-  generateId,
 } from "@open-ontology/database";
 import { packValue, runMigrations, INDEX_DDLS, INDEX_NAMES } from "@open-ontology/database-sql";
 import { isVariable } from "@open-ontology/database/types/Pattern";
@@ -99,10 +98,9 @@ export const makeSqliteAdapter = (config: SqliteAdapterConfig = {}) =>
       // Write Operations
       // =========================================================================
 
-      const insert: StorageAdapterService["insert"] = (input, txId, timestamp) =>
+      const insert: StorageAdapterService["insert"] = (input, txId, timestamp, id) =>
         provide(
           Effect.gen(function* () {
-            const id = generateId();
             const packed = packValue(input.value);
 
             yield* sql`
@@ -147,8 +145,15 @@ export const makeSqliteAdapter = (config: SqliteAdapterConfig = {}) =>
           }),
         );
 
-      const batchInsert: StorageAdapterService["batchInsert"] = (inputs, txId, timestamp) => {
+      const batchInsert: StorageAdapterService["batchInsert"] = (inputs, txId, timestamp, ids) => {
         if (inputs.length === 0) return Effect.succeed([]);
+        if (ids.length !== inputs.length) {
+          return Effect.fail(
+            new WriteError({
+              message: `Expected ${inputs.length} triple IDs for batch insert, got ${ids.length}`,
+            }),
+          );
+        }
 
         const BATCH_SIZE = 500; // 14 columns * 500 = 7000 params (SQLite 3.32+ supports 32766)
 
@@ -159,8 +164,8 @@ export const makeSqliteAdapter = (config: SqliteAdapterConfig = {}) =>
           unsafeModeThreshold !== undefined && inputs.length >= unsafeModeThreshold;
 
         // Pre-generate IDs and pack values upfront
-        const prepared = inputs.map((input) => {
-          const id = generateId();
+        const prepared = inputs.map((input, index) => {
+          const id = ids[index]!;
           const packed = packValue(input.value);
           return { id, input, packed };
         });

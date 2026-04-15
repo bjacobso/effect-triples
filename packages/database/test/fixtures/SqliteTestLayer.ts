@@ -43,7 +43,7 @@ import { SqliteClient } from "@effect/sql-sqlite-node";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import * as os from "node:os";
-import { TripleStoreLive } from "../../src/index.js";
+import { RuntimeServicesLive, TripleStoreLive, TripleStoreRuntimeLayer } from "../../src/index.js";
 import { DatalogLive, SqlQueryExecutorLive } from "../../sql/src/index.js";
 import { SqliteAdapterLive } from "../../sqlite/src/index.js";
 
@@ -57,6 +57,8 @@ import { SqliteAdapterLive } from "../../sqlite/src/index.js";
 export const SqliteTestLayer = TripleStoreLive.pipe(
   Layer.provideMerge(SqliteAdapterLive),
   Layer.provideMerge(SqliteClient.layer({ filename: ":memory:" })),
+  Layer.provide(TripleStoreRuntimeLayer),
+  Layer.provideMerge(RuntimeServicesLive),
 );
 
 /**
@@ -69,6 +71,8 @@ export const SqliteFullTestLayer = DatalogLive.pipe(
   Layer.provideMerge(TripleStoreLive),
   Layer.provideMerge(SqliteAdapterLive),
   Layer.provideMerge(SqliteClient.layer({ filename: ":memory:" })),
+  Layer.provide(TripleStoreRuntimeLayer),
+  Layer.provideMerge(RuntimeServicesLive),
 );
 
 // ─── File-based layers (for stress tests / inspection) ─────────────────────
@@ -134,6 +138,8 @@ const FileSqliteLayer = FileSqliteClientLayer.pipe(Layer.provide(SqliteFileLifec
 export const SqliteFileTestLayer = TripleStoreLive.pipe(
   Layer.provideMerge(SqliteAdapterLive),
   Layer.provide(FileSqliteLayer),
+  Layer.provide(TripleStoreRuntimeLayer),
+  Layer.provideMerge(RuntimeServicesLive),
 );
 
 /**
@@ -144,4 +150,6 @@ export const SqliteFileFullTestLayer = DatalogLive.pipe(
   Layer.provideMerge(TripleStoreLive),
   Layer.provideMerge(SqliteAdapterLive),
   Layer.provide(FileSqliteLayer),
+  Layer.provide(TripleStoreRuntimeLayer),
+  Layer.provideMerge(RuntimeServicesLive),
 );

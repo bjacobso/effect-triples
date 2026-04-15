@@ -14,6 +14,7 @@ import {
   DatabaseNotFound,
   DatabaseAlreadyExists,
   InternalError,
+  RuntimeClock,
 } from "@open-ontology/database";
 import { StorageBackend } from "./StorageBackend.js";
 
@@ -94,6 +95,8 @@ export const DatabaseRegistryLive = Layer.scoped(
   DatabaseRegistry,
   Effect.gen(function* () {
     const backend = yield* StorageBackend;
+    const clock = yield* RuntimeClock;
+    const now = () => Effect.runSync(clock.now);
 
     // Initialize registry database with its own persistent scope
     const registryScope = yield* Scope.make();
@@ -142,13 +145,13 @@ export const DatabaseRegistryLive = Layer.scoped(
           return yield* Effect.fail(new DatabaseAlreadyExists({ database: name }));
         }
 
-        const now = Date.now();
+        const createdAt = now();
 
         // Create database entry in registry
         yield* pipe(
           registrySql`
             INSERT INTO databases (name, description, created_at)
-            VALUES (${name}, ${description ?? null}, ${now})
+            VALUES (${name}, ${description ?? null}, ${createdAt})
           `,
           mapToInternalError,
         );
@@ -158,7 +161,7 @@ export const DatabaseRegistryLive = Layer.scoped(
         return {
           name,
           description: description ?? null,
-          createdAt: now,
+          createdAt,
         } satisfies Database;
       });
 
@@ -252,17 +255,17 @@ export const DatabaseRegistryLive = Layer.scoped(
         // Verify database exists
         yield* get(databaseName);
 
-        const now = Date.now();
+        const createdAt = now();
         yield* pipe(
           registrySql`
             INSERT INTO database_access (user_id, database_name, role, created_at)
-            VALUES (${userId}, ${databaseName}, ${role}, ${now})
-            ON CONFLICT (user_id, database_name) DO UPDATE SET role = ${role}, created_at = ${now}
+            VALUES (${userId}, ${databaseName}, ${role}, ${createdAt})
+            ON CONFLICT (user_id, database_name) DO UPDATE SET role = ${role}, created_at = ${createdAt}
           `,
           mapToInternalError,
         );
 
-        return { userId, databaseName, role, createdAt: now };
+        return { userId, databaseName, role, createdAt };
       });
 
     const revokeAccess = (

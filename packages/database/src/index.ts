@@ -134,9 +134,27 @@ export {
   NoopPostMutationHookLive,
 } from "./store/PostMutationHook.js";
 export {
+  RuntimeClock,
+  type RuntimeClockService,
+  RuntimeClockLive,
+  DeterministicRuntimeClockLive,
+  IdGenerator,
+  type IdGeneratorService,
+  IdGeneratorLive,
+  DeterministicIdGeneratorLive,
+  RuntimeServicesLive,
+  DeterministicRuntimeServicesLive,
+  type DeterministicRuntimeOptions,
+} from "./store/RuntimeServices.js";
+export {
   TripleStoreRuntime,
   type TripleStoreRuntimeService,
   TripleStoreRuntimeLive,
+  TripleStoreRuntimeFromServicesLive,
+  TripleStoreRuntimeLayer,
+  getTripleStoreRuntime,
+  DeterministicTripleStoreRuntimeLive,
+  type DeterministicTripleStoreRuntimeOptions,
 } from "./store/TripleStoreRuntime.js";
 export { DatabaseFeatures, type DatabaseFeature } from "./store/DatabaseFeatures.js";
 

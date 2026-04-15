@@ -14,7 +14,13 @@
 import { Effect, Layer } from "effect";
 import { describe, expect, layer } from "@effect/vitest";
 import { createRequire } from "node:module";
-import { TripleStore, Datalog, KvTripleStoreLive, KvDatalogLive } from "@open-ontology/database";
+import {
+  TripleStore,
+  Datalog,
+  KvTripleStoreLive,
+  KvDatalogLive,
+  TripleStoreRuntimeLayer,
+} from "@open-ontology/database";
 import { FdbTestLayer } from "./fixtures/FdbTestLayer.js";
 
 // ─── Helpers ───────────────────────────────────────────────────────────────
@@ -36,6 +42,7 @@ const fdbAvailable = (() => {
 
 const FdbTripleStoreLayer = KvDatalogLive.pipe(
   Layer.provideMerge(KvTripleStoreLive),
+  Layer.provide(TripleStoreRuntimeLayer),
   Layer.provide(FdbTestLayer),
 );
 

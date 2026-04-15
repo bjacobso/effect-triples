@@ -6,8 +6,12 @@ export const TripleId = Schema.String.pipe(
 );
 export type TripleId = typeof TripleId.Type;
 
-export const EntityId = Schema.String.pipe(Schema.minLength(1), Schema.brand("EntityId"));
-export type EntityId = typeof EntityId.Type;
+const EntityIdSchema = Schema.String.pipe(Schema.minLength(1), Schema.brand("EntityId"));
+export const EntityId = Object.assign(EntityIdSchema, {
+  decode: (s: string) => Schema.decode(EntityIdSchema)(s),
+  make: (s: string): EntityId => Schema.decodeSync(EntityIdSchema)(s),
+});
+export type EntityId = typeof EntityIdSchema.Type;
 
 export const Attribute = Schema.String.pipe(
   Schema.pattern(/^:[a-zA-Z_][a-zA-Z0-9_-]*\/[a-zA-Z][a-zA-Z0-9_-]*$/),
@@ -62,7 +66,7 @@ export const createPaginationCursor = (
 
 export const decode = {
   tripleId: (s: string) => Schema.decode(TripleId)(s),
-  entityId: (s: string) => Schema.decode(EntityId)(s),
+  entityId: EntityId.decode,
   attribute: (s: string) => Schema.decode(Attribute)(s),
   databaseName: (s: string) => Schema.decode(DatabaseName)(s),
   transactionId: (s: string) => Schema.decode(TransactionId)(s),
@@ -71,7 +75,7 @@ export const decode = {
 
 export const unsafe = {
   tripleId: (s: string) => Schema.decodeSync(TripleId)(s),
-  entityId: (s: string) => Schema.decodeSync(EntityId)(s),
+  entityId: EntityId.make,
   attribute: (s: string) => Schema.decodeSync(Attribute)(s),
   databaseName: (s: string) => Schema.decodeSync(DatabaseName)(s),
   transactionId: (s: string) => Schema.decodeSync(TransactionId)(s),

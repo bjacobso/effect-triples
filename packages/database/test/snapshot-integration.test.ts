@@ -20,6 +20,7 @@ import {
   validateDependencies,
   describeCapabilities,
   TripleStoreRuntime,
+  TripleStoreRuntimeLayer,
 } from "../src/index.js";
 import type { EntityId, TripleId } from "../src/index.js";
 import { SqliteAdapterLive } from "../sqlite/src/index.js";
@@ -38,7 +39,10 @@ const makeIntegrationLayer = () => {
   const adapterLayer = SqliteAdapterLive.pipe(Layer.provide(sqliteLayer));
 
   // Base store
-  const baseStoreLayer = TripleStoreLive.pipe(Layer.provide(adapterLayer));
+  const baseStoreLayer = TripleStoreLive.pipe(
+    Layer.provide(adapterLayer),
+    Layer.provide(TripleStoreRuntimeLayer),
+  );
 
   // Snapshot layers need StorageAdapter
   const writerLayer = SnapshotWriterLive.pipe(
@@ -538,7 +542,10 @@ describe("StoreCapability composition", () => {
       const adapterLayer = SqliteAdapterLive.pipe(Layer.provide(sqliteLayer));
 
       // Base store
-      const baseStoreLayer = TripleStoreLive.pipe(Layer.provide(adapterLayer));
+      const baseStoreLayer = TripleStoreLive.pipe(
+        Layer.provide(adapterLayer),
+        Layer.provide(TripleStoreRuntimeLayer),
+      );
 
       // Snapshot layers need StorageAdapter + TripleStore
       const writerLayer = SnapshotWriterLive.pipe(
@@ -593,7 +600,10 @@ describe("StoreCapability composition", () => {
     it("should work with multiple capabilities composed", async () => {
       const sqliteLayer = SqliteClient.layer({ filename: ":memory:" });
       const adapterLayer = SqliteAdapterLive.pipe(Layer.provide(sqliteLayer));
-      const baseStoreLayer = TripleStoreLive.pipe(Layer.provide(adapterLayer));
+      const baseStoreLayer = TripleStoreLive.pipe(
+        Layer.provide(adapterLayer),
+        Layer.provide(TripleStoreRuntimeLayer),
+      );
 
       const writerLayer = SnapshotWriterLive.pipe(
         Layer.provide(baseStoreLayer),
@@ -610,7 +620,10 @@ describe("StoreCapability composition", () => {
           const reader = yield* SnapshotService;
 
           const snapshotCap = makeEntitySnapshotsCapability(writer, reader);
-          const emitCap = makeChangeEmissionCapability({ emit: () => Effect.void });
+          const emitCap = makeChangeEmissionCapability(
+            { emit: () => Effect.void },
+            Effect.sync(() => Date.now()),
+          );
 
           return composeStore(baseStore, snapshotCap, emitCap);
         }),
@@ -724,12 +737,20 @@ describe("StoreCapability composition", () => {
       const sqliteLayer = SqliteClient.layer({ filename: ":memory:" });
       const adapterLayer = SqliteAdapterLive.pipe(Layer.provide(sqliteLayer));
       const runtimeLayer = Layer.succeed(TripleStoreRuntime, {
-        now: () => 1234567890,
-        nextTxId: (() => {
-          const txIds = ["z-tx", "a-tx"];
-          let index = 0;
-          return () => txIds[index++] ?? `tx-${index}`;
-        })(),
+        now: Effect.succeed(1234567890),
+        nextTripleId: Effect.sync(
+          (() => {
+            let index = 0;
+            return () => `triple-${++index}` as TripleId;
+          })(),
+        ),
+        nextTxId: Effect.sync(
+          (() => {
+            const txIds = ["z-tx", "a-tx"];
+            let index = 0;
+            return () => txIds[index++] ?? `tx-${index}`;
+          })(),
+        ),
       });
 
       const baseStoreLayer = TripleStoreLive.pipe(

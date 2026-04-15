@@ -31,7 +31,12 @@ import {
   makePostgresqlBackendFromUrl,
   makePostgresqlLayerFromUrl,
 } from "@open-ontology/database-postgres";
-import { KvTripleStoreLive, KvDatalogLive, InMemoryKvBackendLive } from "@open-ontology/database";
+import {
+  KvTripleStoreLive,
+  KvDatalogLive,
+  InMemoryKvBackendLive,
+  TripleStoreRuntimeLayer,
+} from "@open-ontology/database";
 import { makeFdbKvBackend, type FdbKvBackendConfig } from "@open-ontology/database-foundationdb";
 import { promises as fs } from "node:fs";
 
@@ -325,7 +330,10 @@ function makePgManagerLayer(): Layer.Layer<DatabaseManager> {
 
 function makeKvTestLayer() {
   const kvBackend = InMemoryKvBackendLive;
-  const storeLayer = KvTripleStoreLive.pipe(Layer.provide(kvBackend));
+  const storeLayer = KvTripleStoreLive.pipe(
+    Layer.provide(TripleStoreRuntimeLayer),
+    Layer.provide(kvBackend),
+  );
   const datalogLayer = KvDatalogLive.pipe(Layer.provide(kvBackend));
   return Layer.mergeAll(storeLayer, datalogLayer) as unknown as Layer.Layer<
     DatabaseManager | TripleStore | Datalog
@@ -350,7 +358,10 @@ function makeFdbTestLayer() {
   } satisfies FdbKvBackendConfig;
 
   const fdbBackend = makeFdbKvBackend(fdbConfig);
-  const storeLayer = KvTripleStoreLive.pipe(Layer.provide(fdbBackend));
+  const storeLayer = KvTripleStoreLive.pipe(
+    Layer.provide(TripleStoreRuntimeLayer),
+    Layer.provide(fdbBackend),
+  );
   const datalogLayer = KvDatalogLive.pipe(Layer.provide(fdbBackend));
   return Layer.mergeAll(storeLayer, datalogLayer) as unknown as Layer.Layer<
     DatabaseManager | TripleStore | Datalog

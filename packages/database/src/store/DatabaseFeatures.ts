@@ -15,6 +15,7 @@ import type { TripleStoreService } from "./TripleStore.js";
 import type { DatalogService } from "../datalog/service.js";
 import type { StorageAdapterService } from "../storage/StorageAdapter.js";
 import type { WriteError, ReadError } from "../errors/index.js";
+import type { IdGenerator } from "./RuntimeServices.js";
 
 /**
  * A database feature that can extend the database with schema,
@@ -41,8 +42,8 @@ export interface DatabaseFeature {
   readonly capabilityFactory?: (
     store: TripleStoreService,
     datalog: DatalogService,
-    now: () => number,
-  ) => Effect.Effect<StoreCapability | null>;
+    now: Effect.Effect<number>,
+  ) => Effect.Effect<StoreCapability | null, never, IdGenerator>;
 }
 
 /**

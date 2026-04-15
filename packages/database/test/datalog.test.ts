@@ -7,6 +7,7 @@ import {
   TripleStore,
   TripleStoreLive,
   Datalog,
+  TripleStoreRuntimeLayer,
   string,
   number,
   ref,
@@ -809,6 +810,7 @@ describe("Recursive Datalog Queries", () => {
     Layer.provideMerge(TripleStoreLive),
     Layer.provideMerge(SqliteAdapterLive),
     Layer.provideMerge(sqliteLayer),
+    Layer.provide(TripleStoreRuntimeLayer),
   );
 
   /**

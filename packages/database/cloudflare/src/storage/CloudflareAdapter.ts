@@ -61,16 +61,6 @@ export interface DOState {
 }
 
 // =============================================================================
-// ID Generation
-// =============================================================================
-
-const generateId = (): string => {
-  const timestamp = Date.now().toString(36);
-  const random = Math.random().toString(36).substring(2, 10);
-  return `${timestamp}-${random}`;
-};
-
-// =============================================================================
 // Cloudflare Adapter Factory
 // =============================================================================
 
@@ -130,10 +120,9 @@ export function makeCloudflareAdapter(ctx: DOState): StorageAdapterService {
   // Write Operations
   // =========================================================================
 
-  const insert: StorageAdapterService["insert"] = (input, txId, timestamp) =>
+  const insert: StorageAdapterService["insert"] = (input, txId, timestamp, id) =>
     Effect.try({
       try: () => {
-        const id = generateId();
         const packed = packValue(input.value);
 
         sqlStorage.exec(
@@ -183,8 +172,15 @@ export function makeCloudflareAdapter(ctx: DOState): StorageAdapterService {
         }),
     });
 
-  const batchInsert: StorageAdapterService["batchInsert"] = (inputs, txId, timestamp) => {
+  const batchInsert: StorageAdapterService["batchInsert"] = (inputs, txId, timestamp, ids) => {
     if (inputs.length === 0) return Effect.succeed([]);
+    if (ids.length !== inputs.length) {
+      return Effect.fail(
+        new WriteError({
+          message: `Expected ${inputs.length} triple IDs for batch insert, got ${ids.length}`,
+        }),
+      );
+    }
 
     return Effect.try({
       try: () => {
@@ -192,8 +188,9 @@ export function makeCloudflareAdapter(ctx: DOState): StorageAdapterService {
         return ctx.storage.transactionSync(() => {
           const results: TripleRow[] = [];
 
-          for (const input of inputs) {
-            const id = generateId();
+          for (let index = 0; index < inputs.length; index++) {
+            const input = inputs[index]!;
+            const id = ids[index]!;
             const packed = packValue(input.value);
 
             sqlStorage.exec(

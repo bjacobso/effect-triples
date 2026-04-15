@@ -36,7 +36,7 @@ import type { SqlDialect } from "../dialects/index.js";
 import { CurrentDialect } from "../dialects/index.js";
 import { SqliteDialect } from "../dialects/sqlite.js";
 import { createParamCollector, type ParamCollector } from "../params.js";
-import { generateTransactionId, TxAttributes } from "../utils/id.js";
+import { TxAttributes } from "../utils/id.js";
 import { TripleStoreRuntime } from "./TripleStoreRuntime.js";
 
 // =============================================================================
@@ -203,12 +203,9 @@ export const TripleStoreLive = Layer.effect(
   TripleStore,
   Effect.gen(function* () {
     const adapter = yield* StorageAdapter;
-    const runtimeOpt = yield* Effect.serviceOption(TripleStoreRuntime);
-    const runtime = Option.getOrElse(runtimeOpt, () => ({
-      now: () => Date.now(),
-      nextTxId: () => generateTransactionId(),
-    }));
+    const runtime = yield* TripleStoreRuntime;
     const now = runtime.now;
+    const nextTripleId = runtime.nextTripleId;
     const nextTxId = runtime.nextTxId;
 
     // Initialize storage (creates tables, indexes, etc.)
@@ -220,7 +217,7 @@ export const TripleStoreLive = Layer.effect(
 
     const assert_ = (input: TripleInput): Effect.Effect<Triple, WriteError> =>
       Effect.gen(function* () {
-        const row = yield* adapter.insert(input, nextTxId(), now());
+        const row = yield* adapter.insert(input, yield* nextTxId, yield* now, yield* nextTripleId);
         return rowToTriple(row);
       });
 
@@ -230,12 +227,15 @@ export const TripleStoreLive = Layer.effect(
     ): Effect.Effect<readonly Triple[], WriteError> => {
       if (inputs.length === 0) return Effect.succeed([]);
 
-      const txId = nextTxId();
-      const timestamp = now();
+      return Effect.gen(function* () {
+        const txId = yield* nextTxId;
+        const timestamp = yield* now;
+        const ids = yield* Effect.all(inputs.map(() => nextTripleId));
 
-      return adapter
-        .batchInsert(inputs, txId, timestamp)
-        .pipe(Effect.map((rows) => rows.map(rowToTriple)));
+        return yield* adapter
+          .batchInsert(inputs, txId, timestamp, ids)
+          .pipe(Effect.map((rows) => rows.map(rowToTriple)));
+      });
     };
 
     /**
@@ -262,11 +262,16 @@ export const TripleStoreLive = Layer.effect(
 
         // Single insert — avoid batchInsert overhead
         if (inputs.length === 1) {
-          const row = yield* adapter.insert(inputs[0]!, txId, timestamp);
+          const row = yield* adapter.insert(inputs[0]!, txId, timestamp, yield* nextTripleId);
           return [rowToTriple(row)];
         }
 
-        const rows = yield* adapter.batchInsert(inputs, txId, timestamp);
+        const rows = yield* adapter.batchInsert(
+          inputs,
+          txId,
+          timestamp,
+          yield* Effect.all(inputs.map(() => nextTripleId)),
+        );
         return rows.map(rowToTriple);
       });
 
@@ -276,8 +281,8 @@ export const TripleStoreLive = Layer.effect(
     ): Effect.Effect<TransactionResult, WriteError | ReadError> =>
       adapter.withTransaction(
         Effect.gen(function* () {
-          const txId = nextTxId();
-          const timestamp = now();
+          const txId = yield* nextTxId;
+          const timestamp = yield* now;
 
           const triples: Triple[] = [];
           let retractedCount = 0;
@@ -329,6 +334,7 @@ export const TripleStoreLive = Layer.effect(
             },
             txId,
             timestamp,
+            yield* nextTripleId,
           );
 
           if (meta?.user) {
@@ -341,6 +347,7 @@ export const TripleStoreLive = Layer.effect(
               },
               txId,
               timestamp,
+              yield* nextTripleId,
             );
           }
 
@@ -353,7 +360,9 @@ export const TripleStoreLive = Layer.effect(
       txId?: string,
       timestamp?: number,
     ): Effect.Effect<void, WriteError> =>
-      adapter.retract(id, timestamp ?? now(), txId ?? nextTxId());
+      Effect.gen(function* () {
+        return yield* adapter.retract(id, timestamp ?? (yield* now), txId ?? (yield* nextTxId));
+      });
 
     const retractByPattern = (
       pattern: Pattern,
@@ -362,8 +371,8 @@ export const TripleStoreLive = Layer.effect(
     ): Effect.Effect<number, WriteError | ReadError> =>
       Effect.gen(function* () {
         const triples = yield* query(pattern);
-        const resolvedTxId = txId ?? nextTxId();
-        const resolvedTimestamp = timestamp ?? now();
+        const resolvedTxId = txId ?? (yield* nextTxId);
+        const resolvedTimestamp = timestamp ?? (yield* now);
         for (const triple of triples) {
           yield* adapter.retract(triple.id, resolvedTimestamp, resolvedTxId);
         }

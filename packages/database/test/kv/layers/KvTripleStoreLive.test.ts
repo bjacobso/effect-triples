@@ -12,6 +12,7 @@ import type { TripleId, EntityId } from "@open-ontology/database";
 import { KvTripleStoreLive } from "../../../src/kv/layers/KvTripleStoreLive.js";
 import { KvBackend } from "../../../src/kv/kv/KvBackend.js";
 import { makeTestKvBackend } from "../../../src/kv/kv/InMemoryKvBackend.js";
+import { TripleStoreRuntimeLayer } from "../../../src/store/TripleStoreRuntime.js";
 
 // ─── Test setup ────────────────────────────────────────────────────────────
 
@@ -19,6 +20,7 @@ import { makeTestKvBackend } from "../../../src/kv/kv/InMemoryKvBackend.js";
 // InMemoryKvBackend instance for each layer instantiation.
 const makeTestLayer = () =>
   KvTripleStoreLive.pipe(
+    Layer.provide(TripleStoreRuntimeLayer),
     Layer.provide(
       Layer.effect(
         KvBackend,

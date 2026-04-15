@@ -22,6 +22,7 @@ import type {
 const TRIPLE_ID = "01ARZ3NDEKTSV4RRFFQ69G5FAV" as TripleId;
 const ENTITY_ID = "employee:alice" as EntityId;
 const ATTRIBUTE = ":employee/name";
+const liveNow = () => Date.now();
 
 function fakeTriple(overrides?: Partial<Triple>): Triple {
   return {
@@ -80,7 +81,7 @@ describe("wrapStoreWithEmitter", () => {
       const triple = fakeTriple();
       const store = stubStore(triple);
       const { emitter, events } = spyEmitter();
-      const wrapped = wrapStoreWithEmitter(store, emitter);
+      const wrapped = wrapStoreWithEmitter(store, emitter, liveNow);
 
       await Effect.runPromise(wrapped.retract(TRIPLE_ID));
 
@@ -96,7 +97,7 @@ describe("wrapStoreWithEmitter", () => {
     it("falls back to empty strings when triple is not found", async () => {
       const store = stubStore(null);
       const { emitter, events } = spyEmitter();
-      const wrapped = wrapStoreWithEmitter(store, emitter);
+      const wrapped = wrapStoreWithEmitter(store, emitter, liveNow);
 
       await Effect.runPromise(wrapped.retract(TRIPLE_ID));
 
@@ -114,7 +115,7 @@ describe("wrapStoreWithEmitter", () => {
       const triple = fakeTriple();
       const store = stubStore(triple);
       const { emitter, events } = spyEmitter();
-      const wrapped = wrapStoreWithEmitter(store, emitter);
+      const wrapped = wrapStoreWithEmitter(store, emitter, liveNow);
 
       await Effect.runPromise(wrapped.transact([{ op: "retract", id: TRIPLE_ID as string }]));
 
@@ -131,7 +132,7 @@ describe("wrapStoreWithEmitter", () => {
     it("falls back to empty strings when triple is not found", async () => {
       const store = stubStore(null);
       const { emitter, events } = spyEmitter();
-      const wrapped = wrapStoreWithEmitter(store, emitter);
+      const wrapped = wrapStoreWithEmitter(store, emitter, liveNow);
 
       await Effect.runPromise(wrapped.transact([{ op: "retract", id: TRIPLE_ID as string }]));
 
@@ -146,7 +147,7 @@ describe("wrapStoreWithEmitter", () => {
       const triple = fakeTriple();
       const store = stubStore(triple);
       const { emitter, events } = spyEmitter();
-      const wrapped = wrapStoreWithEmitter(store, emitter);
+      const wrapped = wrapStoreWithEmitter(store, emitter, liveNow);
 
       await Effect.runPromise(
         wrapped.transact([
@@ -183,7 +184,7 @@ describe("wrapStoreWithEmitter", () => {
     it("emits change with correct entityId from input", async () => {
       const store = stubStore(fakeTriple());
       const { emitter, events } = spyEmitter();
-      const wrapped = wrapStoreWithEmitter(store, emitter);
+      const wrapped = wrapStoreWithEmitter(store, emitter, liveNow);
 
       await Effect.runPromise(
         wrapped.assert({
@@ -205,7 +206,7 @@ describe("wrapStoreWithEmitter", () => {
       const store = stubStore(fakeTriple());
       const { emitter, events } = spyEmitter();
       let ts = 10;
-      const wrapped = wrapStoreWithEmitter(store, emitter, undefined, () => {
+      const wrapped = wrapStoreWithEmitter(store, emitter, () => {
         ts += 5;
         return ts;
       });
@@ -224,7 +225,7 @@ describe("wrapStoreWithEmitter", () => {
         }),
       );
       const { emitter, events } = spyEmitter();
-      const wrapped = wrapStoreWithEmitter(store, emitter, undefined, () => 999);
+      const wrapped = wrapStoreWithEmitter(store, emitter, () => 999);
 
       await Effect.runPromise(
         wrapped.assert({
