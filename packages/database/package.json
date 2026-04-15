@@ -7,8 +7,8 @@
   "types": "./src/index.ts",
   "exports": {
     ".": {
-      "import": "./dist/index.js",
       "types": "./src/index.ts",
+      "import": "./dist/index.js",
       "default": "./src/index.ts"
     },
     "./Datalog": {
@@ -77,8 +77,8 @@
       "default": "./src/TripleApi.ts"
     },
     "./subscriptions": {
-      "import": "./dist/subscriptions/index.js",
       "types": "./src/subscriptions/index.ts",
+      "import": "./dist/subscriptions/index.js",
       "default": "./src/subscriptions/index.ts"
     },
     "./types/Pattern": {

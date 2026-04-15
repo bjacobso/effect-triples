@@ -100,6 +100,7 @@ export function extractDependencies(query: DatalogQuery): QueryDependencies {
   const boundEntityTypes = new Set<string>();
   const linkTypes = new Set<string>();
   const ruleNames = new Set<string>();
+  let hasDynamicAttributes = false;
 
   function processClause(clause: Clause): void {
     if (isPredicateClause(clause)) {
@@ -135,6 +136,12 @@ export function extractDependencies(query: DatalogQuery): QueryDependencies {
         if (entityType) {
           boundEntityTypes.add(entityType);
         }
+      }
+    } else if (isVariable(attr)) {
+      hasDynamicAttributes = true;
+
+      if (isConstantString(entity) && !isAttribute(entity)) {
+        boundEntityIds.add(entity);
       }
     }
   }
@@ -201,6 +208,7 @@ export function extractDependencies(query: DatalogQuery): QueryDependencies {
 
   return {
     attributes,
+    hasDynamicAttributes,
     entityTypes,
     boundEntityIds,
     boundEntityTypes,

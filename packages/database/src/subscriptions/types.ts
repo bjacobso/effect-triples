@@ -5,6 +5,7 @@
  */
 
 import type { DatalogQuery } from "../Datalog.js";
+import type { ChangeEvent, TripleChange } from "../store/ChangeEmitter.js";
 
 // =============================================================================
 // Query Dependencies
@@ -20,6 +21,13 @@ export interface QueryDependencies {
    * e.g., {":employee/name", ":employee/department"}
    */
   readonly attributes: ReadonlySet<string>;
+
+  /**
+   * Whether the query reads attributes through a variable slot such as
+   * `[?e, ?attr, ?value]`. These queries cannot be narrowed to concrete
+   * attributes and must register wildcard topics.
+   */
+  readonly hasDynamicAttributes: boolean;
 
   /**
    * Entity types derived from attributes.
@@ -53,20 +61,6 @@ export interface QueryDependencies {
    * e.g., {"ancestor", "connected"}
    */
   readonly ruleNames: ReadonlySet<string>;
-}
-
-// =============================================================================
-// Change Events
-// =============================================================================
-
-/**
- * A single triple change (from ChangeEmitter).
- * Matches the structure from PR #395.
- */
-export interface TripleChange {
-  readonly operation: "assert" | "retract";
-  readonly entityId: string;
-  readonly attribute: string;
 }
 
 // =============================================================================
@@ -122,3 +116,58 @@ export interface AffectedSubscriptions {
   /** Detailed results per subscription (for debugging) */
   readonly details: ReadonlyMap<string, InvalidationResult>;
 }
+
+// =============================================================================
+// WebSocket Sync Protocol
+// =============================================================================
+
+export interface SyncConnectedMessage {
+  readonly type: "connected";
+  readonly database: string;
+}
+
+export interface SyncChangesMessage {
+  readonly type: "changes";
+  readonly events: readonly ChangeEvent[];
+}
+
+export interface SyncSubscribedMessage {
+  readonly type: "subscribed";
+  readonly queryId: string;
+  readonly queryHash: number;
+}
+
+export interface SyncPongMessage {
+  readonly type: "pong";
+}
+
+export interface SyncErrorMessage {
+  readonly type: "error";
+  readonly message: string;
+}
+
+export type SyncServerMessage =
+  | SyncConnectedMessage
+  | SyncChangesMessage
+  | SyncSubscribedMessage
+  | SyncPongMessage
+  | SyncErrorMessage;
+
+export interface SyncSubscribeMessage {
+  readonly type: "subscribe";
+  readonly queryId: string;
+  readonly query: DatalogQuery;
+}
+
+export interface SyncUnsubscribeMessage {
+  readonly type: "unsubscribe";
+  readonly queryId: string;
+}
+
+export interface SyncPingMessage {
+  readonly type: "ping";
+}
+
+export type SyncClientMessage = SyncSubscribeMessage | SyncUnsubscribeMessage | SyncPingMessage;
+
+export type { ChangeEvent, TripleChange };

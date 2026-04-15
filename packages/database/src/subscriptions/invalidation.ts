@@ -39,6 +39,14 @@ export function checkInvalidation(
 
   // Fast path: query reads nothing (degenerate case)
   if (deps.attributes.size === 0 && deps.entityTypes.size === 0) {
+    if (deps.hasDynamicAttributes) {
+      return {
+        affected: true,
+        matchingChanges: [...changes],
+        reason: "Query reads dynamic attributes and cannot be narrowed statically",
+      };
+    }
+
     return {
       affected: false,
       matchingChanges: [],
@@ -59,7 +67,11 @@ export function checkInvalidation(
     }
 
     // Level 2: Check attribute
-    if (deps.attributes.size > 0 && !deps.attributes.has(change.attribute)) {
+    if (
+      !deps.hasDynamicAttributes &&
+      deps.attributes.size > 0 &&
+      !deps.attributes.has(change.attribute)
+    ) {
       // Query doesn't read this attribute, skip
       continue;
     }

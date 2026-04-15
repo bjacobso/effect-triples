@@ -32,8 +32,10 @@ describe("checkInvalidation", () => {
     it("returns not affected when query has no dependencies", () => {
       const deps: QueryDependencies = {
         attributes: new Set(),
+        hasDynamicAttributes: false,
         entityTypes: new Set(),
         boundEntityIds: new Set(),
+        boundEntityTypes: new Set(),
         linkTypes: new Set(),
         ruleNames: new Set(),
       };
@@ -42,6 +44,23 @@ describe("checkInvalidation", () => {
 
       expect(result.affected).toBe(false);
       expect(result.reason).toBe("Query has no data dependencies");
+    });
+
+    it("returns affected for dynamic-attribute queries", () => {
+      const deps: QueryDependencies = {
+        attributes: new Set(),
+        hasDynamicAttributes: true,
+        entityTypes: new Set(["employee"]),
+        boundEntityIds: new Set(),
+        boundEntityTypes: new Set(),
+        linkTypes: new Set(),
+        ruleNames: new Set(),
+      };
+
+      const result = checkInvalidation(deps, [change("emp:alice", ":employee/name")]);
+
+      expect(result.affected).toBe(true);
+      expect(result.matchingChanges).toEqual([change("emp:alice", ":employee/name")]);
     });
   });
 

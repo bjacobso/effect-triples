@@ -38,6 +38,7 @@ describe("extractDependencies", () => {
       expect(deps.entityTypes).toEqual(new Set(["employee"]));
       expect(deps.boundEntityIds.size).toBe(0);
       expect(deps.boundEntityTypes.size).toBe(0);
+      expect(deps.hasDynamicAttributes).toBe(false);
       expect(deps.linkTypes.size).toBe(0);
       expect(deps.ruleNames.size).toBe(0);
     });
@@ -321,6 +322,20 @@ describe("extractDependencies", () => {
 
       expect(deps.attributes).toEqual(new Set([":employee/name"]));
       expect(deps.entityTypes).toEqual(new Set(["employee"]));
+    });
+
+    it("marks variable-attribute patterns as dynamic", () => {
+      const query: DatalogQuery = {
+        find: ["?attr", "?value"],
+        where: [["emp:alice", "?attr", "?value"]],
+      };
+
+      const deps = extractDependencies(query);
+
+      expect(deps.hasDynamicAttributes).toBe(true);
+      expect(deps.boundEntityIds).toEqual(new Set(["emp:alice"]));
+      expect(deps.entityTypes.size).toBe(0);
+      expect(deps.boundEntityTypes.size).toBe(0);
     });
   });
 });

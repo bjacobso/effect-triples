@@ -35,9 +35,19 @@
 export type {
   QueryDependencies,
   TripleChange,
+  ChangeEvent,
   InvalidationResult,
   Subscription,
   AffectedSubscriptions,
+  SyncClientMessage,
+  SyncServerMessage,
+  SyncSubscribeMessage,
+  SyncUnsubscribeMessage,
+  SyncConnectedMessage,
+  SyncChangesMessage,
+  SyncSubscribedMessage,
+  SyncErrorMessage,
+  SyncPongMessage,
 } from "./types.js";
 
 // Dependency extraction
@@ -48,6 +58,15 @@ export { checkInvalidation, isAffectedByChange } from "./invalidation.js";
 
 // Query hashing
 export { hashQuery } from "./query-hash.js";
+
+// Topic tree
+export { TopicTree } from "./TopicTree.js";
+export {
+  TopicFilteredSyncHub,
+  type SyncAttachedQuery,
+  type SyncConnection,
+  type SyncHubMessageHooks,
+} from "./SyncHub.js";
 
 // Service
 export {

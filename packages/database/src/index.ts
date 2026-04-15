@@ -27,6 +27,15 @@ export { type QueryPattern, type TransactionInfo } from "./storage/types.js";
 export { generateId, generateTransactionId, TxAttributes, SystemPrefixes } from "./utils/id.js";
 export {
   type QueryDependencies,
+  type SyncClientMessage,
+  type SyncServerMessage,
+  type SyncSubscribeMessage,
+  type SyncUnsubscribeMessage,
+  type SyncConnectedMessage,
+  type SyncChangesMessage,
+  type SyncSubscribedMessage,
+  type SyncErrorMessage,
+  type SyncPongMessage,
   type InvalidationResult,
   type Subscription,
   type AffectedSubscriptions,
@@ -35,10 +44,15 @@ export {
   checkInvalidation,
   isAffectedByChange,
   hashQuery,
+  TopicTree,
+  TopicFilteredSyncHub,
   SubscriptionManager,
   makeSubscriptionManager,
   SubscriptionManagerLive,
   type SubscriptionManagerService,
+  type SyncAttachedQuery,
+  type SyncConnection,
+  type SyncHubMessageHooks,
 } from "./subscriptions/index.js";
 
 export {
