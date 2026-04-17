@@ -15,7 +15,8 @@ import { Effect, Stream } from "effect";
 import { describe, expect, layer } from "@effect/vitest";
 import { createRequire } from "node:module";
 import { KvBackend } from "@open-ontology/database";
-import { FdbTestLayer } from "./fixtures/FdbTestLayer.js";
+import { makeFdbKvBackendService } from "../src/FdbKvBackend.js";
+import { FdbClusterFile, FdbContainerLayer, FdbTestLayer } from "./fixtures/FdbTestLayer.js";
 
 // ─── Helpers ───────────────────────────────────────────────────────────────
 
@@ -33,6 +34,10 @@ const fdbAvailable = (() => {
 
 const describeFdb = fdbAvailable
   ? layer(FdbTestLayer, { timeout: "60 seconds" })
+  : (name: string, _fn: () => void) => describe.skip(name, () => {});
+
+const describeFdbCluster = fdbAvailable
+  ? layer(FdbContainerLayer, { timeout: "60 seconds" })
   : (name: string, _fn: () => void) => describe.skip(name, () => {});
 
 // ─── Tests ─────────────────────────────────────────────────────────────────
@@ -66,6 +71,18 @@ describeFdb("FdbKvBackend", (it) => {
       const result = yield* kv.get(enc("key1"));
       expect(result).not.toBeNull();
       expect(dec(result!)).toBe("v2");
+    }),
+  );
+
+  it.effect("rejects values over FoundationDB's value limit", () =>
+    Effect.gen(function* () {
+      const kv = yield* KvBackend;
+      const oversized = new Uint8Array(100_001);
+
+      const result = yield* Effect.exit(kv.set(enc("oversized"), oversized));
+
+      expect(result._tag).toBe("Failure");
+      expect(yield* kv.get(enc("oversized"))).toBeNull();
     }),
   );
 
@@ -186,7 +203,7 @@ describeFdb("FdbKvBackend", (it) => {
     }),
   );
 
-  it.effect("setAll chunks when over the transaction entry limit", () =>
+  it.effect("setAll chunks when over the transaction byte limit", () =>
     Effect.gen(function* () {
       const kv = yield* KvBackend;
       const entries = Array.from(
@@ -199,6 +216,24 @@ describeFdb("FdbKvBackend", (it) => {
         kv.getRange({ start: enc("chunk-"), end: enc("chunk-~") }),
       );
       expect(Array.from(results).length).toBe(6000);
+    }),
+  );
+
+  it.effect("setAll rejects oversize values before writing any entries", () =>
+    Effect.gen(function* () {
+      const kv = yield* KvBackend;
+      const oversized = new Uint8Array(100_001);
+
+      const result = yield* Effect.exit(
+        kv.setAll([
+          [enc("oversized-batch-a"), enc("ok")],
+          [enc("oversized-batch-b"), oversized],
+        ]),
+      );
+
+      expect(result._tag).toBe("Failure");
+      expect(yield* kv.get(enc("oversized-batch-a"))).toBeNull();
+      expect(yield* kv.get(enc("oversized-batch-b"))).toBeNull();
     }),
   );
 
@@ -343,6 +378,56 @@ describeFdb("FdbKvBackend", (it) => {
       yield* kv.clear();
       expect(yield* kv.get(enc("clr-a"))).toBeNull();
       expect(yield* kv.get(enc("clr-b"))).toBeNull();
+    }),
+  );
+});
+
+describeFdbCluster("FdbKvBackend multi-tenant isolation", (it) => {
+  it.effect("keeps concurrent tenants isolated by subspace", () =>
+    Effect.gen(function* () {
+      const { clusterFilePath } = yield* FdbClusterFile;
+      const suffix = `${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+      const tenantA = yield* makeFdbKvBackendService({
+        clusterFile: clusterFilePath,
+        subspace: Buffer.from(`__tenant_a_${suffix}/`),
+        rangeScanPageSize: 2,
+      });
+      const tenantB = yield* makeFdbKvBackendService({
+        clusterFile: clusterFilePath,
+        subspace: Buffer.from(`__tenant_b_${suffix}/`),
+        rangeScanPageSize: 2,
+      });
+
+      yield* Effect.all(
+        [
+          tenantA.setAll([
+            [enc("shared"), enc("a-shared")],
+            [enc("only-a"), enc("a-only")],
+          ]),
+          tenantB.setAll([
+            [enc("shared"), enc("b-shared")],
+            [enc("only-b"), enc("b-only")],
+          ]),
+        ],
+        { concurrency: 2 },
+      );
+
+      expect(dec((yield* tenantA.get(enc("shared"))) ?? enc(""))).toBe("a-shared");
+      expect(dec((yield* tenantB.get(enc("shared"))) ?? enc(""))).toBe("b-shared");
+      expect(yield* tenantA.get(enc("only-b"))).toBeNull();
+      expect(yield* tenantB.get(enc("only-a"))).toBeNull();
+
+      const [tenantAEntries, tenantBEntries] = yield* Effect.all([
+        Stream.runCollect(tenantA.getRange({ start: enc(""), end: enc("~") })),
+        Stream.runCollect(tenantB.getRange({ start: enc(""), end: enc("~") })),
+      ]);
+
+      expect(Array.from(tenantAEntries).map(([key]) => dec(key))).toEqual(["only-a", "shared"]);
+      expect(Array.from(tenantBEntries).map(([key]) => dec(key))).toEqual(["only-b", "shared"]);
+
+      yield* tenantA.clear();
+      expect(yield* tenantA.get(enc("shared"))).toBeNull();
+      expect(dec((yield* tenantB.get(enc("shared"))) ?? enc(""))).toBe("b-shared");
     }),
   );
 });

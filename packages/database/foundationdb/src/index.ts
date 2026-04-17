@@ -7,7 +7,29 @@
 
 export {
   FdbKvBackendLive,
+  FdbKvBackendError,
+  assertFdbSubspaceConfigured,
+  classifyFdbError,
   makeFdbKvBackend,
   makeFdbKvBackendService,
+  type FdbKvBackendErrorKind,
   type FdbKvBackendConfig,
+  type FdbTransactionMetrics,
 } from "./FdbKvBackend.js";
+export {
+  FdbSubscriptions,
+  fdbSubscriptionAttributeKey,
+  fdbSubscriptionEntityKey,
+  fdbSubscriptionEntityTypeKey,
+  fdbSubscriptionGlobalKey,
+  fdbSubscriptionKeysForDependencies,
+  fdbSubscriptionKeysForEvent,
+  fdbSubscriptionLinkTypeKey,
+  makeFdbChangeEmitter,
+  makeFdbChangeEmitterService,
+  makeFdbSubscriptionService,
+  makeFdbSubscriptions,
+  type FdbSubscriptionHandle,
+  type FdbSubscriptionService,
+  type FdbSubscriptionWatchOptions,
+} from "./FdbSubscriptions.js";

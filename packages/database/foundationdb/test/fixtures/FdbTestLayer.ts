@@ -114,14 +114,14 @@ const releaseFdbContainer = ({
 
 // ─── Reusable FDB context tag ──────────────────────────────────────────────
 
-class FdbClusterFile extends Context.Tag("test/FdbClusterFile")<
+export class FdbClusterFile extends Context.Tag("test/FdbClusterFile")<
   FdbClusterFile,
   { readonly clusterFilePath: string }
 >() {}
 
 // ─── Layers ────────────────────────────────────────────────────────────────
 
-const FdbContainerLayer: Layer.Layer<FdbClusterFile> = Layer.scoped(
+export const FdbContainerLayer: Layer.Layer<FdbClusterFile> = Layer.scoped(
   FdbClusterFile,
   Effect.acquireRelease(acquireFdbContainer, releaseFdbContainer).pipe(
     Effect.map(({ clusterFilePath }) => ({ clusterFilePath })),
@@ -138,7 +138,8 @@ const FdbKvBackendLayer: Layer.Layer<KvBackend, never, FdbClusterFile> = Layer.e
     const config: FdbKvBackendConfig = {
       clusterFile: clusterFilePath,
       subspace,
-      maxTransactionEntries: 5000,
+      maxTransactionBytes: 16_384,
+      rangeScanPageSize: 128,
     };
 
     const kv = yield* makeFdbKvBackendService(config);
