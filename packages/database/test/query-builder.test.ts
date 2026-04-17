@@ -1,9 +1,44 @@
 import { describe, it, expect } from "vitest";
-import { Effect } from "effect";
-import { TripleStore, Query, string, number } from "../src/index.js";
+import { Effect, Layer } from "effect";
+import { SqliteClient } from "@effect/sql-sqlite-node";
+import {
+  TripleStore,
+  TripleStoreLive,
+  Query,
+  RuntimeServicesLive,
+  StorageAdapter,
+  TripleStoreRuntimeLayer,
+  string,
+  number,
+} from "../src/index.js";
 import { SqliteTestLayer } from "./fixtures/SqliteTestLayer.js";
+import { SqliteAdapterLive } from "../sqlite/src/index.js";
 
 const TestLayer = SqliteTestLayer;
+const makeRawQueryCountingLayer = (counter: { count: number; sql: string | null }) => {
+  const sqliteLayer = SqliteClient.layer({ filename: ":memory:" });
+  const adapterLayer = SqliteAdapterLive.pipe(Layer.provide(sqliteLayer));
+  const countingAdapterLayer = Layer.effect(
+    StorageAdapter,
+    Effect.gen(function* () {
+      const adapter = yield* StorageAdapter;
+      return {
+        ...adapter,
+        rawQuery: <T extends object>(sql: string, params: readonly unknown[]) =>
+          Effect.sync(() => {
+            counter.count++;
+            counter.sql = sql;
+          }).pipe(Effect.zipRight(adapter.rawQuery<T>(sql, params))),
+      };
+    }),
+  ).pipe(Layer.provide(adapterLayer));
+
+  return TripleStoreLive.pipe(
+    Layer.provide(countingAdapterLayer),
+    Layer.provide(TripleStoreRuntimeLayer),
+    Layer.provideMerge(RuntimeServicesLive),
+  );
+};
 
 /**
  * Test data setup:
@@ -418,6 +453,55 @@ describe("QueryBuilder", () => {
 
       // Skip 1, take 2: Bob, Charlie
       expect(result).toEqual(["p2", "p3"]);
+    });
+
+    it("should apply pagination to entities while returning all live triples for each match", async () => {
+      const result = await Effect.runPromise(
+        Effect.gen(function* () {
+          yield* setupTestData;
+          const triples = yield* Query.from("Person")
+            .where(":status", "=", "active")
+            .orderBy(":name", "asc")
+            .limit(1)
+            .run();
+
+          return {
+            entityIds: getEntityIds(triples),
+            attributes: triples.map((triple) => triple.attribute).sort(),
+          };
+        }).pipe(Effect.provide(TestLayer)),
+      );
+
+      expect(result.entityIds).toEqual(["p1"]);
+      expect(result.attributes).toEqual([":age", ":email", ":name", ":status"]);
+    });
+
+    it("should execute query builder as a single raw storage query", async () => {
+      const counter = { count: 0, sql: null as string | null };
+      const result = await Effect.runPromise(
+        Effect.gen(function* () {
+          yield* setupTestData;
+          counter.count = 0;
+          counter.sql = null;
+
+          const triples = yield* Query.from("Person")
+            .where(":status", "=", "active")
+            .orderBy(":name", "asc")
+            .limit(1)
+            .run();
+
+          return {
+            entityIds: getEntityIds(triples),
+            rawQueryCount: counter.count,
+            sql: counter.sql,
+          };
+        }).pipe(Effect.provide(makeRawQueryCountingLayer(counter))),
+      );
+
+      expect(result.entityIds).toEqual(["p1"]);
+      expect(result.rawQueryCount).toBe(1);
+      expect(result.sql).toContain("WITH matched_entities AS");
+      expect(result.sql).toContain("paged_entities AS");
     });
   });
 

@@ -10,6 +10,11 @@
 
 import { Context, Data, Effect } from "effect";
 import type { EntitySnapshot, EntityDiff } from "./canonical.js";
+import type {
+  TransactionDetailResponse,
+  TransactionListRequest,
+  TransactionListResponse,
+} from "../Snapshot.js";
 
 // ---------------------------------------------------------------------------
 // Errors
@@ -64,6 +69,15 @@ export interface SnapshotServiceShape {
 
   // Checkpoint support
   readonly checkpoint: (asOf: number) => Effect.Effect<ReadonlyMap<string, string>, SnapshotError>;
+
+  // Transaction/audit log
+  readonly listTransactions: (
+    request: TransactionListRequest,
+  ) => Effect.Effect<TransactionListResponse, SnapshotError>;
+
+  readonly getTransaction: (
+    txId: string,
+  ) => Effect.Effect<TransactionDetailResponse, SnapshotError>;
 }
 
 // ---------------------------------------------------------------------------

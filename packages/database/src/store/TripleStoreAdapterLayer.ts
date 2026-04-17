@@ -169,26 +169,45 @@ const buildExistsCondition = (
   return null;
 };
 
-const buildOrderByClause = (
+const buildMatchedEntitySort = (
   sorts: readonly SortSpec[],
   sortAliases: Map<string, string>,
-): string => {
-  if (sorts.length === 0) return "";
+): {
+  readonly selectClause: string;
+  readonly orderBy: string;
+} => {
+  if (sorts.length === 0) {
+    return { selectClause: "", orderBy: "entity_id ASC" };
+  }
 
-  const orderParts = sorts.map((sort) => {
+  const selections: string[] = [];
+  const orderParts: string[] = [];
+
+  sorts.forEach((sort, idx) => {
     const alias = sortAliases.get(sort.attribute);
-    if (!alias) return null;
+    if (!alias) return;
 
-    const valueCol = `${alias}.value_string`;
+    const sortAlias = `sort_${idx + 1}`;
+    const aggregate = sort.direction === "desc" ? "MAX" : "MIN";
     const dir = sort.direction.toUpperCase();
     const nullsFirst = sort.nulls === "first";
     const nullOrder = nullsFirst ? 0 : 1;
 
-    return `(CASE WHEN ${valueCol} IS NULL THEN ${nullOrder} ELSE ${1 - nullOrder} END), ${valueCol} ${dir}`;
+    selections.push(`${aggregate}(${alias}.value_string) AS ${sortAlias}`);
+    orderParts.push(`(CASE WHEN ${sortAlias} IS NULL THEN ${nullOrder} ELSE ${1 - nullOrder} END)`);
+    orderParts.push(`${sortAlias} ${dir}`);
   });
 
-  const validParts = orderParts.filter((p) => p !== null);
-  return validParts.length > 0 ? `ORDER BY ${validParts.join(", ")}` : "";
+  if (orderParts.length === 0) {
+    return { selectClause: "", orderBy: "entity_id ASC" };
+  }
+
+  orderParts.push("entity_id ASC");
+
+  return {
+    selectClause: `, ${selections.join(", ")}`,
+    orderBy: orderParts.join(", "),
+  };
 };
 
 // =============================================================================
@@ -472,71 +491,44 @@ export const TripleStoreLive = Layer.effect(
           }
         });
 
-        const orderByClause = buildOrderByClause(state.sorts, sortAliases);
+        const entitySort = buildMatchedEntitySort(state.sorts, sortAliases);
         const limitOffsetClause = dialect.limitOffset(state.limit, state.offset);
 
-        // Build entity ID query
-        const entityIdSql = `
-          SELECT DISTINCT t0.entity_id
-          FROM triples t0
-          ${joins.join("\n")}
-          WHERE ${whereConditions.join(" AND ")}
-          ${orderByClause}
-          ${limitOffsetClause}
+        const sql = `
+          WITH matched_entities AS (
+            SELECT t0.entity_id${entitySort.selectClause}
+            FROM triples t0
+            ${joins.join("\n")}
+            WHERE ${whereConditions.join(" AND ")}
+            GROUP BY t0.entity_id
+          ),
+          paged_entities AS (
+            SELECT
+              entity_id,
+              ROW_NUMBER() OVER (ORDER BY ${entitySort.orderBy}) AS entity_rank
+            FROM matched_entities
+            ORDER BY ${entitySort.orderBy}
+            ${limitOffsetClause}
+          )
+          SELECT t.*
+          FROM triples t
+          JOIN paged_entities p ON p.entity_id = t.entity_id
+          WHERE t.retracted_at IS NULL
+          ORDER BY p.entity_rank, t.created_at, t.id
         `.trim();
 
-        const entityIdRows = yield* adapter
-          .rawQuery<{ entity_id: string }>(entityIdSql, [...collector.params])
-          .pipe(
-            Effect.mapError(
-              (error) =>
-                new QueryError({
-                  message: `Failed to query entity IDs: ${String(error)}`,
-                  sql: entityIdSql,
-                  cause: error,
-                }),
-            ),
-          );
+        const tripleRows = yield* adapter.rawQuery<TripleRow>(sql, [...collector.params]).pipe(
+          Effect.mapError(
+            (error) =>
+              new QueryError({
+                message: `Failed to query triples with builder: ${String(error)}`,
+                sql,
+                cause: error,
+              }),
+          ),
+        );
 
-        if (entityIdRows.length === 0) {
-          return [];
-        }
-
-        // Create entity ID order map
-        const entityIdOrder = new Map<string, number>();
-        entityIdRows.forEach((r, idx) => {
-          entityIdOrder.set(r.entity_id, idx);
-        });
-
-        // Fetch all triples for matching entity IDs
-        const triplesCollector = createParamCollector(dialect);
-        const placeholders = entityIdRows.map((r) => triplesCollector.add(r.entity_id)).join(", ");
-        const triplesSql = `
-          SELECT * FROM triples
-          WHERE entity_id IN (${placeholders}) AND retracted_at IS NULL
-        `.trim();
-
-        const tripleRows = yield* adapter
-          .rawQuery<TripleRow>(triplesSql, [...triplesCollector.params])
-          .pipe(
-            Effect.mapError(
-              (error) =>
-                new ReadError({
-                  message: `Failed to fetch triples: ${String(error)}`,
-                  cause: error,
-                }),
-            ),
-          );
-
-        // Convert and sort by original order
-        const triples = tripleRows.map(rowToTriple);
-        triples.sort((a, b) => {
-          const orderA = entityIdOrder.get(a.entityId) ?? 0;
-          const orderB = entityIdOrder.get(b.entityId) ?? 0;
-          return orderA - orderB;
-        });
-
-        return triples;
+        return tripleRows.map(rowToTriple);
       });
 
     // =========================================================================
