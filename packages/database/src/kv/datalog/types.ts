@@ -61,7 +61,7 @@ export type {
  * Example: { "?person": "emp:alice", "?name": "Alice", "?age": 30 }
  */
 export interface Context {
-  readonly [variable: string]: Constant;
+  readonly [variable: string]: Constant | null;
 }
 
 /** An empty context with no bindings. */

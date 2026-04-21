@@ -193,14 +193,15 @@ export const queryWhere = (
  * Only includes variables that are in the find list.
  */
 export const actualize = (context: Context, find: readonly Term[]): Context => {
-  const result: Record<string, Constant> = {};
+  const result: Record<string, Constant | null> = {};
 
   for (const term of find) {
     if (isVariable(term)) {
       if (term in context) {
         result[term] = context[term]!;
+      } else {
+        result[term] = null;
       }
-      // If variable not in context, skip it (shouldn't happen with valid queries)
     } else {
       // Constants in find are passed through as-is
       // This is unusual but allowed - use string representation as key

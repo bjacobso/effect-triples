@@ -16,8 +16,9 @@
  * and wrapper queries with cursor-based keyset pagination.
  */
 
-import { Effect, Either, Encoding } from "effect";
+import { Effect, Either, Encoding, Stream } from "effect";
 import type { KvTripleStore } from "../hexastore/KvTripleStore.js";
+import type { TripleValue } from "../../Value.js";
 import {
   type Context,
   type Constant,
@@ -491,11 +492,13 @@ const actualize = (contexts: readonly Context[], find: readonly Term[]): Context
   const seen = new Set<string>();
 
   for (const ctx of contexts) {
-    const row: Record<string, Constant> = {};
+    const row: Record<string, Constant | null> = {};
     for (const term of find) {
       if (isVariable(term)) {
         if (term in ctx) {
           row[term] = ctx[term]!;
+        } else {
+          row[term] = null;
         }
       } else {
         row[String(term)] = term as Constant;
@@ -510,6 +513,72 @@ const actualize = (contexts: readonly Context[], find: readonly Term[]): Context
   }
 
   return results;
+};
+
+const tripleValueToResultValue = (value: TripleValue): Constant => {
+  switch (value.type) {
+    case "string":
+    case "ref":
+    case "blob":
+      return value.value;
+    case "number":
+    case "datetime":
+      return value.value;
+    case "boolean":
+      return value.value;
+    case "json":
+      return JSON.stringify(value.value);
+  }
+};
+
+const hydrateOptionalProjection = (
+  store: KvTripleStore,
+  query: DatalogQuery,
+  rows: readonly Context[],
+): Effect.Effect<Context[]> => {
+  const projection = query.optionalProjection;
+  if (!projection || projection.fields.length === 0) {
+    return Effect.succeed([...rows]);
+  }
+
+  return Effect.gen(function* () {
+    const entityCache = new Map<string, Map<string, Constant>>();
+
+    return yield* Effect.forEach(rows, (row) =>
+      Effect.gen(function* () {
+        const hydrated: Record<string, Constant | null> = { ...row };
+        const entityId = row[projection.rowBinding];
+
+        if (typeof entityId !== "string") {
+          for (const field of projection.fields) {
+            if (!(field.variable in hydrated)) {
+              hydrated[field.variable] = null;
+            }
+          }
+          return hydrated as Context;
+        }
+
+        let entityFields = entityCache.get(entityId);
+        if (!entityFields) {
+          entityFields = new Map<string, Constant>();
+          const datoms = yield* store.getEntity(entityId).pipe(Stream.runCollect);
+          for (const datom of datoms) {
+            if (!entityFields.has(datom.attribute)) {
+              entityFields.set(datom.attribute, tripleValueToResultValue(datom.value));
+            }
+          }
+          entityCache.set(entityId, entityFields);
+        }
+
+        for (const field of projection.fields) {
+          if (field.variable in hydrated) continue;
+          hydrated[field.variable] = entityFields.get(field.attribute) ?? null;
+        }
+
+        return hydrated as Context;
+      }),
+    );
+  });
 };
 
 // ─── Aggregation ───────────────────────────────────────────────────────────
@@ -711,6 +780,8 @@ export const executeQuery = (
     } else {
       results = actualize(contexts, query.find);
     }
+
+    results = yield* hydrateOptionalProjection(store, query, results);
 
     // 4. HAVING
     if (query.having && query.having.length > 0) {

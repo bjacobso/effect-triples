@@ -394,6 +394,17 @@ export const DatalogQuery = Schema.Struct({
   orderBy: Schema.optional(Schema.Array(OrderBySpec)),
   limit: Schema.optional(Schema.Number.pipe(Schema.int(), Schema.positive())),
   offset: Schema.optional(Schema.Number.pipe(Schema.int(), Schema.nonNegative())),
+  optionalProjection: Schema.optional(
+    Schema.Struct({
+      rowBinding: Variable,
+      fields: Schema.Array(
+        Schema.Struct({
+          attribute: DatalogAttribute,
+          variable: Variable,
+        }),
+      ),
+    }),
+  ),
 }).annotations({
   identifier: "DatalogQuery",
   description: "A Datalog query with find, where, and optional modifiers",

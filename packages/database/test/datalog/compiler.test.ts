@@ -498,6 +498,21 @@ describe("Datalog SQL Compiler", () => {
       expect(result.sql).toBeDefined();
     });
 
+    it("projects optional fields with nullable correlated subqueries", () => {
+      const query: DatalogQuery = {
+        find: ["?person", "?status"],
+        where: [["?person", ":_schema/type", "Employee"]],
+        optionalProjection: {
+          rowBinding: "?person",
+          fields: [{ attribute: ":employee/status", variable: "?status" }],
+        },
+      };
+
+      const result = compile(query);
+      expect(result.sql).toContain("SELECT COALESCE(");
+      expect(result.sql).toContain("opt.attribute = ':employee/status'");
+    });
+
     it("should throw for query with no patterns", () => {
       const query: DatalogQuery = {
         find: ["?x"],

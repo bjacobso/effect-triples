@@ -62,7 +62,7 @@ export type {
  * ```
  */
 export interface Context {
-  readonly [variable: string]: Constant;
+  readonly [variable: string]: Constant | null;
 }
 
 /**

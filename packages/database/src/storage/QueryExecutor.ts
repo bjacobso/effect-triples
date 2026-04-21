@@ -16,7 +16,7 @@ import type { ReadError } from "../errors/index.js";
 /**
  * Variable-to-value binding from query execution
  */
-export type Constant = string | number | boolean;
+export type Constant = string | number | boolean | null;
 
 /**
  * A single row of query results: variable names mapped to their bound values

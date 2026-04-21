@@ -327,13 +327,13 @@ describe("Datalog Engine", () => {
       });
     });
 
-    it("should skip unbound variables", () => {
+    it("should materialize unbound variables as null", () => {
       const context: Context = { "?name": "Alice" };
       const find = ["?name", "?unbound"];
 
       const result = actualize(context, find);
 
-      expect(result).toEqual({ "?name": "Alice" });
+      expect(result).toEqual({ "?name": "Alice", "?unbound": null });
     });
   });
 

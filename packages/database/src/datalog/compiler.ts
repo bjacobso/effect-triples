@@ -817,6 +817,32 @@ const getColumnExpression = (binding: VariableBinding): string => {
   return resolveBinding(binding, { valueMode: "coalesce" });
 };
 
+const optionalProjectionExpression = (
+  variable: string,
+  optionalProjection: OptionalProjectionSpec | undefined,
+  ctx: CompilerContext,
+): string | null => {
+  if (!optionalProjection) return null;
+
+  const projection = optionalProjection.fields.find((field) => field.variable === variable);
+  if (!projection) return null;
+
+  const rowBinding = ctx.bindings.get(optionalProjection.rowBinding);
+  if (!rowBinding) return null;
+
+  const entityExpr = resolveBinding(rowBinding, { valueMode: "string" });
+  const attributeExpr = `'${escapeStringForRules(projection.attribute)}'`;
+
+  return `(
+    SELECT COALESCE(opt.value_string, CAST(opt.value_number AS TEXT), CAST(opt.value_boolean AS TEXT))
+    FROM triples opt
+    WHERE opt.entity_id = ${entityExpr}
+      AND opt.attribute = ${attributeExpr}
+      AND opt.retracted_at IS NULL
+    LIMIT 1
+  )`;
+};
+
 /**
  * Resolve a term in HAVING/ORDER BY context
  * Checks aggregate expressions first, then falls back to regular bindings
@@ -897,9 +923,12 @@ interface SelectAndGroupByResult {
   aggregateOps: string[];
 }
 
+type OptionalProjectionSpec = NonNullable<DatalogQuery["optionalProjection"]>;
+
 const buildSelectAndGroupBy = (
   find: readonly Term[],
   aggregate: readonly (readonly [string, string, string])[] | undefined,
+  optionalProjection: OptionalProjectionSpec | undefined,
   ctx: CompilerContext,
 ): SelectAndGroupByResult => {
   const columnMap = new Map<string, string>();
@@ -955,6 +984,12 @@ const buildSelectAndGroupBy = (
 
       const binding = ctx.bindings.get(term);
       if (!binding) {
+        const projectionExpr = optionalProjectionExpression(term, optionalProjection, ctx);
+        if (projectionExpr) {
+          const colName = `"${term}"`;
+          selectParts.push(`${projectionExpr} AS ${colName}`);
+          columnMap.set(term, term);
+        }
         continue;
       }
 
@@ -1010,7 +1045,7 @@ export const compile = (
 ): CompiledQuery => {
   const startTime = includeMetrics ? performance.now() : 0;
   const ctx = createContext(dialect);
-  const { find, where, aggregate, having, orderBy, limit, offset } = query;
+  const { find, where, aggregate, having, orderBy, limit, offset, optionalProjection } = query;
   const { patterns, predicates, notClauses, orClauses, linkClauses } = classifyClauses(where, {
     allowRuleApplications: false,
   });
@@ -1047,7 +1082,7 @@ export const compile = (
   }
 
   const { columnMap, selectParts, groupByClause, hasAggregates, aggregateOps } =
-    buildSelectAndGroupBy(find, aggregate, ctx);
+    buildSelectAndGroupBy(find, aggregate, optionalProjection, ctx);
 
   // Build HAVING, ORDER BY, LIMIT clauses
   const havingClause = buildHavingClause(having, ctx);
@@ -1124,6 +1159,7 @@ export interface DatalogQueryWithRules {
   where: readonly (PatternClause | PredicateClause | NotClause | OrClause | RuleApplication)[];
   rules?: readonly Rule[];
   aggregate?: readonly [string, string, string][];
+  optionalProjection?: DatalogQuery["optionalProjection"];
 }
 
 /**
@@ -1568,7 +1604,7 @@ export const compileWithRules = (
   }
 
   const { columnMap, selectParts, groupByClause, hasAggregates, aggregateOps } =
-    buildSelectAndGroupBy(find, aggregate, ctx);
+    buildSelectAndGroupBy(find, aggregate, query.optionalProjection, ctx);
 
   // Build HAVING, ORDER BY, LIMIT clauses
   const havingClause = buildHavingClause(having, ctx);

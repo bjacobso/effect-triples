@@ -37,12 +37,13 @@ type ResultRow = Record<string, unknown>;
 // =============================================================================
 
 const rowToContext = (row: ResultRow, columnMap: Map<string, string>): QueryContext => {
-  const context: Record<string, string | number | boolean> = {};
+  const context: Record<string, string | number | boolean | null> = {};
 
   for (const [colName, varName] of columnMap) {
     const value = row[colName];
 
     if (value === null || value === undefined) {
+      context[varName] = null;
       continue;
     }
 
