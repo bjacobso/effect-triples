@@ -31,6 +31,7 @@ export {
   PatternClause,
   PredicateClause,
   NotClause,
+  OrAlternative,
   OrClause,
   LinkClause,
   Clause,
@@ -47,6 +48,7 @@ export {
   isNotClause,
   isOrClause,
   isLinkClause,
+  normalizeOrAlternatives,
 } from "./schema.js";
 
 // Types

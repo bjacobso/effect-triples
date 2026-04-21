@@ -8,12 +8,14 @@ import {
   PredicateOp,
   PatternClause,
   PredicateClause,
+  OrClause,
   Clause,
   DatalogQuery,
   isVariable,
   isAttribute,
   isPredicateClause,
   isPatternClause,
+  normalizeOrAlternatives,
 } from "../../src/datalog/schema.js";
 
 describe("Datalog Schema", () => {
@@ -199,6 +201,41 @@ describe("Datalog Schema", () => {
 
       // Predicate
       expect(decode([">=", "?age", 18])).toEqual([">=", "?age", 18]);
+    });
+  });
+
+  describe("OrClause", () => {
+    it("accepts predicate and not alternatives", () => {
+      const decode = Schema.decodeUnknownSync(OrClause);
+
+      expect(
+        decode([
+          "or",
+          [
+            ["=", "?status", "offline"],
+            ["not", ["?step", ":workflow-step/output-schema", "?os"]],
+          ],
+        ]),
+      ).toEqual([
+        "or",
+        [
+          ["=", "?status", "offline"],
+          ["not", ["?step", ":workflow-step/output-schema", "?os"]],
+        ],
+      ]);
+    });
+
+    it("normalizes flat alternatives to canonical grouped alternatives", () => {
+      expect(
+        normalizeOrAlternatives([
+          "or",
+          ["?step", ":workflow-step/input-schema", "?is"],
+          ["not", ["?step", ":workflow-step/output-schema", "?os"]],
+        ] as unknown as ["or", ...Clause[]]),
+      ).toEqual([
+        ["?step", ":workflow-step/input-schema", "?is"],
+        ["not", ["?step", ":workflow-step/output-schema", "?os"]],
+      ]);
     });
   });
 

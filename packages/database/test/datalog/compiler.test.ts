@@ -313,7 +313,7 @@ describe("Datalog SQL Compiler", () => {
       expect(result.params).toContain("emp:bob");
     });
 
-    it("should create separate table for OR clause", () => {
+    it("should compile OR pattern alternatives as correlated EXISTS filters", () => {
       const query: DatalogQuery = {
         find: ["?name"],
         where: [
@@ -330,9 +330,55 @@ describe("Datalog SQL Compiler", () => {
 
       const sql = compileToSql(query);
 
-      // OR should have its own table (t1)
-      expect(sql).toContain("t1");
-      expect(sql).toContain("t1.entity_id = t0.entity_id");
+      expect(sql).toContain("EXISTS");
+      expect(sql).toContain("entity_id = t0.entity_id");
+    });
+
+    it("should compile OR predicate alternatives inline", () => {
+      const query: DatalogQuery = {
+        find: ["?name"],
+        where: [
+          ["?person", ":name", "?name"],
+          ["?person", ":status", "?status"],
+          [
+            "or",
+            [
+              ["=", "?status", "offline"],
+              ["=", "?status", "degraded"],
+            ],
+          ],
+        ],
+      };
+
+      const result = compile(query);
+
+      expect(result.sql).toContain("OR");
+      expect(result.sql).toContain("t1.value_string = ?");
+      expect(result.params).toContain("offline");
+      expect(result.params).toContain("degraded");
+    });
+
+    it("should compile OR not alternatives as NOT EXISTS filters", () => {
+      const query: DatalogQuery = {
+        find: ["?step"],
+        where: [
+          ["?step", ":_schema/type", "WorkflowStep"],
+          [
+            "or",
+            [
+              ["not", ["?step", ":workflow-step/input-schema", "?is"]],
+              ["not", ["?step", ":workflow-step/output-schema", "?os"]],
+            ],
+          ],
+        ],
+      };
+
+      const result = compile(query);
+
+      expect(result.sql).toContain("OR");
+      expect(result.sql).toContain("NOT EXISTS");
+      expect(result.params).toContain(":workflow-step/input-schema");
+      expect(result.params).toContain(":workflow-step/output-schema");
     });
   });
 
@@ -1284,6 +1330,19 @@ describe("Compiler Internals", () => {
       ];
       const result = parseClause(clause, { allowRuleApplications: false });
       expect(result._tag).toBe("Or");
+    });
+
+    it("should parse a flat or clause into canonical alternatives", () => {
+      const clause = [
+        "or",
+        ["=", "?status", "offline"],
+        ["not", ["?step", ":workflow-step/output-schema", "?os"]],
+      ] as unknown as Clause;
+      const result = parseClause(clause, { allowRuleApplications: false });
+      expect(result._tag).toBe("Or");
+      if (result._tag === "Or") {
+        expect(result.orClause[1]).toHaveLength(2);
+      }
     });
 
     it("should parse a link clause", () => {

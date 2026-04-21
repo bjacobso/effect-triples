@@ -64,6 +64,7 @@ export {
   PatternClause,
   PredicateClause,
   NotClause,
+  OrAlternative,
   OrClause,
   LinkClause,
   Clause,
@@ -86,6 +87,7 @@ export {
   isLinkClause,
   isRuleApplication,
   isTypedConstant,
+  normalizeOrAlternatives,
 } from "./datalog/schema.js";
 
 export type { Context, QueryResult, SimplifiedTriple, Binding } from "./datalog/types.js";

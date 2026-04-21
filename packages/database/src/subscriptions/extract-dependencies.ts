@@ -13,6 +13,7 @@ import {
   isRuleApplication,
   isVariable,
   isPredicateClause,
+  normalizeOrAlternatives,
   type DatalogQuery,
   type Clause,
   type PatternClause,
@@ -147,16 +148,16 @@ export function extractDependencies(query: DatalogQuery): QueryDependencies {
   }
 
   function processNotClause(notClause: NotClause): void {
-    // ["not", pattern] — the pattern inside also creates dependencies
-    const [_not, pattern] = notClause;
-    processPatternClause(pattern);
+    // ["not", clause1, clause2, ...] — inner patterns also create dependencies.
+    for (const inner of notClause.slice(1)) {
+      processClause(inner as Clause);
+    }
   }
 
   function processOrClause(orClause: OrClause): void {
-    // ["or", [pattern1, pattern2, ...]] — all patterns create dependencies
-    const [_or, patterns] = orClause;
-    for (const pattern of patterns) {
-      processPatternClause(pattern);
+    // ["or", [alternative1, alternative2, ...]] — recurse through all alternatives.
+    for (const alternative of normalizeOrAlternatives(orClause)) {
+      processClause(alternative as Clause);
     }
   }
 

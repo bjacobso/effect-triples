@@ -265,7 +265,7 @@ describe("NOT clauses", () => {
 describe("OR clauses", () => {
   beforeEach(seedPeople);
 
-  it("unions alternative patterns", async () => {
+  it("filters with alternative patterns without leaking local bindings", async () => {
     // People named Alice OR age 25
     const query: DatalogQuery = {
       find: ["?person"],
@@ -285,6 +285,79 @@ describe("OR clauses", () => {
     expect(results.length).toBe(2);
     const people = results.map((r) => r["?person"]).sort();
     expect(people).toEqual(["p:alice", "p:bob"]);
+  });
+
+  it("filters with predicate alternatives", async () => {
+    const query: DatalogQuery = {
+      find: ["?person"],
+      where: [
+        ["?person", ":person/age", "?age"],
+        ["?person", ":person/active", "?active"],
+        [
+          "or",
+          [
+            ["=", "?age", 25],
+            ["=", "?active", false],
+          ],
+        ],
+      ],
+    };
+
+    const { results } = await run(executeQuery(store, query));
+    const people = results.map((r) => r["?person"]).sort();
+    expect(people).toEqual(["p:bob", "p:charlie"]);
+  });
+
+  it("filters with not alternatives", async () => {
+    await run(
+      store.assertBatch([
+        makeDatom({ entity: "step:one", attribute: ":_schema/type", value: str("WorkflowStep") }),
+        makeDatom({
+          entity: "step:one",
+          attribute: ":workflow-step/input-schema",
+          value: str("Input"),
+        }),
+        makeDatom({ entity: "step:two", attribute: ":_schema/type", value: str("WorkflowStep") }),
+        makeDatom({
+          entity: "step:two",
+          attribute: ":workflow-step/output-schema",
+          value: str("Output"),
+        }),
+        makeDatom({
+          entity: "step:three",
+          attribute: ":_schema/type",
+          value: str("WorkflowStep"),
+        }),
+        makeDatom({
+          entity: "step:three",
+          attribute: ":workflow-step/input-schema",
+          value: str("Input"),
+        }),
+        makeDatom({
+          entity: "step:three",
+          attribute: ":workflow-step/output-schema",
+          value: str("Output"),
+        }),
+      ]),
+    );
+
+    const query: DatalogQuery = {
+      find: ["?step"],
+      where: [
+        ["?step", ":_schema/type", "WorkflowStep"],
+        [
+          "or",
+          [
+            ["not", ["?step", ":workflow-step/input-schema", "?is"]],
+            ["not", ["?step", ":workflow-step/output-schema", "?os"]],
+          ],
+        ],
+      ],
+    };
+
+    const { results } = await run(executeQuery(store, query));
+    const steps = results.map((r) => r["?step"]).sort();
+    expect(steps).toEqual(["step:one", "step:two"]);
   });
 });
 

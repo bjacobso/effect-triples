@@ -163,6 +163,29 @@ describe("extractDependencies", () => {
       expect(deps.attributes).toEqual(new Set([":employee/name", ":contractor/name"]));
       expect(deps.entityTypes).toEqual(new Set(["employee", "contractor"]));
     });
+
+    it("extracts dependencies from not alternatives in or clauses", () => {
+      const query: DatalogQuery = {
+        find: ["?step"],
+        where: [
+          ["?step", ":_schema/type", "WorkflowStep"],
+          [
+            "or",
+            [
+              ["not", ["?step", ":workflow-step/input-schema", "?is"]],
+              ["not", ["?step", ":workflow-step/output-schema", "?os"]],
+            ],
+          ],
+        ],
+      };
+
+      const deps = extractDependencies(query);
+
+      expect(deps.attributes).toEqual(
+        new Set([":_schema/type", ":workflow-step/input-schema", ":workflow-step/output-schema"]),
+      );
+      expect(deps.entityTypes).toEqual(new Set(["_schema", "workflow-step"]));
+    });
   });
 
   describe("link clauses", () => {

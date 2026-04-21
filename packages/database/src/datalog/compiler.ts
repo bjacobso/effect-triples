@@ -6,7 +6,14 @@
  */
 
 import { Data } from "effect";
-import { isVariable, isRuleApplication, isTypedConstant, isPredicateClause } from "./schema.js";
+import {
+  isVariable,
+  isRuleApplication,
+  isTypedConstant,
+  isPredicateClause,
+  isNotClause,
+  normalizeOrAlternatives,
+} from "./schema.js";
 import type { SqlDialect } from "../dialects/index.js";
 import { SqliteDialect } from "../dialects/sqlite.js";
 import { createParamCollector, type ParamCollector } from "../params.js";
@@ -264,10 +271,8 @@ const parseClause = (
   }
 
   if (head === "or") {
-    if (clause.length !== 2) {
-      throw new Error(`Invalid or clause arity: ${JSON.stringify(clause)}`);
-    }
-    return InternalClause.Or({ orClause: clause as OrClause });
+    const alternatives = normalizeOrAlternatives(clause as OrClause | readonly ["or", ...Clause[]]);
+    return InternalClause.Or({ orClause: ["or", alternatives] as OrClause });
   }
 
   if (head === "link") {
@@ -489,7 +494,7 @@ const compilePattern = (
 /**
  * Compile a predicate clause to SQL WHERE condition
  */
-const compilePredicate = (predicate: PredicateClause, ctx: CompilerContext): void => {
+const compilePredicateCondition = (predicate: PredicateClause, ctx: CompilerContext): string => {
   const [op, left, right] = predicate;
   const valueMode: BindingValueMode = op === "=" || op === "!=" ? "string" : "number";
 
@@ -520,7 +525,11 @@ const compilePredicate = (predicate: PredicateClause, ctx: CompilerContext): voi
   // Map operator
   const sqlOp = op === "!=" ? "<>" : op;
 
-  ctx.conditions.push(`${leftExpr} ${sqlOp} ${rightExpr}`);
+  return `${leftExpr} ${sqlOp} ${rightExpr}`;
+};
+
+const compilePredicate = (predicate: PredicateClause, ctx: CompilerContext): void => {
+  ctx.conditions.push(compilePredicateCondition(predicate, ctx));
 };
 
 // =============================================================================
@@ -541,6 +550,7 @@ const compileNotPattern = (
   localBindings: Map<string, string>,
 ): string[] => {
   const [entity, attribute, value] = pattern;
+  const tx = pattern.length === 4 ? pattern[3] : undefined;
   const conditions: string[] = [`${alias}.retracted_at IS NULL`];
 
   // Handle entity
@@ -591,6 +601,21 @@ const compileNotPattern = (
     conditions.push(`${alias}.${valueCol} = ${formatValue(value, ctx)}`);
   }
 
+  if (tx !== undefined) {
+    if (isVariable(tx)) {
+      const outerBinding = ctx.bindings.get(tx);
+      const localBinding = localBindings.get(tx);
+      if (localBinding) {
+        conditions.push(`${alias}.tx_id = ${localBinding}`);
+      } else if (outerBinding) {
+        conditions.push(`${alias}.tx_id = ${resolveBinding(outerBinding)}`);
+      }
+      localBindings.set(tx, `${alias}.tx_id`);
+    } else {
+      conditions.push(`${alias}.tx_id = ${formatValue(tx, ctx)}`);
+    }
+  }
+
   return conditions;
 };
 
@@ -604,14 +629,15 @@ const compileNotPredicate = (
   localBindings: Map<string, string>,
 ): string => {
   const [op, left, right] = clause;
+  const valueMode: BindingValueMode = op === "=" || op === "!=" ? "string" : "number";
 
   const resolveNotTerm = (term: Term): string => {
     if (isVariable(term)) {
       const local = localBindings.get(term);
       if (local) return local;
       const outer = ctx.bindings.get(term);
-      if (outer) return resolveBinding(outer, { valueMode: "string" });
-      return formatValue(term, ctx);
+      if (outer) return resolveBinding(outer, { valueMode });
+      throw new Error(`Unbound variable in not predicate: ${term}`);
     }
     return formatValue(term, ctx);
   };
@@ -631,7 +657,7 @@ const compileNotPredicate = (
   return `${resolveNotTerm(left)} ${sqlOp} ${resolveNotTerm(right)}`;
 };
 
-const compileNot = (notClause: NotClause, ctx: CompilerContext): void => {
+const compileNotCondition = (notClause: NotClause, ctx: CompilerContext): string => {
   // Extract inner clauses: ["not", c1] or ["not", c1, c2, ...]
   const innerClauses = notClause.slice(1) as (PatternClause | PredicateClause)[];
 
@@ -646,37 +672,35 @@ const compileNot = (notClause: NotClause, ctx: CompilerContext): void => {
     }
   }
 
-  if (patterns.length === 1 && predicates.length === 0) {
-    // Single pattern — simple NOT EXISTS
-    const alias = "t_not";
-    const localBindings = new Map<string, string>();
-    const conditions = compileNotPattern(patterns[0]!, alias, ctx, localBindings);
-    ctx.conditions.push(
-      `NOT EXISTS (SELECT 1 FROM triples ${alias} WHERE ${conditions.join(" AND ")})`,
-    );
-  } else {
-    // Conjunctive negation — NOT EXISTS with self-JOINs and optional predicates
-    const localBindings = new Map<string, string>();
-    const allConditions: string[] = [];
-    const fromParts: string[] = [];
+  const localBindings = new Map<string, string>();
+  const allConditions: string[] = [];
+  const fromParts: string[] = [];
 
-    for (let i = 0; i < patterns.length; i++) {
-      const alias = `t_not${i}`;
-      fromParts.push(`triples ${alias}`);
-      const conditions = compileNotPattern(patterns[i]!, alias, ctx, localBindings);
-      allConditions.push(...conditions);
-    }
-
-    // Compile predicates using local bindings
-    for (const pred of predicates) {
-      allConditions.push(compileNotPredicate(pred, ctx, localBindings));
-    }
-
-    const fromClause = fromParts.join(", ");
-    ctx.conditions.push(
-      `NOT EXISTS (SELECT 1 FROM ${fromClause} WHERE ${allConditions.join(" AND ")})`,
-    );
+  for (const pattern of patterns) {
+    const alias = nextAlias(ctx);
+    fromParts.push(`triples ${alias}`);
+    const conditions = compileNotPattern(pattern, alias, ctx, localBindings);
+    allConditions.push(...conditions);
   }
+
+  // Compile predicates using local bindings
+  for (const pred of predicates) {
+    allConditions.push(compileNotPredicate(pred, ctx, localBindings));
+  }
+
+  if (patterns.length === 0) {
+    if (allConditions.length === 0) {
+      throw new Error(`Invalid not clause arity: ${JSON.stringify(notClause)}`);
+    }
+    return `NOT (${allConditions.join(" AND ")})`;
+  }
+
+  const fromClause = fromParts.join(", ");
+  return `NOT EXISTS (SELECT 1 FROM ${fromClause} WHERE ${allConditions.join(" AND ")})`;
+};
+
+const compileNot = (notClause: NotClause, ctx: CompilerContext): void => {
+  ctx.conditions.push(compileNotCondition(notClause, ctx));
 };
 
 // =============================================================================
@@ -684,70 +708,26 @@ const compileNot = (notClause: NotClause, ctx: CompilerContext): void => {
 // =============================================================================
 
 /**
- * Compile an OR clause to SQL OR conditions
- * OrClause format: ["or", [pattern1, pattern2, ...]]
- *
- * Strategy: Create a new joined table for the OR, and check if any pattern matches
+ * Compile an OR clause to SQL OR conditions.
+ * Or alternatives are filter/existence checks and do not bind variables outward.
  */
 const compileOr = (orClause: OrClause, ctx: CompilerContext): void => {
-  const [, patterns] = orClause;
+  const alternatives = normalizeOrAlternatives(orClause);
+  if (alternatives.length === 0) return;
 
-  if (!patterns || patterns.length === 0) return;
-
-  // For OR, we always create a new table alias that can match any of the patterns
-  // This table will be joined on entity_id with the first bound entity variable
-  const orAlias = nextAlias(ctx);
-
-  // Find the entity variable to join on
-  let joinEntityCol: string | null = null;
-
-  for (const pattern of patterns) {
-    const [entity] = pattern;
-    if (isVariable(entity) && ctx.bindings.has(entity)) {
-      const binding = ctx.bindings.get(entity)!;
-      joinEntityCol = resolveBinding(binding);
-      break;
+  const orConditions = alternatives.map((alternative) => {
+    if (isPredicateClause(alternative as Clause)) {
+      return `(${compilePredicateCondition(alternative as PredicateClause, ctx)})`;
     }
-  }
-
-  if (joinEntityCol) {
-    ctx.joins.push(
-      `JOIN triples ${orAlias} ON ${orAlias}.entity_id = ${joinEntityCol} AND ${orAlias}.retracted_at IS NULL`,
-    );
-  } else {
-    // No bound entity - just join to t0's entity_id as fallback
-    ctx.joins.push(
-      `JOIN triples ${orAlias} ON ${orAlias}.entity_id = t0.entity_id AND ${orAlias}.retracted_at IS NULL`,
-    );
-  }
-
-  // Build OR conditions for each pattern
-  const orConditions: string[] = [];
-
-  for (const pattern of patterns) {
-    const [entity, attribute, value] = pattern;
-    const patternConditions: string[] = [];
-
-    // Entity condition (if constant)
-    if (!isVariable(entity)) {
-      patternConditions.push(`${orAlias}.entity_id = ${formatValue(entity, ctx)}`);
+    if (isNotClause(alternative as Clause)) {
+      return `(${compileNotCondition(alternative as NotClause, ctx)})`;
     }
 
-    // Attribute condition
-    if (!isVariable(attribute)) {
-      patternConditions.push(`${orAlias}.attribute = ${formatValue(attribute, ctx)}`);
-    }
-
-    // Value condition
-    if (!isVariable(value)) {
-      const valueCol = getValueColumn(value);
-      patternConditions.push(`${orAlias}.${valueCol} = ${formatValue(value, ctx)}`);
-    }
-
-    if (patternConditions.length > 0) {
-      orConditions.push(`(${patternConditions.join(" AND ")})`);
-    }
-  }
+    const alias = nextAlias(ctx);
+    const localBindings = new Map<string, string>();
+    const conditions = compileNotPattern(alternative as PatternClause, alias, ctx, localBindings);
+    return `(EXISTS (SELECT 1 FROM triples ${alias} WHERE ${conditions.join(" AND ")}))`;
+  });
 
   if (orConditions.length > 0) {
     ctx.conditions.push(`(${orConditions.join(" OR ")})`);

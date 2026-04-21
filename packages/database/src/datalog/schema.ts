@@ -153,19 +153,26 @@ export const NotClause = Schema.Tuple(
 });
 
 /**
- * Or clause: ["or", pattern1, pattern2, ...]
- * Used for disjunction - matches if any pattern matches
+ * Alternative within an `or` — patterns, predicates, and negation only.
+ * `or` alternatives are filter/existence checks and do not bind variables outward.
+ */
+export const OrAlternative = Schema.Union(PredicateClause, NotClause, PatternClause).annotations({
+  identifier: "OrAlternative",
+  description: "A pattern, predicate, or not clause inside an or",
+});
+
+/**
+ * Or clause: ["or", [alternative1, alternative2, ...]]
+ * Used for disjunction - matches if any alternative matches.
  *
  * Examples:
- * - ["or", ["?person", ":name", "Alice"], ["?person", ":name", "Bob"]]
- *
- * Note: We use an array of patterns after "or" for simplicity.
- * The runtime type is ["or", ...PatternClause[]]
+ * - ["or", [["?person", ":name", "Alice"], ["?person", ":name", "Bob"]]]
+ * - ["or", [["=", "?status", "offline"], ["not", ["?step", ":output", "?out"]]]]
  */
-export const OrClause = Schema.Tuple(Schema.Literal("or"), Schema.Array(PatternClause)).annotations(
+export const OrClause = Schema.Tuple(Schema.Literal("or"), Schema.Array(OrAlternative)).annotations(
   {
     identifier: "OrClause",
-    description: 'A disjunction clause ["or", [pattern1, pattern2, ...]] matching any pattern',
+    description: 'A disjunction clause ["or", [alternative1, alternative2, ...]]',
   },
 );
 
@@ -512,6 +519,7 @@ export type PatternClause4 = typeof PatternClause4.Type;
 export type PatternClause = typeof PatternClause.Type;
 export type PredicateClause = typeof PredicateClause.Type;
 export type NotClause = typeof NotClause.Type;
+export type OrAlternative = typeof OrAlternative.Type;
 export type OrClause = typeof OrClause.Type;
 export type RuleApplication = typeof RuleApplication.Type;
 export type LinkClause = typeof LinkClause.Type;
@@ -564,6 +572,35 @@ export const isNotClause = (clause: Clause): clause is NotClause => {
  */
 export const isOrClause = (clause: Clause): clause is OrClause => {
   return Array.isArray(clause) && clause[0] === "or";
+};
+
+export const normalizeOrAlternatives = (
+  orClause: OrClause | readonly ["or", ...Clause[]],
+): OrAlternative[] => {
+  if (!Array.isArray(orClause) || orClause[0] !== "or") {
+    throw new Error(`Invalid or clause: ${JSON.stringify(orClause)}`);
+  }
+
+  const assertAlternative = (clause: unknown): OrAlternative => {
+    const candidate = clause as Clause;
+    if (isOrClause(candidate)) {
+      throw new Error(`Nested or alternatives are not supported: ${JSON.stringify(clause)}`);
+    }
+    if (!isPredicateClause(candidate) && !isNotClause(candidate) && !isPatternClause(candidate)) {
+      throw new Error(`Invalid or alternative: ${JSON.stringify(clause)}`);
+    }
+    return candidate as OrAlternative;
+  };
+
+  if (orClause.length === 2 && Array.isArray(orClause[1])) {
+    return (orClause[1] as readonly unknown[]).map(assertAlternative);
+  }
+
+  if (orClause.length > 2) {
+    return (orClause as readonly unknown[]).slice(1).map(assertAlternative);
+  }
+
+  throw new Error(`Invalid or clause arity: ${JSON.stringify(orClause)}`);
 };
 
 /**

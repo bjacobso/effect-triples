@@ -26,6 +26,7 @@ import {
   type PatternClause,
   type PredicateClause,
   type NotClause,
+  type OrAlternative,
   type OrClause,
   type LinkClause,
   type RuleApplication,
@@ -45,150 +46,125 @@ import {
   isPatternClause,
   emptyContext,
 } from "./types.js";
-import { executePattern, bindDatom, patternToScanPattern } from "./pattern.js";
+import { executePattern } from "./pattern.js";
 import { evaluatePredicate } from "./predicate.js";
+import { normalizeOrAlternatives } from "../../datalog/schema.js";
 
 // ─── Clause execution ──────────────────────────────────────────────────────
 
 /**
+ * Check whether a sequence of not-inner clauses matches for one context.
+ * Pattern clauses may bind local variables for later inner clauses, but those
+ * bindings are discarded by the caller.
+ */
+const innerClausesMatchContext = (
+  store: KvTripleStore,
+  clauses: readonly (PatternClause | PredicateClause)[],
+  context: Context,
+): Effect.Effect<boolean> => {
+  return Effect.gen(function* () {
+    let current: Context[] = [context];
+
+    for (const clause of clauses) {
+      if (isPredicateClause(clause as Clause)) {
+        current = current.filter((ctx) => evaluatePredicate(clause as PredicateClause, ctx));
+      } else {
+        current = yield* executePattern(store, clause as PatternClause, current);
+      }
+
+      if (current.length === 0) return false;
+    }
+
+    return true;
+  });
+};
+
+const patternAlternativeMatchesContext = (
+  store: KvTripleStore,
+  pattern: PatternClause,
+  context: Context,
+): Effect.Effect<boolean> =>
+  Effect.map(executePattern(store, pattern, [context]), (matches) => matches.length > 0);
+
+const notClauseInnerClauses = (clause: NotClause): (PatternClause | PredicateClause)[] =>
+  clause.slice(1) as (PatternClause | PredicateClause)[];
+
+const notClauseMatchesContext = (
+  store: KvTripleStore,
+  clause: NotClause,
+  context: Context,
+): Effect.Effect<boolean> =>
+  innerClausesMatchContext(store, notClauseInnerClauses(clause), context);
+
+const orAlternativeMatchesContext = (
+  store: KvTripleStore,
+  alternative: OrAlternative,
+  context: Context,
+): Effect.Effect<boolean> => {
+  if (isPredicateClause(alternative as Clause)) {
+    return Effect.succeed(evaluatePredicate(alternative as PredicateClause, context));
+  }
+
+  if (isNotClause(alternative as Clause)) {
+    return Effect.map(
+      notClauseMatchesContext(store, alternative as NotClause, context),
+      (matches) => !matches,
+    );
+  }
+
+  return patternAlternativeMatchesContext(store, alternative as PatternClause, context);
+};
+
+/**
  * Execute a NOT clause (anti-semi-join).
  *
- * ["not", pattern] — filter out contexts where the inner pattern has ANY match.
- * This is negation-as-failure: a context survives if the inner pattern returns
- * zero results when evaluated with that context's bindings.
+ * ["not", clause1, clause2, ...] — filter out contexts where all inner clauses
+ * match together. Inner variables are local and do not leak outward.
  */
 const executeNot = (
   store: KvTripleStore,
   clause: NotClause,
   contexts: readonly Context[],
 ): Effect.Effect<Context[]> => {
-  const innerPattern = clause[1] as PatternClause;
-
-  // Try sync fast path
-  const syncResult = executeNotSync(store, innerPattern, contexts);
-  if (syncResult !== null) return Effect.succeed(syncResult);
-
   return Effect.gen(function* () {
     const results: Context[] = [];
 
     for (const ctx of contexts) {
-      const scanPattern = patternToScanPattern(innerPattern, ctx);
-      const matches = yield* store.scanCollectAsync(scanPattern);
-
-      // Check if ANY datom matches the full pattern binding
-      let hasMatch = false;
-      for (const datom of matches) {
-        if (bindDatom(innerPattern, datom, ctx) !== null) {
-          hasMatch = true;
-          break;
-        }
-      }
-
-      if (!hasMatch) {
-        results.push(ctx);
-      }
+      const hasMatch = yield* notClauseMatchesContext(store, clause, ctx);
+      if (!hasMatch) results.push(ctx);
     }
 
     return results;
   });
 };
 
-const executeNotSync = (
-  store: KvTripleStore,
-  innerPattern: PatternClause,
-  contexts: readonly Context[],
-): Context[] | null => {
-  const results: Context[] = [];
-  for (const ctx of contexts) {
-    const scanPattern = patternToScanPattern(innerPattern, ctx);
-    const datoms = store.scanCollect(scanPattern);
-    if (datoms === null) return null;
-
-    let hasMatch = false;
-    for (let i = 0; i < datoms.length; i++) {
-      if (bindDatom(innerPattern, datoms[i]!, ctx) !== null) {
-        hasMatch = true;
-        break;
-      }
-    }
-
-    if (!hasMatch) {
-      results.push(ctx);
-    }
-  }
-  return results;
-};
-
 /**
- * Execute an OR clause (union).
+ * Execute an OR clause as a filter.
  *
- * ["or", [pattern1, pattern2, ...]] — for each context, try all alternatives
- * and union the results. Duplicates are removed.
+ * ["or", [alternative1, alternative2, ...]] — keep each incoming context if
+ * any alternative matches. Alternative-local variables do not leak outward.
  */
 const executeOr = (
   store: KvTripleStore,
   clause: OrClause,
   contexts: readonly Context[],
 ): Effect.Effect<Context[]> => {
-  const alternatives = clause[1] as PatternClause[];
-
-  // Try sync fast path
-  const syncResult = executeOrSync(store, alternatives, contexts);
-  if (syncResult !== null) return Effect.succeed(syncResult);
+  const alternatives = normalizeOrAlternatives(clause) as OrAlternative[];
 
   return Effect.gen(function* () {
     const results: Context[] = [];
-    const seen = new Set<string>();
 
     for (const ctx of contexts) {
       for (const alt of alternatives) {
-        const scanPattern = patternToScanPattern(alt, ctx);
-        const datoms = yield* store.scanCollectAsync(scanPattern);
-
-        for (const datom of datoms) {
-          const bound = bindDatom(alt, datom, ctx);
-          if (bound !== null) {
-            const key = JSON.stringify(bound);
-            if (!seen.has(key)) {
-              seen.add(key);
-              results.push(bound);
-            }
-          }
+        if (yield* orAlternativeMatchesContext(store, alt, ctx)) {
+          results.push(ctx);
+          break;
         }
       }
     }
 
     return results;
   });
-};
-
-const executeOrSync = (
-  store: KvTripleStore,
-  alternatives: PatternClause[],
-  contexts: readonly Context[],
-): Context[] | null => {
-  const results: Context[] = [];
-  const seen = new Set<string>();
-
-  for (const ctx of contexts) {
-    for (const alt of alternatives) {
-      const scanPattern = patternToScanPattern(alt, ctx);
-      const datoms = store.scanCollect(scanPattern);
-      if (datoms === null) return null;
-
-      for (let i = 0; i < datoms.length; i++) {
-        const bound = bindDatom(alt, datoms[i]!, ctx);
-        if (bound !== null) {
-          const key = JSON.stringify(bound);
-          if (!seen.has(key)) {
-            seen.add(key);
-            results.push(bound);
-          }
-        }
-      }
-    }
-  }
-  return results;
 };
 
 /**
