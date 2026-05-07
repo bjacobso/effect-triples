@@ -49,7 +49,7 @@ const PG_PORT = 5432;
 const PG_USER = "test";
 const PG_PASSWORD = "test";
 const PG_DATABASE = "test_ontology";
-const PG_STARTUP_TIMEOUT_MS = 60_000;
+const PG_STARTUP_TIMEOUT_MS = Number(process.env["PG_TEST_STARTUP_TIMEOUT_MS"] ?? 120_000);
 
 // ─── Container lifecycle ───────────────────────────────────────────────────
 

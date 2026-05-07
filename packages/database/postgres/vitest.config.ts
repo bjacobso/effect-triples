@@ -5,4 +5,8 @@ export default defineConfig({
   resolve: {
     alias: workspaceAliases(),
   },
+  test: {
+    testTimeout: 120_000,
+    hookTimeout: 120_000,
+  },
 });
