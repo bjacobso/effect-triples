@@ -211,6 +211,7 @@ export const ExampleType = Schema.Literal(
   "labor-union",
   "chronicle",
   "bookstore",
+  "todo-app",
   "movies",
   "family",
   "fantasy",
