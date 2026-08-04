@@ -1,6 +1,6 @@
-# @open-ontology/stress
+# effect-triples-stress
 
-Performance and stress tests for the Open Ontology triple store at scale, supporting multiple storage backends.
+Performance and stress tests for the Effect Triples triple store at scale, supporting multiple storage backends.
 
 ## Overview
 
@@ -30,20 +30,20 @@ Generate a multi-backend performance report at `docs/performance.md`:
 
 ```bash
 # Full benchmark (SQLite + PostgreSQL + KV + FoundationDB)
-pnpm --filter @open-ontology/stress benchmark
+pnpm --filter effect-triples-stress benchmark
 
 # Customize scale
-STRESS_EMPLOYEE_COUNT=100000 STRESS_UPDATE_ROUNDS=5 pnpm --filter @open-ontology/stress benchmark
+STRESS_EMPLOYEE_COUNT=100000 STRESS_UPDATE_ROUNDS=5 pnpm --filter effect-triples-stress benchmark
 
 # Skip updates (insertion + queries only)
-STRESS_UPDATE_ROUNDS=0 pnpm --filter @open-ontology/stress benchmark
+STRESS_UPDATE_ROUNDS=0 pnpm --filter effect-triples-stress benchmark
 
 # SQLite-only (no Docker, no FDB client required)
 BENCHMARK_SKIP_PG=true BENCHMARK_SKIP_KV=true BENCHMARK_SKIP_FDB=true \
-  pnpm --filter @open-ontology/stress benchmark
+  pnpm --filter effect-triples-stress benchmark
 
 # Skip FoundationDB only
-BENCHMARK_SKIP_FDB=true pnpm --filter @open-ontology/stress benchmark
+BENCHMARK_SKIP_FDB=true pnpm --filter effect-triples-stress benchmark
 ```
 
 **Requirements**: Docker (for PostgreSQL and FoundationDB containers).
@@ -58,19 +58,19 @@ The generated report includes insertion throughput, update throughput with per-r
 
 ```bash
 # Default - no optimizations
-pnpm --filter @open-ontology/stress stress-test
+pnpm --filter effect-triples-stress stress-test
 
 # With index dropping optimization (3-5x faster insertion, SQLite only)
-STRESS_DROP_INDEXES=true pnpm --filter @open-ontology/stress stress-test
+STRESS_DROP_INDEXES=true pnpm --filter effect-triples-stress stress-test
 
 # With unsafe PRAGMA settings (1.2-2x faster, data loss risk, SQLite only)
-STRESS_UNSAFE_MODE=true pnpm --filter @open-ontology/stress stress-test
+STRESS_UNSAFE_MODE=true pnpm --filter effect-triples-stress stress-test
 
 # Both optimizations (maximum speed)
-STRESS_DROP_INDEXES=true STRESS_UNSAFE_MODE=true pnpm --filter @open-ontology/stress stress-test
+STRESS_DROP_INDEXES=true STRESS_UNSAFE_MODE=true pnpm --filter effect-triples-stress stress-test
 
 # Keep database after test for inspection
-STRESS_TEST_KEEP_DB=true pnpm --filter @open-ontology/stress stress-test
+STRESS_TEST_KEEP_DB=true pnpm --filter effect-triples-stress stress-test
 ```
 
 ### PostgreSQL
@@ -79,12 +79,12 @@ Requires a running PostgreSQL server:
 
 ```bash
 # Run against PostgreSQL
-STRESS_BACKEND=pg DATABASE_URL=postgresql://user:pass@localhost:5432/ontology_stress \
-  pnpm --filter @open-ontology/stress stress-test
+STRESS_BACKEND=pg DATABASE_URL=postgresql://user:pass@localhost:5432/effect_triples_stress \
+  pnpm --filter effect-triples-stress stress-test
 
 # With fewer employees to speed things up
-STRESS_BACKEND=pg DATABASE_URL=postgresql://user:pass@localhost:5432/ontology_stress \
-  STRESS_EMPLOYEE_COUNT=50000 pnpm --filter @open-ontology/stress stress-test
+STRESS_BACKEND=pg DATABASE_URL=postgresql://user:pass@localhost:5432/effect_triples_stress \
+  STRESS_EMPLOYEE_COUNT=50000 pnpm --filter effect-triples-stress stress-test
 ```
 
 ### KV / FoundationDB
@@ -93,14 +93,14 @@ KV-family backends (`kv`, `fdb`) do not expose a SQL layer, so update rounds are
 
 ```bash
 # In-memory KV benchmark
-pnpm --filter @open-ontology/stress stress-test:kv
+pnpm --filter effect-triples-stress stress-test:kv
 
 # FoundationDB benchmark (requires libfdb_c + reachable cluster)
 STRESS_BACKEND=fdb STRESS_UPDATE_ROUNDS=0 FDB_CLUSTER_FILE=/path/to/fdb.cluster \
-  pnpm --filter @open-ontology/stress stress-test
+  pnpm --filter effect-triples-stress stress-test
 
 # Convenience script (still requires FDB_CLUSTER_FILE or default local cluster)
-FDB_CLUSTER_FILE=/path/to/fdb.cluster pnpm --filter @open-ontology/stress stress-test:fdb
+FDB_CLUSTER_FILE=/path/to/fdb.cluster pnpm --filter effect-triples-stress stress-test:fdb
 ```
 
 ### FoundationDB large-scale benchmark recipe
@@ -119,7 +119,7 @@ FDB_MAX_TX_ENTRIES=1000 \
 FDB_LOG_RETRIES=true \
 FDB_STORAGE_MODE=single \
 BENCHMARK_SKIP_SQLITE=true BENCHMARK_SKIP_PG=true BENCHMARK_SKIP_KV=true \
-  pnpm --filter @open-ontology/stress benchmark
+  pnpm --filter effect-triples-stress benchmark
 
 # Tail the benchmark logs when running via nohup
 : > /tmp/fdb-benchmark-100k.log
@@ -127,7 +127,7 @@ nohup env FDB_IMAGE=foundationdb/foundationdb:7.3.75 FDB_PLATFORM=linux/arm64 \
   STRESS_EMPLOYEE_COUNT=100000 STRESS_UPDATE_ROUNDS=0 STRESS_TEST_TIMEOUT=7200000 \
   STRESS_INSERT_BATCH_SIZE=200 FDB_MAX_TX_ENTRIES=1000 FDB_LOG_RETRIES=true \
   FDB_STORAGE_MODE=single BENCHMARK_SKIP_SQLITE=true BENCHMARK_SKIP_PG=true \
-  BENCHMARK_SKIP_KV=true pnpm --filter @open-ontology/stress benchmark \
+  BENCHMARK_SKIP_KV=true pnpm --filter effect-triples-stress benchmark \
   >> /tmp/fdb-benchmark-100k.log 2>&1 &
 
 tail -f /tmp/fdb-benchmark-100k.log
@@ -137,7 +137,7 @@ tail -f /tmp/fdb-benchmark-100k.log
 
 ```bash
 # Re-runs on file changes (useful during development)
-pnpm --filter @open-ontology/stress test:watch
+pnpm --filter effect-triples-stress test:watch
 ```
 
 ## Environment Variables
@@ -149,7 +149,7 @@ pnpm --filter @open-ontology/stress test:watch
 | `STRESS_UPDATE_ROUNDS`  | `10`                               | Number of update rounds. Each round updates 5 attributes per employee. Set to `0` to skip (required for `kv`/`fdb`).            |
 | `DATABASE_URL`          | _(empty)_                          | PostgreSQL connection URL. **Required** when `STRESS_BACKEND=pg`.                                                               |
 | `FDB_CLUSTER_FILE`      | _(empty)_                          | FoundationDB cluster file path. Optional for `fdb` backend (uses FDB default if unset).                                         |
-| `FDB_IMAGE`             | `foundationdb/foundationdb:7.3.75` | Docker image tag used by `pnpm --filter @open-ontology/stress benchmark` for FoundationDB.                                      |
+| `FDB_IMAGE`             | `foundationdb/foundationdb:7.3.75` | Docker image tag used by `pnpm --filter effect-triples-stress benchmark` for FoundationDB.                                      |
 | `FDB_PLATFORM`          | `linux/amd64`                      | Docker platform override for FoundationDB (use `linux/arm64` when an ARM image is available).                                   |
 | `FDB_API_VERSION`       | `720`                              | Optional FoundationDB API version override.                                                                                     |
 | `FDB_MAX_TX_ENTRIES`    | `5000`                             | Max key-value entries per FDB transaction in bulk insert. Tune lower for large values, higher for small ones.                   |
@@ -265,7 +265,7 @@ PRAGMA cache_size = -128000;
 
 ```bash
 # Keep database
-STRESS_TEST_KEEP_DB=true pnpm --filter @open-ontology/stress stress-test
+STRESS_TEST_KEEP_DB=true pnpm --filter effect-triples-stress stress-test
 
 # Inspect
 sqlite3 stress-data/stress-test.db
@@ -279,7 +279,7 @@ EXPLAIN QUERY PLAN SELECT * FROM triples WHERE entity_id = 'emp:100';
 ```bash
 # Keep data
 STRESS_BACKEND=pg DATABASE_URL=... STRESS_TEST_KEEP_DB=true \
-  pnpm --filter @open-ontology/stress stress-test
+  pnpm --filter effect-triples-stress stress-test
 
 # Inspect via psql
 psql $DATABASE_URL

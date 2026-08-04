@@ -1,10 +1,10 @@
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { Effect, Layer, Schedule } from "effect";
 import { SqlClient } from "@effect/sql";
-import { generateId } from "@open-ontology/database";
-import { string, boolean, ref } from "@open-ontology/database";
-import type { EntityId } from "@open-ontology/database";
-import type { BulkInsertOptions } from "@open-ontology/database";
+import { generateId } from "effect-triples";
+import { string, boolean, ref } from "effect-triples";
+import type { EntityId } from "effect-triples";
+import type { BulkInsertOptions } from "effect-triples";
 import { writeFileSync } from "node:fs";
 import { arch, cpus, platform, totalmem } from "node:os";
 import {

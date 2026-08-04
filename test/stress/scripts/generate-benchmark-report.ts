@@ -11,7 +11,7 @@
  * FoundationDB runs in a dedicated benchmark container.
  *
  * Usage:
- *   pnpm --filter @open-ontology/stress benchmark
+ *   pnpm --filter effect-triples-stress benchmark
  *
  * Requirements:
  *   - Docker (for PostgreSQL and FoundationDB containers)
@@ -42,8 +42,8 @@ import type { BenchmarkResults } from "../src/benchmark-results.js";
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const PKG_DIR = resolve(__dirname, "..");
 const REPO_ROOT = resolve(PKG_DIR, "../..");
-const FDB_PKG_DIR = resolve(REPO_ROOT, "packages/database/foundationdb");
-const FDB_CONTAINER_NAME = "ontology-benchmark-fdb";
+const FDB_PKG_DIR = resolve(REPO_ROOT, "packages/foundationdb");
+const FDB_CONTAINER_NAME = "effect-triples-benchmark-fdb";
 const FDB_IMAGE = process.env["FDB_IMAGE"] ?? "foundationdb/foundationdb:7.3.75";
 const FDB_HOST_PORT = 4500;
 const FDB_PLATFORM = process.env["FDB_PLATFORM"] ?? "linux/amd64";
@@ -377,7 +377,7 @@ function generateMarkdown(results: BenchmarkResults[]): string {
   w("# Performance Benchmarks");
   w("");
   w(
-    `> Auto-generated on ${new Date().toISOString().split("T")[0]} by \`pnpm --filter @open-ontology/stress benchmark\`.`,
+    `> Auto-generated on ${new Date().toISOString().split("T")[0]} by \`pnpm --filter effect-triples-stress benchmark\`.`,
   );
   w(`> Re-run the benchmark to update these numbers for your hardware.`);
   w("");
@@ -681,24 +681,24 @@ function generateMarkdown(results: BenchmarkResults[]): string {
   w("");
   w("```bash");
   w("# Full benchmark (SQLite + PostgreSQL + KV + FoundationDB)");
-  w("pnpm --filter @open-ontology/stress benchmark");
+  w("pnpm --filter effect-triples-stress benchmark");
   w("");
   w("# Customize scale");
   w(
-    "STRESS_EMPLOYEE_COUNT=100000 STRESS_UPDATE_ROUNDS=5 pnpm --filter @open-ontology/stress benchmark",
+    "STRESS_EMPLOYEE_COUNT=100000 STRESS_UPDATE_ROUNDS=5 pnpm --filter effect-triples-stress benchmark",
   );
   w("");
   w("# Skip updates (insertion + queries only)");
-  w("STRESS_UPDATE_ROUNDS=0 pnpm --filter @open-ontology/stress benchmark");
+  w("STRESS_UPDATE_ROUNDS=0 pnpm --filter effect-triples-stress benchmark");
   w("");
   w("# Skip PostgreSQL (SQLite + KV + FDB only)");
-  w("BENCHMARK_SKIP_PG=true pnpm --filter @open-ontology/stress benchmark");
+  w("BENCHMARK_SKIP_PG=true pnpm --filter effect-triples-stress benchmark");
   w("");
   w("# Skip KV (SQLite + PostgreSQL + FDB only)");
-  w("BENCHMARK_SKIP_KV=true pnpm --filter @open-ontology/stress benchmark");
+  w("BENCHMARK_SKIP_KV=true pnpm --filter effect-triples-stress benchmark");
   w("");
   w("# Skip FoundationDB (SQLite + PostgreSQL + KV only)");
-  w("BENCHMARK_SKIP_FDB=true pnpm --filter @open-ontology/stress benchmark");
+  w("BENCHMARK_SKIP_FDB=true pnpm --filter effect-triples-stress benchmark");
   w("```");
   w("");
 
@@ -708,7 +708,7 @@ function generateMarkdown(results: BenchmarkResults[]): string {
 // ─── Main ──────────────────────────────────────────────────────────────────
 
 async function main() {
-  heading("Open Ontology Benchmark Report Generator");
+  heading("Effect Triples Benchmark Report Generator");
 
   const employeeCount = process.env["STRESS_EMPLOYEE_COUNT"] ?? DEFAULT_EMPLOYEE_COUNT;
   const updateRounds = process.env["STRESS_UPDATE_ROUNDS"] ?? DEFAULT_UPDATE_ROUNDS;

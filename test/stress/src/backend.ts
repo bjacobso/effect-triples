@@ -22,22 +22,19 @@ import { Effect, Layer } from "effect";
 import { SqlClient } from "@effect/sql";
 import { SqliteClient } from "@effect/sql-sqlite-node";
 import { NodeContext } from "@effect/platform-node";
-import { DatabaseManager } from "@open-ontology/database";
-import { TripleStore, type TripleStoreService } from "@open-ontology/database";
-import { Datalog, type DatalogService } from "@open-ontology/database";
-import { DatabaseManagerLive, DatabaseRegistryLive } from "@open-ontology/database-sql";
-import { makeSqliteBackend } from "@open-ontology/database-sqlite";
-import {
-  makePostgresqlBackendFromUrl,
-  makePostgresqlLayerFromUrl,
-} from "@open-ontology/database-postgres";
+import { DatabaseManager } from "effect-triples";
+import { TripleStore, type TripleStoreService } from "effect-triples";
+import { Datalog, type DatalogService } from "effect-triples";
+import { DatabaseManagerLive, DatabaseRegistryLive } from "effect-triples-sql";
+import { makeSqliteBackend } from "effect-triples-sqlite";
+import { makePostgresqlBackendFromUrl, makePostgresqlLayerFromUrl } from "effect-triples-postgres";
 import {
   KvTripleStoreLive,
   KvDatalogLive,
   InMemoryKvBackendLive,
   TripleStoreRuntimeLayer,
-} from "@open-ontology/database";
-import { makeFdbKvBackend, type FdbKvBackendConfig } from "@open-ontology/database-foundationdb";
+} from "effect-triples";
+import { makeFdbKvBackend, type FdbKvBackendConfig } from "effect-triples-foundationdb";
 import { promises as fs } from "node:fs";
 
 // ─── Types ─────────────────────────────────────────────────────────────────
@@ -318,7 +315,7 @@ function makePgManagerLayer(): Layer.Layer<DatabaseManager> {
   if (!url) {
     throw new Error(
       "STRESS_BACKEND=pg requires DATABASE_URL environment variable.\n" +
-        "Example: DATABASE_URL=postgresql://user:pass@localhost:5432/ontology_stress",
+        "Example: DATABASE_URL=postgresql://user:pass@localhost:5432/effect_triples_stress",
     );
   }
   const backend = makePostgresqlBackendFromUrl(url);

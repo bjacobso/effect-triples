@@ -1,5 +1,5 @@
-import type { TripleInput, TransactOp } from "@open-ontology/database";
-import { string, number, boolean, datetime, ref } from "@open-ontology/database";
+import type { TripleInput, TransactOp } from "effect-triples";
+import { string, number, boolean, datetime, ref } from "effect-triples";
 
 /**
  * Generate employee triples for stress testing.
