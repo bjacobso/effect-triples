@@ -1,0 +1,22 @@
+{
+  "name": "effect-triples-integration-tests",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "vitest --run",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@effect/sql": "catalog:",
+    "@effect/sql-sqlite-node": "catalog:",
+    "effect": "catalog:",
+    "effect-triples": "workspace:^",
+    "effect-triples-sql": "workspace:^",
+    "effect-triples-sqlite": "workspace:^"
+  },
+  "devDependencies": {
+    "@types/node": "catalog:",
+    "vitest": "catalog:"
+  }
+}

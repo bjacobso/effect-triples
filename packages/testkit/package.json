@@ -1,0 +1,53 @@
+{
+  "name": "effect-triples-testkit",
+  "version": "0.1.0",
+  "description": "Backend test helpers for Effect Triples",
+  "keywords": [
+    "effect",
+    "testing",
+    "triplestore"
+  ],
+  "homepage": "https://github.com/bjacobso/effect-triples#readme",
+  "bugs": {
+    "url": "https://github.com/bjacobso/effect-triples/issues"
+  },
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/bjacobso/effect-triples.git",
+    "directory": "packages/testkit"
+  },
+  "files": [
+    "dist",
+    "LICENSE",
+    "README.md"
+  ],
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsdown",
+    "dev": "tsdown --watch",
+    "test": "vitest --run",
+    "typecheck": "tsc --noEmit",
+    "clean": "rm -rf dist"
+  },
+  "dependencies": {
+    "effect": "catalog:",
+    "effect-triples": "workspace:^"
+  },
+  "devDependencies": {
+    "@types/node": "catalog:",
+    "vitest": "catalog:"
+  },
+  "engines": {
+    "node": ">=22"
+  }
+}

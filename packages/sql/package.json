@@ -1,0 +1,55 @@
+{
+  "name": "effect-triples-sql",
+  "version": "0.1.0",
+  "description": "Shared SQL layers and query execution for Effect Triples",
+  "keywords": [
+    "database",
+    "effect",
+    "sql",
+    "triplestore"
+  ],
+  "homepage": "https://github.com/bjacobso/effect-triples#readme",
+  "bugs": {
+    "url": "https://github.com/bjacobso/effect-triples/issues"
+  },
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/bjacobso/effect-triples.git",
+    "directory": "packages/sql"
+  },
+  "files": [
+    "dist",
+    "LICENSE",
+    "README.md"
+  ],
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsdown && tsc --declaration --emitDeclarationOnly --rootDir src --outDir dist",
+    "dev": "tsdown --watch",
+    "test": "vitest --run --passWithNoTests",
+    "typecheck": "tsc --noEmit",
+    "clean": "rm -rf dist"
+  },
+  "dependencies": {
+    "@effect/sql": "catalog:",
+    "effect": "catalog:",
+    "effect-triples": "workspace:^"
+  },
+  "devDependencies": {
+    "@types/node": "catalog:",
+    "vitest": "catalog:"
+  },
+  "engines": {
+    "node": ">=22"
+  }
+}
