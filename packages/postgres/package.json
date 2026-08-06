@@ -1,0 +1,60 @@
+{
+  "name": "effect-triples-postgres",
+  "version": "0.1.0",
+  "description": "PostgreSQL backend for Effect Triples",
+  "keywords": [
+    "database",
+    "effect",
+    "postgresql",
+    "triplestore"
+  ],
+  "homepage": "https://github.com/bjacobso/effect-triples#readme",
+  "bugs": {
+    "url": "https://github.com/bjacobso/effect-triples/issues"
+  },
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/bjacobso/effect-triples.git",
+    "directory": "packages/postgres"
+  },
+  "files": [
+    "dist",
+    "LICENSE",
+    "README.md"
+  ],
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsdown && tsc --declaration --emitDeclarationOnly --rootDir src --outDir dist",
+    "dev": "tsdown --watch",
+    "test": "vitest --run --exclude test/integration/**",
+    "test:integration": "vitest --run test/integration/postgresql.test.ts",
+    "typecheck": "tsc --noEmit",
+    "clean": "rm -rf dist"
+  },
+  "dependencies": {
+    "@effect/platform": "catalog:",
+    "@effect/sql": "catalog:",
+    "@effect/sql-pg": "catalog:",
+    "effect": "catalog:",
+    "effect-triples": "workspace:^",
+    "effect-triples-sql": "workspace:^"
+  },
+  "devDependencies": {
+    "@types/node": "catalog:",
+    "testcontainers": "^11.12.0",
+    "vitest": "catalog:"
+  },
+  "engines": {
+    "node": ">=22"
+  }
+}

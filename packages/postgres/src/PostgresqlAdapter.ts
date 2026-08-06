@@ -1,0 +1,450 @@
+/**
+ * PostgresqlAdapter - PostgreSQL implementation of StorageAdapter
+ *
+ * Uses @effect/sql SqlClient for database operations with PostgreSQL-specific
+ * parameter placeholders.
+ */
+
+import { Effect, Layer } from "effect";
+import { SqlClient } from "@effect/sql";
+import {
+  StorageAdapter,
+  type StorageAdapterService,
+  type TripleRow,
+  WriteError,
+  ReadError,
+  MigrationError,
+  createParamCollector,
+} from "effect-triples";
+import { packValue, runMigrations } from "effect-triples-sql";
+import { isVariable } from "effect-triples/types/Pattern";
+import { PostgresqlDialect } from "./dialect.js";
+
+/**
+ * Create a PostgreSQL StorageAdapter layer.
+ *
+ * @returns A Layer that provides StorageAdapter, requiring SqlClient.SqlClient
+ */
+export const makePostgresqlAdapter = () =>
+  Layer.effect(
+    StorageAdapter,
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+
+      // Helper to provide SqlClient to inner effects
+      const provide = <A, E>(effect: Effect.Effect<A, E, SqlClient.SqlClient>) =>
+        Effect.provideService(effect, SqlClient.SqlClient, sql);
+
+      // =========================================================================
+      // Transaction Support
+      // =========================================================================
+
+      const withTransaction: StorageAdapterService["withTransaction"] = (effect) =>
+        sql.withTransaction(effect).pipe(
+          Effect.mapError((error) =>
+            error instanceof WriteError
+              ? error
+              : new WriteError({
+                  message: `Transaction failed: ${String(error)}`,
+                  cause: error,
+                }),
+          ),
+        );
+
+      // =========================================================================
+      // Write Operations
+      // =========================================================================
+
+      const insert: StorageAdapterService["insert"] = (input, txId, timestamp, id) =>
+        provide(
+          Effect.gen(function* () {
+            const packed = packValue(input.value);
+
+            yield* sql`
+              INSERT INTO triples (
+                id, entity_id, attribute, value_type,
+                value_string, value_number, value_boolean, value_datetime, value_json,
+                created_at, created_by, entity_type, schema_version, tx_id
+              ) VALUES (
+                ${id}, ${input.entityId}, ${input.attribute}, ${packed.value_type},
+                ${packed.value_string}, ${packed.value_number}, ${packed.value_boolean},
+                ${packed.value_datetime}, ${packed.value_json},
+                ${timestamp}, ${input.createdBy ?? null}, ${input.entityType ?? null}, ${1}, ${txId}
+              )
+            `.pipe(
+              Effect.mapError(
+                (error) =>
+                  new WriteError({
+                    message: `Failed to insert triple: ${String(error)}`,
+                    cause: error,
+                  }),
+              ),
+            );
+
+            return {
+              id,
+              entity_id: input.entityId,
+              attribute: input.attribute,
+              value_type: packed.value_type,
+              value_string: packed.value_string,
+              value_number: packed.value_number,
+              value_boolean: packed.value_boolean,
+              value_datetime: packed.value_datetime,
+              value_json: packed.value_json,
+              created_at: timestamp,
+              created_by: input.createdBy ?? null,
+              retracted_at: null,
+              entity_type: input.entityType ?? null,
+              schema_version: 1,
+              tx_id: txId,
+              retract_tx_id: null,
+            } as TripleRow;
+          }),
+        );
+
+      const batchInsert: StorageAdapterService["batchInsert"] = (inputs, txId, timestamp, ids) => {
+        if (inputs.length === 0) return Effect.succeed([]);
+        if (ids.length !== inputs.length) {
+          return Effect.fail(
+            new WriteError({
+              message: `Expected ${inputs.length} triple IDs for batch insert, got ${ids.length}`,
+            }),
+          );
+        }
+
+        const BATCH_SIZE = 500;
+
+        // Pre-generate IDs and pack values upfront
+        const prepared = inputs.map((input, index) => {
+          const id = ids[index]!;
+          const packed = packValue(input.value);
+          return { id, input, packed };
+        });
+
+        return provide(
+          sql.withTransaction(
+            Effect.gen(function* () {
+              for (let i = 0; i < prepared.length; i += BATCH_SIZE) {
+                const chunk = prepared.slice(i, i + BATCH_SIZE);
+                const collector = createParamCollector(PostgresqlDialect);
+
+                const valuesSql = chunk
+                  .map(({ id, input, packed }) => {
+                    const rowValues = [
+                      id,
+                      input.entityId,
+                      input.attribute,
+                      packed.value_type,
+                      packed.value_string,
+                      packed.value_number,
+                      packed.value_boolean,
+                      packed.value_datetime,
+                      packed.value_json,
+                      timestamp,
+                      input.createdBy ?? null,
+                      input.entityType ?? null,
+                      1, // schema_version
+                      txId,
+                    ];
+                    return `(${rowValues.map((value) => collector.add(value)).join(", ")})`;
+                  })
+                  .join(", ");
+
+                const insertSql = `
+                  INSERT INTO triples (
+                    id, entity_id, attribute, value_type,
+                    value_string, value_number, value_boolean, value_datetime, value_json,
+                    created_at, created_by, entity_type, schema_version, tx_id
+                  ) VALUES ${valuesSql}
+                `;
+
+                yield* sql.unsafe(insertSql, [...collector.params]).pipe(
+                  Effect.mapError(
+                    (error: unknown) =>
+                      new WriteError({
+                        message: `Bulk insert failed at offset ${i}: ${String(error)}`,
+                        cause: error,
+                      }),
+                  ),
+                );
+              }
+
+              return prepared.map(({ id, input, packed }) => ({
+                id,
+                entity_id: input.entityId,
+                attribute: input.attribute,
+                value_type: packed.value_type,
+                value_string: packed.value_string,
+                value_number: packed.value_number,
+                value_boolean: packed.value_boolean,
+                value_datetime: packed.value_datetime,
+                value_json: packed.value_json,
+                created_at: timestamp,
+                created_by: input.createdBy ?? null,
+                retracted_at: null,
+                entity_type: input.entityType ?? null,
+                schema_version: 1,
+                tx_id: txId,
+                retract_tx_id: null,
+              })) as readonly TripleRow[];
+            }),
+          ),
+        ).pipe(
+          Effect.mapError((error) =>
+            error instanceof WriteError
+              ? error
+              : new WriteError({
+                  message: `Bulk insert failed: ${String(error)}`,
+                  cause: error,
+                }),
+          ),
+        );
+      };
+
+      const retract: StorageAdapterService["retract"] = (id, timestamp, txId) =>
+        provide(
+          Effect.gen(function* () {
+            yield* sql`
+              UPDATE triples
+              SET retracted_at = ${timestamp}, retract_tx_id = ${txId ?? null}
+              WHERE id = ${id} AND retracted_at IS NULL
+            `.pipe(
+              Effect.mapError(
+                (error) =>
+                  new WriteError({
+                    message: `Failed to retract triple: ${String(error)}`,
+                    cause: error,
+                  }),
+              ),
+            );
+          }),
+        );
+
+      // =========================================================================
+      // Read Operations
+      // =========================================================================
+
+      const getById: StorageAdapterService["getById"] = (id) =>
+        provide(
+          Effect.gen(function* () {
+            const rows = yield* sql<TripleRow>`
+              SELECT * FROM triples
+              WHERE id = ${id} AND retracted_at IS NULL
+            `.pipe(
+              Effect.mapError(
+                (error) =>
+                  new ReadError({
+                    message: `Failed to get triple: ${String(error)}`,
+                    cause: error,
+                  }),
+              ),
+            );
+
+            return rows.length > 0 ? rows[0]! : null;
+          }),
+        );
+
+      const getByEntity: StorageAdapterService["getByEntity"] = (entityId) =>
+        provide(
+          Effect.gen(function* () {
+            const rows = yield* sql<TripleRow>`
+              SELECT * FROM triples
+              WHERE entity_id = ${entityId} AND retracted_at IS NULL
+            `.pipe(
+              Effect.mapError(
+                (error) =>
+                  new ReadError({
+                    message: `Failed to get entity: ${String(error)}`,
+                    cause: error,
+                  }),
+              ),
+            );
+
+            return rows;
+          }),
+        );
+
+      const query: StorageAdapterService["query"] = (pattern) =>
+        provide(
+          Effect.gen(function* () {
+            const collector = createParamCollector(PostgresqlDialect);
+            const conditions: string[] = ["retracted_at IS NULL"];
+
+            if (pattern.entityId && !isVariable(pattern.entityId)) {
+              conditions.push(`entity_id = ${collector.add(pattern.entityId)}`);
+            }
+
+            if (pattern.attribute && !isVariable(pattern.attribute)) {
+              conditions.push(`attribute = ${collector.add(pattern.attribute)}`);
+            }
+
+            if (pattern.entityType) {
+              conditions.push(`entity_type = ${collector.add(pattern.entityType)}`);
+            }
+
+            if (pattern.value && !isVariable(pattern.value)) {
+              const packed = packValue(pattern.value);
+              conditions.push(`value_type = ${collector.add(packed.value_type)}`);
+
+              switch (packed.value_type) {
+                case "string":
+                case "ref":
+                case "blob":
+                  conditions.push(`value_string = ${collector.add(packed.value_string)}`);
+                  break;
+                case "number":
+                  conditions.push(`value_number = ${collector.add(packed.value_number)}`);
+                  break;
+                case "boolean":
+                  conditions.push(`value_boolean = ${collector.add(packed.value_boolean)}`);
+                  break;
+                case "datetime":
+                  conditions.push(`value_datetime = ${collector.add(packed.value_datetime)}`);
+                  break;
+                case "json":
+                  break;
+              }
+            }
+
+            const whereClause = conditions.join(" AND ");
+
+            const rows = yield* sql
+              .unsafe<TripleRow>(`SELECT * FROM triples WHERE ${whereClause}`, [
+                ...collector.params,
+              ])
+              .pipe(
+                Effect.mapError(
+                  (error) =>
+                    new ReadError({
+                      message: `Failed to query triples: ${String(error)}`,
+                      cause: error,
+                    }),
+                ),
+              );
+
+            return rows;
+          }),
+        );
+
+      const queryAsOf: StorageAdapterService["queryAsOf"] = (pattern, asOf) =>
+        provide(
+          Effect.gen(function* () {
+            const collector = createParamCollector(PostgresqlDialect);
+            const conditions: string[] = [
+              `created_at <= ${collector.add(asOf)}`,
+              `(retracted_at IS NULL OR retracted_at > ${collector.add(asOf)})`,
+            ];
+
+            if (pattern.entityId && !isVariable(pattern.entityId)) {
+              conditions.push(`entity_id = ${collector.add(pattern.entityId)}`);
+            }
+
+            if (pattern.attribute && !isVariable(pattern.attribute)) {
+              conditions.push(`attribute = ${collector.add(pattern.attribute)}`);
+            }
+
+            if (pattern.entityType) {
+              conditions.push(`entity_type = ${collector.add(pattern.entityType)}`);
+            }
+
+            const whereClause = conditions.join(" AND ");
+
+            const rows = yield* sql
+              .unsafe<TripleRow>(`SELECT * FROM triples WHERE ${whereClause}`, [
+                ...collector.params,
+              ])
+              .pipe(
+                Effect.mapError(
+                  (error) =>
+                    new ReadError({
+                      message: `Failed to query triples as of: ${String(error)}`,
+                      cause: error,
+                    }),
+                ),
+              );
+
+            return rows;
+          }),
+        );
+
+      const history: StorageAdapterService["history"] = (entityId) =>
+        provide(
+          Effect.gen(function* () {
+            const rows = yield* sql<TripleRow>`
+              SELECT * FROM triples
+              WHERE entity_id = ${entityId}
+              ORDER BY created_at ASC
+            `.pipe(
+              Effect.mapError(
+                (error) =>
+                  new ReadError({
+                    message: `Failed to get history: ${String(error)}`,
+                    cause: error,
+                  }),
+              ),
+            );
+
+            return rows;
+          }),
+        );
+
+      const rawQuery = <T extends object>(sqlString: string, params: readonly unknown[]) =>
+        provide(
+          Effect.gen(function* () {
+            const rows = yield* sql.unsafe<T>(sqlString, [...params]).pipe(
+              Effect.mapError(
+                (error) =>
+                  new ReadError({
+                    message: `Raw query failed: ${String(error)}`,
+                    cause: error,
+                  }),
+              ),
+            );
+
+            return rows as readonly T[];
+          }),
+        );
+
+      // =========================================================================
+      // Lifecycle
+      // =========================================================================
+
+      const initialize: StorageAdapterService["initialize"] = () =>
+        provide(
+          runMigrations.pipe(
+            Effect.mapError((error) =>
+              error instanceof MigrationError
+                ? error
+                : new MigrationError({
+                    version: 0,
+                    name: "unknown",
+                    message: `Migration failed: ${String(error)}`,
+                    cause: error,
+                  }),
+            ),
+          ),
+        );
+
+      const close: StorageAdapterService["close"] = () => Effect.void;
+
+      return {
+        withTransaction,
+        insert,
+        batchInsert,
+        retract,
+        getById,
+        getByEntity,
+        query,
+        queryAsOf,
+        history,
+        rawQuery,
+        initialize,
+        close,
+      } satisfies StorageAdapterService;
+    }),
+  );
+
+/**
+ * Default PostgreSQL adapter.
+ */
+export const PostgresqlAdapterLive = makePostgresqlAdapter();

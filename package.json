@@ -1,0 +1,36 @@
+{
+  "name": "effect-triples-monorepo",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Effect-native triple store, Datalog engine, and storage adapters",
+  "type": "module",
+  "scripts": {
+    "build": "turbo run build",
+    "clean": "turbo run clean",
+    "check": "pnpm format:check && pnpm lint && pnpm typecheck && pnpm test && pnpm build",
+    "dev": "turbo watch build",
+    "format": "oxfmt --write .",
+    "format:check": "oxfmt --check .",
+    "lint": "oxlint .",
+    "pack:check": "node scripts/check-packages.mjs",
+    "test": "turbo run test",
+    "test:foundationdb:integration": "pnpm --filter effect-triples-foundationdb test:integration",
+    "test:postgres:integration": "pnpm --filter effect-triples-postgres test:integration",
+    "test:watch": "turbo watch test",
+    "typecheck": "turbo run typecheck"
+  },
+  "devDependencies": {
+    "@types/node": "catalog:",
+    "oxfmt": "0.44.0",
+    "oxlint": "1.59.0",
+    "tsdown": "catalog:",
+    "tsx": "catalog:",
+    "turbo": "2.8.20",
+    "typescript": "catalog:",
+    "vitest": "catalog:"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "packageManager": "pnpm@10.11.0"
+}

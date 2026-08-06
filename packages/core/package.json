@@ -1,0 +1,132 @@
+{
+  "name": "effect-triples",
+  "version": "0.1.0",
+  "description": "Effect-native temporal triple store with Datalog, SPARQL, snapshots, and subscriptions",
+  "keywords": [
+    "database",
+    "datalog",
+    "effect",
+    "sparql",
+    "triplestore"
+  ],
+  "homepage": "https://github.com/bjacobso/effect-triples#readme",
+  "bugs": {
+    "url": "https://github.com/bjacobso/effect-triples/issues"
+  },
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/bjacobso/effect-triples.git",
+    "directory": "packages/core"
+  },
+  "files": [
+    "dist",
+    "LICENSE",
+    "README.md"
+  ],
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    },
+    "./Datalog": {
+      "types": "./dist/Datalog.d.ts",
+      "import": "./dist/Datalog.js",
+      "default": "./dist/Datalog.js"
+    },
+    "./datalog": {
+      "types": "./dist/Datalog.d.ts",
+      "import": "./dist/Datalog.js",
+      "default": "./dist/Datalog.js"
+    },
+    "./DatalogRpc": {
+      "types": "./dist/DatalogRpc.d.ts",
+      "import": "./dist/DatalogRpc.js",
+      "default": "./dist/DatalogRpc.js"
+    },
+    "./DatalogApi": {
+      "types": "./dist/DatalogApi.d.ts",
+      "import": "./dist/DatalogApi.js",
+      "default": "./dist/DatalogApi.js"
+    },
+    "./Database": {
+      "types": "./dist/Database.d.ts",
+      "import": "./dist/Database.js",
+      "default": "./dist/Database.js"
+    },
+    "./DatabaseApi": {
+      "types": "./dist/DatabaseApi.d.ts",
+      "import": "./dist/DatabaseApi.js",
+      "default": "./dist/DatabaseApi.js"
+    },
+    "./DatabaseRpc": {
+      "types": "./dist/DatabaseRpc.d.ts",
+      "import": "./dist/DatabaseRpc.js",
+      "default": "./dist/DatabaseRpc.js"
+    },
+    "./Sparql": {
+      "types": "./dist/Sparql.d.ts",
+      "import": "./dist/Sparql.js",
+      "default": "./dist/Sparql.js"
+    },
+    "./Snapshot": {
+      "types": "./dist/Snapshot.d.ts",
+      "import": "./dist/Snapshot.js",
+      "default": "./dist/Snapshot.js"
+    },
+    "./SnapshotApi": {
+      "types": "./dist/SnapshotApi.d.ts",
+      "import": "./dist/SnapshotApi.js",
+      "default": "./dist/SnapshotApi.js"
+    },
+    "./Triple": {
+      "types": "./dist/Triple.d.ts",
+      "import": "./dist/Triple.js",
+      "default": "./dist/Triple.js"
+    },
+    "./TripleRpc": {
+      "types": "./dist/TripleRpc.d.ts",
+      "import": "./dist/TripleRpc.js",
+      "default": "./dist/TripleRpc.js"
+    },
+    "./TripleApi": {
+      "types": "./dist/TripleApi.d.ts",
+      "import": "./dist/TripleApi.js",
+      "default": "./dist/TripleApi.js"
+    },
+    "./subscriptions": {
+      "types": "./dist/subscriptions/index.d.ts",
+      "import": "./dist/subscriptions/index.js",
+      "default": "./dist/subscriptions/index.js"
+    },
+    "./types/Pattern": {
+      "types": "./dist/types/Pattern.d.ts",
+      "import": "./dist/types/Pattern.js",
+      "default": "./dist/types/Pattern.js"
+    }
+  },
+  "scripts": {
+    "build": "tsdown",
+    "dev": "tsdown --watch",
+    "test": "vitest --run",
+    "typecheck": "tsc --noEmit",
+    "clean": "rm -rf dist"
+  },
+  "dependencies": {
+    "@effect/platform": "catalog:",
+    "@effect/rpc": "catalog:",
+    "effect": "catalog:",
+    "ulidx": "catalog:"
+  },
+  "devDependencies": {
+    "@types/node": "catalog:",
+    "vitest": "catalog:"
+  },
+  "engines": {
+    "node": ">=22"
+  }
+}
