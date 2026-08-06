@@ -1,18 +1,16 @@
 /**
- * Integration tests: TripleStoreService → DatalogService pipeline.
+ * Integration tests for write/query coherence through Triples.
  *
- * These tests verify that data written through the TripleStoreService layer
- * is correctly queryable through the DatalogService layer, exercising the
+ * These tests verify that data written through Triples is queryable through
+ * the same service, exercising the
  * full stack: InMemoryKvBackend → Hexastore → Layer adapters → Effect services.
  */
 
 import { describe, it, expect } from "vitest";
 import { Effect, Layer } from "effect";
-import { TripleStore } from "../../../src/store/TripleStore.js";
-import { Datalog } from "../../../src/datalog/service.js";
+import { Triples } from "../../../src/store/Triples.js";
 import type { EntityId } from "effect-triples";
-import { KvTripleStoreLive } from "../../../src/kv/layers/KvTripleStoreLive.js";
-import { KvDatalogLive } from "../../../src/kv/layers/KvDatalogLive.js";
+import { KvTriplesLive } from "../../../src/kv/layers/KvTriplesLive.js";
 import { KvBackend } from "../../../src/kv/kv/KvBackend.js";
 import { makeTestKvBackend } from "../../../src/kv/kv/InMemoryKvBackend.js";
 import { TripleStoreRuntimeLayer } from "../../../src/store/TripleStoreRuntime.js";
@@ -29,20 +27,16 @@ const makeTestLayer = () => {
     KvBackend,
     Effect.sync(() => makeTestKvBackend()),
   );
-  return KvDatalogLive.pipe(
-    Layer.provideMerge(KvTripleStoreLive),
-    Layer.provide(TripleStoreRuntimeLayer),
-    Layer.provide(freshKvBackend),
-  );
+  return KvTriplesLive.pipe(Layer.provide(TripleStoreRuntimeLayer), Layer.provide(freshKvBackend));
 };
 
-const runTest = <A, E>(effect: Effect.Effect<A, E, TripleStore | Datalog>): Promise<A> =>
+const runTest = <A, E>(effect: Effect.Effect<A, E, Triples>): Promise<A> =>
   Effect.runPromise(Effect.provide(effect, makeTestLayer()));
 
 // ─── Seed data ─────────────────────────────────────────────────────────────
 
 const seedCompanyData = Effect.gen(function* () {
-  const store = yield* TripleStore;
+  const store = yield* Triples;
 
   // Departments
   yield* store.assertBatch([
@@ -92,12 +86,12 @@ const seedCompanyData = Effect.gen(function* () {
 
 // ─── Basic integration ────────────────────────────────────────────────────
 
-describe("Integration: TripleStore → Datalog", () => {
-  it("queries data written via TripleStoreService using DatalogService", async () => {
+describe("Integration: Triples → Datalog", () => {
+  it("queries data written through the same Triples service", async () => {
     await runTest(
       Effect.gen(function* () {
         yield* seedCompanyData;
-        const datalog = yield* Datalog;
+        const datalog = yield* Triples;
 
         const { results } = yield* datalog.query({
           find: ["?name"],
@@ -114,7 +108,7 @@ describe("Integration: TripleStore → Datalog", () => {
     await runTest(
       Effect.gen(function* () {
         yield* seedCompanyData;
-        const datalog = yield* Datalog;
+        const datalog = yield* Triples;
 
         const { results } = yield* datalog.query({
           find: ["?empName", "?deptName"],
@@ -135,11 +129,11 @@ describe("Integration: TripleStore → Datalog", () => {
     );
   });
 
-  it("filters with predicates on data written via TripleStore", async () => {
+  it("filters with predicates on data written via Triples", async () => {
     await runTest(
       Effect.gen(function* () {
         yield* seedCompanyData;
-        const datalog = yield* Datalog;
+        const datalog = yield* Triples;
 
         const { results } = yield* datalog.query({
           find: ["?name", "?age"],
@@ -166,11 +160,11 @@ describe("Integration: retraction visibility in Datalog", () => {
     await runTest(
       Effect.gen(function* () {
         yield* seedCompanyData;
-        const store = yield* TripleStore;
-        const datalog = yield* Datalog;
+        const store = yield* Triples;
+        const datalog = yield* Triples;
 
         // Find Diana's name triple and retract it
-        const dianaTriples = yield* store.query({ entityId: "emp:diana", attribute: ":emp/name" });
+        const dianaTriples = yield* store.match({ entityId: "emp:diana", attribute: ":emp/name" });
         expect(dianaTriples.length).toBe(1);
         yield* store.retract(dianaTriples[0]!.id);
 
@@ -190,8 +184,8 @@ describe("Integration: retraction visibility in Datalog", () => {
     await runTest(
       Effect.gen(function* () {
         yield* seedCompanyData;
-        const store = yield* TripleStore;
-        const datalog = yield* Datalog;
+        const store = yield* Triples;
+        const datalog = yield* Triples;
 
         // Retract all of Bob's triples
         const count = yield* store.retractByPattern({ entityId: "emp:bob" });
@@ -221,8 +215,8 @@ describe("Integration: transact + Datalog query", () => {
   it("data added via transact is queryable", async () => {
     await runTest(
       Effect.gen(function* () {
-        const store = yield* TripleStore;
-        const datalog = yield* Datalog;
+        const store = yield* Triples;
+        const datalog = yield* Triples;
 
         yield* store.transact([
           { op: "assert", entityId: "item:1", attribute: ":item/name", value: str("Widget") },
@@ -250,11 +244,11 @@ describe("Integration: transact + Datalog query", () => {
     await runTest(
       Effect.gen(function* () {
         yield* seedCompanyData;
-        const store = yield* TripleStore;
-        const datalog = yield* Datalog;
+        const store = yield* Triples;
+        const datalog = yield* Triples;
 
         // Get Alice's salary triple
-        const salaryTriples = yield* store.query({
+        const salaryTriples = yield* store.match({
           entityId: "emp:alice",
           attribute: ":emp/salary",
         });
@@ -289,7 +283,7 @@ describe("Integration: multi-hop ref traversal", () => {
     await runTest(
       Effect.gen(function* () {
         yield* seedCompanyData;
-        const datalog = yield* Datalog;
+        const datalog = yield* Triples;
 
         const { results } = yield* datalog.query({
           find: ["?projName", "?leadName", "?deptName"],
@@ -322,11 +316,11 @@ describe("Integration: multi-hop ref traversal", () => {
 // ─── Aggregation ──────────────────────────────────────────────────────────
 
 describe("Integration: aggregation", () => {
-  it("computes aggregate values over TripleStore data", async () => {
+  it("computes aggregate values over Triples data", async () => {
     await runTest(
       Effect.gen(function* () {
         yield* seedCompanyData;
-        const datalog = yield* Datalog;
+        const datalog = yield* Triples;
 
         // Count employees per department
         const { results } = yield* datalog.query({
@@ -352,7 +346,7 @@ describe("Integration: aggregation", () => {
     await runTest(
       Effect.gen(function* () {
         yield* seedCompanyData;
-        const datalog = yield* Datalog;
+        const datalog = yield* Triples;
 
         const { results } = yield* datalog.query({
           find: ["?deptName", "?totalSalary"],
@@ -381,10 +375,10 @@ describe("Integration: wrapped queries", () => {
     await runTest(
       Effect.gen(function* () {
         yield* seedCompanyData;
-        const datalog = yield* Datalog;
+        const datalog = yield* Triples;
 
         // Page 1
-        const page1 = yield* datalog.queryWrapped({
+        const page1 = yield* datalog.queryPage({
           inner: {
             find: ["?name", "?age"],
             where: [
@@ -409,9 +403,9 @@ describe("Integration: wrapped queries", () => {
     await runTest(
       Effect.gen(function* () {
         yield* seedCompanyData;
-        const datalog = yield* Datalog;
+        const datalog = yield* Triples;
 
-        const result = yield* datalog.queryWrapped({
+        const result = yield* datalog.queryPage({
           inner: {
             find: ["?name", "?salary"],
             where: [
@@ -437,7 +431,7 @@ describe("Integration: negation", () => {
     await runTest(
       Effect.gen(function* () {
         yield* seedCompanyData;
-        const datalog = yield* Datalog;
+        const datalog = yield* Triples;
 
         // Use a variable for the department, then bind it via a join and
         // negate on department name. Direct constant refs in value position
@@ -466,8 +460,8 @@ describe("Integration: write → retract → Datalog sees current state", () => 
   it("after update, Datalog sees only the latest value", async () => {
     await runTest(
       Effect.gen(function* () {
-        const store = yield* TripleStore;
-        const datalog = yield* Datalog;
+        const store = yield* Triples;
+        const datalog = yield* Triples;
 
         // Write initial value
         const t1 = yield* store.assert({
@@ -499,16 +493,16 @@ describe("Integration: write → retract → Datalog sees current state", () => 
 
 // ─── getEntity + Datalog consistency ──────────────────────────────────────
 
-describe("Integration: TripleStore.getEntity and Datalog consistency", () => {
+describe("Integration: Triples.getEntity and Datalog consistency", () => {
   it("getEntity and Datalog query return consistent data", async () => {
     await runTest(
       Effect.gen(function* () {
         yield* seedCompanyData;
-        const store = yield* TripleStore;
-        const datalog = yield* Datalog;
+        const store = yield* Triples;
+        const datalog = yield* Triples;
 
-        // Get Alice's data via TripleStore
-        const entityTriples = yield* store.getEntity("emp:alice" as EntityId);
+        // Get Alice's data via Triples
+        const entityTriples = yield* store.entity("emp:alice" as EntityId);
         const tsName = entityTriples.find((t) => t.attribute === ":emp/name");
         const tsAge = entityTriples.find((t) => t.attribute === ":emp/age");
 

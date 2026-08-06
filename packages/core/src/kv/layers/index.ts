@@ -1,2 +1,1 @@
-export { KvTripleStoreLive } from "./KvTripleStoreLive.js";
-export { KvDatalogLive } from "./KvDatalogLive.js";
+export { KvTriplesLive, KvTriples } from "./KvTriplesLive.js";

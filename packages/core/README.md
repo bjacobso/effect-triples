@@ -12,40 +12,25 @@ npm install effect effect-triples
 ## In-memory store
 
 ```ts
-import { Effect, Layer } from "effect";
-import {
-  Datalog,
-  InMemoryKvBackendLive,
-  KvDatalogLive,
-  KvTripleStoreLive,
-  TripleStore,
-  TripleStoreRuntimeLayer,
-  string,
-} from "effect-triples";
-
-const StorageLive = KvDatalogLive.pipe(
-  Layer.provideMerge(KvTripleStoreLive),
-  Layer.provide(TripleStoreRuntimeLayer),
-  Layer.provide(InMemoryKvBackendLive),
-);
+import { Effect } from "effect";
+import { KvTriples, Triples, string } from "effect-triples";
 
 const program = Effect.gen(function* () {
-  const store = yield* TripleStore;
-  const datalog = yield* Datalog;
+  const triples = yield* Triples;
 
-  yield* store.assert({
+  yield* triples.assert({
     entityId: "person:alice",
     attribute: ":person/name",
     value: string("Alice"),
   });
 
-  return yield* datalog.query({
+  return yield* triples.query({
     find: ["?name"],
     where: [["?person", ":person/name", "?name"]],
   });
 });
 
-Effect.runPromise(program.pipe(Effect.provide(StorageLive)));
+Effect.runPromise(program.pipe(Effect.provide(KvTriples.layer)));
 ```
 
 SQL implementations live in `effect-triples-sql` and the backend-specific packages.

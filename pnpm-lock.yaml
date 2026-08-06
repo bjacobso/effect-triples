@@ -81,6 +81,25 @@ importers:
         specifier: 'catalog:'
         version: 3.2.4(@types/node@25.9.1)(lightningcss@1.33.0)(tsx@4.19.0)(yaml@2.9.0)
 
+  examples/demo:
+    dependencies:
+      effect:
+        specifier: 'catalog:'
+        version: 3.19.13
+      effect-triples:
+        specifier: workspace:^
+        version: link:../../packages/core
+    devDependencies:
+      '@types/node':
+        specifier: 'catalog:'
+        version: 25.9.1
+      tsx:
+        specifier: 'catalog:'
+        version: 4.19.0
+      typescript:
+        specifier: 'catalog:'
+        version: 6.0.2
+
   packages/cloudflare:
     dependencies:
       effect:
@@ -261,6 +280,9 @@ importers:
       effect-triples-sqlite:
         specifier: workspace:^
         version: link:../../packages/sqlite
+      effect-triples-testkit:
+        specifier: workspace:^
+        version: link:../../packages/testkit
     devDependencies:
       '@types/node':
         specifier: 'catalog:'

@@ -14,7 +14,7 @@
 
 import { Effect } from "effect";
 import type { StoreCapability } from "./StoreCapability.js";
-import type { TripleStoreService } from "./TripleStore.js";
+import type { TriplesService } from "./Triples.js";
 import type { ChangeEmitterService } from "./ChangeEmitter.js";
 import { makeWriteInterceptors } from "./writeEventUtils.js";
 
@@ -33,7 +33,7 @@ export const makeChangeEmissionCapability = (
   name: "ChangeEmission",
   priority: 50,
   requires: [],
-  wrap: (store: TripleStoreService): TripleStoreService => {
+  wrap: (store: TriplesService): TriplesService => {
     const safeEmit = makeWriteInterceptors(
       store,
       (event) => emitter.emit(event).pipe(Effect.catchAllCause(() => Effect.void)),
@@ -41,19 +41,9 @@ export const makeChangeEmissionCapability = (
     );
 
     return {
-      // Read operations — pass through unchanged
-      getTriple: store.getTriple,
-      getEntity: store.getEntity,
-      query: store.query,
-      queryAsOf: store.queryAsOf,
-      history: store.history,
-      queryWithBuilder: store.queryWithBuilder,
-
+      ...store,
       // Write operations — emit after success
       ...safeEmit,
-
-      // Transaction scope — pass through unchanged
-      withTransaction: store.withTransaction,
     };
   },
 });

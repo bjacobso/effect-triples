@@ -1,23 +1,10 @@
 import { describe, it, expect } from "vitest";
-import { Effect, Layer } from "effect";
-import { SqliteClient } from "@effect/sql-sqlite-node";
+import { Effect } from "effect";
 import { SqlClient } from "@effect/sql";
-import { DatalogLive, SqlQueryExecutorLive } from "effect-triples-sql";
-import {
-  TripleStore,
-  TripleStoreLive,
-  Datalog,
-  TripleStoreRuntimeLayer,
-  string,
-  number,
-  ref,
-  compileWithRules,
-  type DatalogQueryWithRules,
-} from "effect-triples";
-import { SqliteAdapterLive } from "effect-triples-sqlite";
-import { SqliteFullTestLayer } from "./fixtures/SqliteTestLayer.js";
+import { Triples, string, number, ref, compileWithRules, type DatalogQuery } from "effect-triples";
+import { SqliteTestLayer } from "./fixtures/SqliteTestLayer.js";
 
-const TestLayer = SqliteFullTestLayer;
+const TestLayer = SqliteTestLayer;
 
 /**
  * Test data setup:
@@ -36,7 +23,7 @@ const TestLayer = SqliteFullTestLayer;
  * - p6: John McTiernan (director)
  */
 const setupTestData = Effect.gen(function* () {
-  const store = yield* TripleStore;
+  const store = yield* Triples;
 
   // People
   yield* store.assertBatch([
@@ -82,7 +69,7 @@ describe("Datalog Integration", () => {
       const result = await Effect.runPromise(
         Effect.gen(function* () {
           yield* setupTestData;
-          const datalog = yield* Datalog;
+          const datalog = yield* Triples;
 
           return yield* datalog.query({
             find: ["?name"],
@@ -100,7 +87,7 @@ describe("Datalog Integration", () => {
       const result = await Effect.runPromise(
         Effect.gen(function* () {
           yield* setupTestData;
-          const datalog = yield* Datalog;
+          const datalog = yield* Triples;
 
           return yield* datalog.query({
             find: ["?person"],
@@ -117,7 +104,7 @@ describe("Datalog Integration", () => {
       const result = await Effect.runPromise(
         Effect.gen(function* () {
           yield* setupTestData;
-          const datalog = yield* Datalog;
+          const datalog = yield* Triples;
 
           return yield* datalog.query({
             find: ["?name", "?age"],
@@ -142,7 +129,7 @@ describe("Datalog Integration", () => {
       const result = await Effect.runPromise(
         Effect.gen(function* () {
           yield* setupTestData;
-          const datalog = yield* Datalog;
+          const datalog = yield* Triples;
 
           return yield* datalog.query({
             find: ["?name", "?age"],
@@ -165,7 +152,7 @@ describe("Datalog Integration", () => {
       const result = await Effect.runPromise(
         Effect.gen(function* () {
           yield* setupTestData;
-          const datalog = yield* Datalog;
+          const datalog = yield* Triples;
 
           return yield* datalog.query({
             find: ["?name"],
@@ -186,7 +173,7 @@ describe("Datalog Integration", () => {
       const result = await Effect.runPromise(
         Effect.gen(function* () {
           yield* setupTestData;
-          const datalog = yield* Datalog;
+          const datalog = yield* Triples;
 
           return yield* datalog.query({
             find: ["?name"],
@@ -207,7 +194,7 @@ describe("Datalog Integration", () => {
       const result = await Effect.runPromise(
         Effect.gen(function* () {
           yield* setupTestData;
-          const datalog = yield* Datalog;
+          const datalog = yield* Triples;
 
           return yield* datalog.query({
             find: ["?name"],
@@ -231,7 +218,7 @@ describe("Datalog Integration", () => {
       const result = await Effect.runPromise(
         Effect.gen(function* () {
           yield* setupTestData;
-          const datalog = yield* Datalog;
+          const datalog = yield* Triples;
 
           return yield* datalog.query({
             find: ["?title", "?directorName"],
@@ -259,7 +246,7 @@ describe("Datalog Integration", () => {
       const result = await Effect.runPromise(
         Effect.gen(function* () {
           yield* setupTestData;
-          const datalog = yield* Datalog;
+          const datalog = yield* Triples;
 
           return yield* datalog.query({
             find: ["?title"],
@@ -281,7 +268,7 @@ describe("Datalog Integration", () => {
       const result = await Effect.runPromise(
         Effect.gen(function* () {
           yield* setupTestData;
-          const datalog = yield* Datalog;
+          const datalog = yield* Triples;
 
           return yield* datalog.query({
             find: ["?title", "?directorName"],
@@ -313,7 +300,7 @@ describe("Datalog Integration", () => {
       const result = await Effect.runPromise(
         Effect.gen(function* () {
           yield* setupTestData;
-          const datalog = yield* Datalog;
+          const datalog = yield* Triples;
 
           // Query movies directed by p4 (James Cameron) using typed ref constant
           return yield* datalog.query({
@@ -334,7 +321,7 @@ describe("Datalog Integration", () => {
       const result = await Effect.runPromise(
         Effect.gen(function* () {
           yield* setupTestData;
-          const datalog = yield* Datalog;
+          const datalog = yield* Triples;
 
           // Query movies with cast p5 (Arnold) using typed ref constant
           return yield* datalog.query({
@@ -356,7 +343,7 @@ describe("Datalog Integration", () => {
       const result = await Effect.runPromise(
         Effect.gen(function* () {
           yield* setupTestData;
-          const datalog = yield* Datalog;
+          const datalog = yield* Triples;
 
           // A plain string "p4" should NOT match ref("p4") — value_type mismatch
           return yield* datalog.query({
@@ -379,7 +366,7 @@ describe("Datalog Integration", () => {
       const result = await Effect.runPromise(
         Effect.gen(function* () {
           yield* setupTestData;
-          const datalog = yield* Datalog;
+          const datalog = yield* Triples;
 
           // Find movies from before 1986 with Arnold
           return yield* datalog.query({
@@ -406,7 +393,7 @@ describe("Datalog Integration", () => {
       const result = await Effect.runPromise(
         Effect.gen(function* () {
           yield* setupTestData;
-          const datalog = yield* Datalog;
+          const datalog = yield* Triples;
 
           return yield* datalog.query({
             find: ["?name"],
@@ -422,7 +409,7 @@ describe("Datalog Integration", () => {
       const result = await Effect.runPromise(
         Effect.gen(function* () {
           yield* setupTestData;
-          const datalog = yield* Datalog;
+          const datalog = yield* Triples;
 
           return yield* datalog.query({
             find: ["?name"],
@@ -444,10 +431,10 @@ describe("Datalog Integration", () => {
       const result = await Effect.runPromise(
         Effect.gen(function* () {
           yield* setupTestData;
-          const datalog = yield* Datalog;
+          const datalog = yield* Triples;
 
           // Missing 'where'
-          return yield* datalog.query({ find: ["?x"] });
+          return yield* datalog.query({ find: ["?x"] } as unknown as DatalogQuery);
         }).pipe(Effect.provide(TestLayer), Effect.either),
       );
 
@@ -461,7 +448,7 @@ describe("Datalog Integration", () => {
       const result = await Effect.runPromise(
         Effect.gen(function* () {
           yield* setupTestData;
-          const datalog = yield* Datalog;
+          const datalog = yield* Triples;
 
           return yield* datalog.query({
             find: ["?name"],
@@ -483,7 +470,7 @@ describe("Datalog Integration", () => {
       const result = await Effect.runPromise(
         Effect.gen(function* () {
           yield* setupTestData;
-          const datalog = yield* Datalog;
+          const datalog = yield* Triples;
 
           // Find people who do NOT have status = "inactive"
           return yield* datalog.query({
@@ -506,7 +493,7 @@ describe("Datalog Integration", () => {
       const result = await Effect.runPromise(
         Effect.gen(function* () {
           yield* setupTestData;
-          const datalog = yield* Datalog;
+          const datalog = yield* Triples;
 
           // Find people who have an age but no status
           // First get people with age, then exclude those with status
@@ -533,7 +520,7 @@ describe("Datalog Integration", () => {
       const result = await Effect.runPromise(
         Effect.gen(function* () {
           yield* setupTestData;
-          const datalog = yield* Datalog;
+          const datalog = yield* Triples;
 
           // Find people named Alice OR Bob
           return yield* datalog.query({
@@ -561,7 +548,7 @@ describe("Datalog Integration", () => {
       const result = await Effect.runPromise(
         Effect.gen(function* () {
           yield* setupTestData;
-          const datalog = yield* Datalog;
+          const datalog = yield* Triples;
 
           // Find people who are active OR are 35 years old
           return yield* datalog.query({
@@ -593,7 +580,7 @@ describe("Datalog Integration", () => {
       const result = await Effect.runPromise(
         Effect.gen(function* () {
           yield* setupTestData;
-          const datalog = yield* Datalog;
+          const datalog = yield* Triples;
 
           // Count all people with ages
           return yield* datalog.query({
@@ -613,7 +600,7 @@ describe("Datalog Integration", () => {
       const result = await Effect.runPromise(
         Effect.gen(function* () {
           yield* setupTestData;
-          const datalog = yield* Datalog;
+          const datalog = yield* Triples;
 
           // Count movies per director (implicit GROUP BY)
           return yield* datalog.query({
@@ -640,7 +627,7 @@ describe("Datalog Integration", () => {
       const result = await Effect.runPromise(
         Effect.gen(function* () {
           yield* setupTestData;
-          const datalog = yield* Datalog;
+          const datalog = yield* Triples;
 
           // Count how many movies each actor is in
           return yield* datalog.query({
@@ -666,7 +653,7 @@ describe("Datalog Integration", () => {
       const result = await Effect.runPromise(
         Effect.gen(function* () {
           yield* setupTestData;
-          const datalog = yield* Datalog;
+          const datalog = yield* Triples;
 
           // Sum all ages (30 + 25 + 35 = 90)
           return yield* datalog.query({
@@ -685,7 +672,7 @@ describe("Datalog Integration", () => {
       const result = await Effect.runPromise(
         Effect.gen(function* () {
           yield* setupTestData;
-          const datalog = yield* Datalog;
+          const datalog = yield* Triples;
 
           // Average age (90 / 3 = 30)
           return yield* datalog.query({
@@ -704,7 +691,7 @@ describe("Datalog Integration", () => {
       const result = await Effect.runPromise(
         Effect.gen(function* () {
           yield* setupTestData;
-          const datalog = yield* Datalog;
+          const datalog = yield* Triples;
 
           // Min age = 25 (Bob)
           return yield* datalog.query({
@@ -723,7 +710,7 @@ describe("Datalog Integration", () => {
       const result = await Effect.runPromise(
         Effect.gen(function* () {
           yield* setupTestData;
-          const datalog = yield* Datalog;
+          const datalog = yield* Triples;
 
           // Max age = 35 (Charlie)
           return yield* datalog.query({
@@ -742,7 +729,7 @@ describe("Datalog Integration", () => {
       const result = await Effect.runPromise(
         Effect.gen(function* () {
           yield* setupTestData;
-          const datalog = yield* Datalog;
+          const datalog = yield* Triples;
 
           // Sum movie years per director
           return yield* datalog.query({
@@ -773,7 +760,7 @@ describe("Datalog Integration", () => {
       const result = await Effect.runPromise(
         Effect.gen(function* () {
           yield* setupTestData;
-          const datalog = yield* Datalog;
+          const datalog = yield* Triples;
 
           // Get min, max, and avg ages in one query
           return yield* datalog.query({
@@ -804,14 +791,7 @@ describe("Datalog Integration", () => {
  */
 describe("Recursive Datalog Queries", () => {
   // Layer with SqlClient exposed for recursive query tests
-  const sqliteLayer = SqliteClient.layer({ filename: ":memory:" });
-  const RecursiveTestLayer = DatalogLive.pipe(
-    Layer.provideMerge(SqlQueryExecutorLive),
-    Layer.provideMerge(TripleStoreLive),
-    Layer.provideMerge(SqliteAdapterLive),
-    Layer.provideMerge(sqliteLayer),
-    Layer.provide(TripleStoreRuntimeLayer),
-  );
+  const RecursiveTestLayer = TestLayer;
 
   /**
    * Set up a family tree for testing ancestry queries:
@@ -825,7 +805,7 @@ describe("Recursive Datalog Queries", () => {
    *    child1
    */
   const setupFamilyTree = Effect.gen(function* () {
-    const store = yield* TripleStore;
+    const store = yield* Triples;
 
     yield* store.assertBatch([
       // Grandpa
@@ -863,7 +843,7 @@ describe("Recursive Datalog Queries", () => {
           const sql = yield* SqlClient.SqlClient;
 
           // Define a simple "parent" rule
-          const query: DatalogQueryWithRules = {
+          const query: DatalogQuery = {
             find: ["?parent"],
             where: [["parent", "person1", "?parent"]],
             rules: [{ name: "parent", body: [["?x", ":parent", "?y"]] }],
@@ -890,7 +870,7 @@ describe("Recursive Datalog Queries", () => {
           const sql = yield* SqlClient.SqlClient;
 
           // Define an "ancestor" rule with recursion
-          const query: DatalogQueryWithRules = {
+          const query: DatalogQuery = {
             find: ["?ancestor"],
             where: [["ancestor", "person1", "?ancestor"]],
             rules: [
@@ -933,7 +913,7 @@ describe("Recursive Datalog Queries", () => {
           // With the rule body [?y, :parent, ?x], arg1=?y (child), arg2=?x (parent)
           // So child_of(arg1, arg2) means arg1 is a child of arg2
           // Query: child_of(?descendant, grandpa1) means ?descendant is a child of grandpa1
-          const query: DatalogQueryWithRules = {
+          const query: DatalogQuery = {
             find: ["?descendant"],
             where: [["child_of", "?descendant", "grandpa1"]],
             rules: [
@@ -973,7 +953,7 @@ describe("Recursive Datalog Queries", () => {
           // depth < 1 means recursive step only runs when current depth is 0, allowing one step
           // depth < 0 would mean no recursion at all, but that would fail the CTE
           // So maxDepth=1 means: base (depth 0) + one recursive level (depth 1)
-          const query: DatalogQueryWithRules = {
+          const query: DatalogQuery = {
             find: ["?ancestor"],
             where: [["ancestor", "person1", "?ancestor"]],
             rules: [
@@ -1014,7 +994,7 @@ describe("Recursive Datalog Queries", () => {
     it("should store transaction id when using transact()", async () => {
       const result = await Effect.runPromise(
         Effect.gen(function* () {
-          const store = yield* TripleStore;
+          const store = yield* Triples;
 
           // Use transact to create triples with shared tx_id
           const { txId, triples } = yield* store.transact(
@@ -1046,7 +1026,7 @@ describe("Recursive Datalog Queries", () => {
     it("should create transaction metadata triples", async () => {
       const result = await Effect.runPromise(
         Effect.gen(function* () {
-          const store = yield* TripleStore;
+          const store = yield* Triples;
 
           // Use transact to create triples with metadata
           const { txId } = yield* store.transact(
@@ -1055,7 +1035,7 @@ describe("Recursive Datalog Queries", () => {
           );
 
           // Query the transaction metadata
-          const txTriples = yield* store.getEntity(txId as any);
+          const txTriples = yield* store.entity(txId as any);
 
           // Should have :_tx/instant and :_tx/user triples
           const instantTriple = txTriples.find((t) => t.attribute === ":_tx/instant");
@@ -1082,8 +1062,8 @@ describe("Recursive Datalog Queries", () => {
     it("should bind transaction in 4-tuple patterns", async () => {
       const result = await Effect.runPromise(
         Effect.gen(function* () {
-          const store = yield* TripleStore;
-          const datalog = yield* Datalog;
+          const store = yield* Triples;
+          const datalog = yield* Triples;
 
           // Create some data with transactions
           yield* store.transact(
@@ -1123,8 +1103,8 @@ describe("Recursive Datalog Queries", () => {
     it("should query transaction metadata via 4-tuple and join", async () => {
       const result = await Effect.runPromise(
         Effect.gen(function* () {
-          const store = yield* TripleStore;
-          const datalog = yield* Datalog;
+          const store = yield* Triples;
+          const datalog = yield* Triples;
 
           // Create data with transaction and user
           yield* store.transact(
@@ -1165,8 +1145,8 @@ describe("Recursive Datalog Queries", () => {
     it("should filter by specific transaction id", async () => {
       const result = await Effect.runPromise(
         Effect.gen(function* () {
-          const store = yield* TripleStore;
-          const datalog = yield* Datalog;
+          const store = yield* Triples;
+          const datalog = yield* Triples;
 
           // Create two transactions
           const { txId: tx1 } = yield* store.transact([
@@ -1201,7 +1181,7 @@ describe("Recursive Datalog Queries", () => {
       const response = await Effect.runPromise(
         Effect.gen(function* () {
           yield* setupTestData;
-          const datalog = yield* Datalog;
+          const datalog = yield* Triples;
 
           return yield* datalog.query({
             find: ["?name"],
@@ -1219,14 +1199,14 @@ describe("Recursive Datalog Queries", () => {
       const response = await Effect.runPromise(
         Effect.gen(function* () {
           yield* setupTestData;
-          const datalog = yield* Datalog;
+          const datalog = yield* Triples;
 
           return yield* datalog.query(
             {
               find: ["?name"],
               where: [["?person", ":name", "?name"]],
             },
-            true,
+            { debug: true },
           );
         }).pipe(Effect.provide(TestLayer)),
       );
@@ -1243,7 +1223,7 @@ describe("Recursive Datalog Queries", () => {
       const response = await Effect.runPromise(
         Effect.gen(function* () {
           yield* setupTestData;
-          const datalog = yield* Datalog;
+          const datalog = yield* Triples;
 
           return yield* datalog.query(
             {
@@ -1254,7 +1234,7 @@ describe("Recursive Datalog Queries", () => {
                 [">=", "?age", 30],
               ],
             },
-            true,
+            { debug: true },
           );
         }).pipe(Effect.provide(TestLayer)),
       );
@@ -1272,7 +1252,7 @@ describe("Recursive Datalog Queries", () => {
       const response = await Effect.runPromise(
         Effect.gen(function* () {
           yield* setupTestData;
-          const datalog = yield* Datalog;
+          const datalog = yield* Triples;
 
           return yield* datalog.query(
             {
@@ -1280,7 +1260,7 @@ describe("Recursive Datalog Queries", () => {
               where: [["?person", ":name", "?name"]],
               aggregate: [["count", "?person", "?count"]],
             },
-            true,
+            { debug: true },
           );
         }).pipe(Effect.provide(TestLayer)),
       );
@@ -1294,7 +1274,7 @@ describe("Recursive Datalog Queries", () => {
       const response = await Effect.runPromise(
         Effect.gen(function* () {
           yield* setupTestData;
-          const datalog = yield* Datalog;
+          const datalog = yield* Triples;
 
           return yield* datalog.query(
             {
@@ -1304,7 +1284,7 @@ describe("Recursive Datalog Queries", () => {
                 ["?person", ":age", "?age"],
               ],
             },
-            true,
+            { debug: true },
           );
         }).pipe(Effect.provide(TestLayer)),
       );
@@ -1317,14 +1297,14 @@ describe("Recursive Datalog Queries", () => {
       const response = await Effect.runPromise(
         Effect.gen(function* () {
           yield* setupTestData;
-          const datalog = yield* Datalog;
+          const datalog = yield* Triples;
 
           return yield* datalog.query(
             {
               find: ["?name"],
               where: [["?person", ":name", "Alice"]],
             },
-            true,
+            { debug: true },
           );
         }).pipe(Effect.provide(TestLayer)),
       );
@@ -1335,18 +1315,18 @@ describe("Recursive Datalog Queries", () => {
       expect(response.debug?.params).toContain("Alice");
     });
 
-    it("should work with queryValidated in debug mode", async () => {
+    it("should execute a typed query in debug mode", async () => {
       const response = await Effect.runPromise(
         Effect.gen(function* () {
           yield* setupTestData;
-          const datalog = yield* Datalog;
+          const datalog = yield* Triples;
 
-          return yield* datalog.queryValidated(
+          return yield* datalog.query(
             {
               find: ["?name"],
               where: [["?person", ":name", "?name"]],
             },
-            true,
+            { debug: true },
           );
         }).pipe(Effect.provide(TestLayer)),
       );
@@ -1360,14 +1340,14 @@ describe("Recursive Datalog Queries", () => {
       const response = await Effect.runPromise(
         Effect.gen(function* () {
           yield* setupTestData;
-          const datalog = yield* Datalog;
+          const datalog = yield* Triples;
 
           return yield* datalog.query(
             {
               find: ["?name"],
               where: [["?person", ":name", "?name"]],
             },
-            true,
+            { debug: true },
           );
         }).pipe(Effect.provide(TestLayer)),
       );
@@ -1385,7 +1365,7 @@ describe("Recursive Datalog Queries", () => {
       const result = await Effect.runPromise(
         Effect.gen(function* () {
           yield* setupTestData;
-          const datalog = yield* Datalog;
+          const datalog = yield* Triples;
 
           return yield* datalog.explain({
             find: ["?name"],
@@ -1407,7 +1387,7 @@ describe("Recursive Datalog Queries", () => {
       const result = await Effect.runPromise(
         Effect.gen(function* () {
           yield* setupTestData;
-          const datalog = yield* Datalog;
+          const datalog = yield* Triples;
 
           return yield* datalog.explain({
             find: ["?name"],
@@ -1424,9 +1404,11 @@ describe("Recursive Datalog Queries", () => {
       const result = await Effect.runPromise(
         Effect.gen(function* () {
           yield* setupTestData;
-          const datalog = yield* Datalog;
+          const datalog = yield* Triples;
 
-          return yield* datalog.explain({ invalid: true }).pipe(Effect.either);
+          return yield* datalog
+            .explain({ invalid: true } as unknown as DatalogQuery)
+            .pipe(Effect.either);
         }).pipe(Effect.provide(TestLayer)),
       );
 
@@ -1437,9 +1419,9 @@ describe("Recursive Datalog Queries", () => {
       const result = await Effect.runPromise(
         Effect.gen(function* () {
           yield* setupTestData;
-          const datalog = yield* Datalog;
+          const datalog = yield* Triples;
 
-          return yield* datalog.explainWrapped({
+          return yield* datalog.explainPage({
             inner: {
               find: ["?name"],
               where: [["?person", ":name", "?name"]],
@@ -1462,9 +1444,9 @@ describe("Recursive Datalog Queries", () => {
       const result = await Effect.runPromise(
         Effect.gen(function* () {
           yield* setupTestData;
-          const datalog = yield* Datalog;
+          const datalog = yield* Triples;
 
-          return yield* datalog.explainWrapped({
+          return yield* datalog.explainPage({
             inner: {
               find: ["?name"],
               where: [["?person", ":name", "?name"]],
@@ -1482,7 +1464,7 @@ describe("Recursive Datalog Queries", () => {
       const result = await Effect.runPromise(
         Effect.gen(function* () {
           yield* setupTestData;
-          const datalog = yield* Datalog;
+          const datalog = yield* Triples;
 
           return yield* datalog.explain({
             find: ["?name"],
@@ -1499,7 +1481,7 @@ describe("Recursive Datalog Queries", () => {
       const result = await Effect.runPromise(
         Effect.gen(function* () {
           yield* setupTestData;
-          const datalog = yield* Datalog;
+          const datalog = yield* Triples;
 
           return yield* datalog.explain({
             find: ["?name", "?age"],
@@ -1524,7 +1506,7 @@ describe("Recursive Datalog Queries", () => {
       const result = await Effect.runPromise(
         Effect.gen(function* () {
           yield* setupTestData;
-          const datalog = yield* Datalog;
+          const datalog = yield* Triples;
 
           return yield* datalog.explain({
             find: ["?name", "?age"],
@@ -1547,7 +1529,7 @@ describe("Recursive Datalog Queries", () => {
       const { plan, queryResult } = await Effect.runPromise(
         Effect.gen(function* () {
           yield* setupTestData;
-          const datalog = yield* Datalog;
+          const datalog = yield* Triples;
 
           const plan = yield* datalog.explain({
             find: ["?name"],
@@ -1567,7 +1549,7 @@ describe("Recursive Datalog Queries", () => {
                 [">=", "?age", 30],
               ],
             },
-            true,
+            { debug: true },
           );
 
           return { plan, queryResult };
@@ -1577,14 +1559,14 @@ describe("Recursive Datalog Queries", () => {
       // The explain SQL should match the SQL that was actually executed
       expect(plan.queryPlan.steps[0].query).toBe(queryResult.debug?.generatedSql);
       // Params should match too
-      expect(plan.queryPlan.steps[0].params).toEqual([...queryResult.debug!.params]);
+      expect(plan.queryPlan.steps[0].params).toEqual([...(queryResult.debug!.params ?? [])]);
     });
 
     it("should include compilation metrics", async () => {
       const result = await Effect.runPromise(
         Effect.gen(function* () {
           yield* setupTestData;
-          const datalog = yield* Datalog;
+          const datalog = yield* Triples;
 
           return yield* datalog.explain({
             find: ["?name", "?age"],
@@ -1609,7 +1591,7 @@ describe("Recursive Datalog Queries", () => {
       const result = await Effect.runPromise(
         Effect.gen(function* () {
           yield* setupTestData;
-          const datalog = yield* Datalog;
+          const datalog = yield* Triples;
 
           return yield* datalog.explain({
             find: ["?name"],
@@ -1630,7 +1612,7 @@ describe("Recursive Datalog Queries", () => {
       const result = await Effect.runPromise(
         Effect.gen(function* () {
           yield* setupTestData;
-          const datalog = yield* Datalog;
+          const datalog = yield* Triples;
 
           return yield* datalog.explain({
             find: ["?avgAge"],
@@ -1649,9 +1631,9 @@ describe("Recursive Datalog Queries", () => {
       const result = await Effect.runPromise(
         Effect.gen(function* () {
           yield* setupTestData;
-          const datalog = yield* Datalog;
+          const datalog = yield* Triples;
 
-          return yield* datalog.explainWrapped({
+          return yield* datalog.explainPage({
             inner: {
               find: ["?name", "?age"],
               where: [
@@ -1685,9 +1667,9 @@ describe("Recursive Datalog Queries", () => {
       const result = await Effect.runPromise(
         Effect.gen(function* () {
           yield* setupTestData;
-          const datalog = yield* Datalog;
+          const datalog = yield* Triples;
 
-          return yield* datalog.explainWrapped({
+          return yield* datalog.explainPage({
             inner: {
               find: ["?name"],
               where: [["?person", ":name", "?name"]],

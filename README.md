@@ -25,53 +25,47 @@ ship as separate packages (see [Storage backends](#storage-backends)).
 
 ## Quick start
 
-The core package includes a zero-dependency in-memory backend, so a working store is
-four layers. `KvDatalogLive` provides the `Datalog` service and `KvTripleStoreLive`
-provides `TripleStore`; both run on the in-memory `KvBackend` and share a
-`TripleStoreRuntime` (clock and id generator).
+Writes and queries live together on a single service, `Triples`. The core package
+includes a zero-dependency in-memory backend, so a working store is one layer —
+`KvTriples.layer`:
 
 ```ts
-import { Effect, Layer } from "effect";
-import {
-  Datalog,
-  InMemoryKvBackendLive,
-  KvDatalogLive,
-  KvTripleStoreLive,
-  TripleStore,
-  TripleStoreRuntimeLayer,
-  string,
-} from "effect-triples";
-
-const StorageLive = KvDatalogLive.pipe(
-  Layer.provideMerge(KvTripleStoreLive),
-  Layer.provide(TripleStoreRuntimeLayer),
-  Layer.provide(InMemoryKvBackendLive),
-);
+import { Effect } from "effect";
+import { KvTriples, Triples, string } from "effect-triples";
 
 const program = Effect.gen(function* () {
-  const store = yield* TripleStore;
-  const datalog = yield* Datalog;
+  const triples = yield* Triples;
 
-  yield* store.assert({
+  yield* triples.assert({
     entityId: "person:alice",
     attribute: ":person/name",
     value: string("Alice"),
   });
 
-  const result = yield* datalog.query({
+  // triple-pattern read
+  const facts = yield* triples.match({ attribute: ":person/name" });
+
+  // Datalog read
+  const { results } = yield* triples.query({
     find: ["?name"],
     where: [["?person", ":person/name", "?name"]],
   });
 
-  return result.results; // => [{ "?name": "Alice" }]
+  return results; // => [{ "?name": "Alice" }]
 });
 
-Effect.runPromise(program.pipe(Effect.provide(StorageLive)));
+Effect.runPromise(program.pipe(Effect.provide(KvTriples.layer)));
 ```
 
-Access the store and query engines through their service tags (`TripleStore`,
-`Datalog`, `Sparql`, `SnapshotService`, `SubscriptionManager`). There is no fluent
-`Database` facade — you compose the services you need and provide one storage `Layer`.
+For a runnable version that writes linked entities and reads them through both
+triple matching and Datalog, run `pnpm example:demo` or see
+[`examples/demo`](examples/demo).
+
+`Triples` is the store's one service: `assert`/`transact` and both read paths —
+`match` for triple patterns, `query` for Datalog — are methods on it. `Sparql`,
+`SnapshotService`, `SubscriptionManager`, and `DatabaseManager` remain separate,
+optional services with their own consumers. There is no fluent `Database` facade —
+you compose the services you need and provide one storage `Layer`.
 
 ## Triples and values
 
@@ -91,15 +85,15 @@ Values are tagged, not raw JavaScript. Construct them with the helpers exported 
 the package root — this keeps the stored type explicit and makes references
 first-class:
 
-| Helper                                | Value type | Example                                  |
-| ------------------------------------- | ---------- | ---------------------------------------- |
-| `string(v)`                           | `string`   | `string("Alice")`                        |
-| `number(v)`                           | `number`   | `number(30)`                             |
-| `boolean(v)`                          | `boolean`  | `boolean(true)`                          |
-| `datetime(v)`                         | `datetime` | `datetime(Date.now())` / `datetime(new Date())` |
-| `ref(entityId)`                       | `ref`      | `ref("person:bob")`                      |
-| `json(v)`                             | `json`     | `json({ tags: ["a", "b"] })`             |
-| `blob(hash, mimeType, size, name?)`   | `blob`     | `blob("sha256:…", "image/png", 2048)`    |
+| Helper                              | Value type | Example                                         |
+| ----------------------------------- | ---------- | ----------------------------------------------- |
+| `string(v)`                         | `string`   | `string("Alice")`                               |
+| `number(v)`                         | `number`   | `number(30)`                                    |
+| `boolean(v)`                        | `boolean`  | `boolean(true)`                                 |
+| `datetime(v)`                       | `datetime` | `datetime(Date.now())` / `datetime(new Date())` |
+| `ref(entityId)`                     | `ref`      | `ref("person:bob")`                             |
+| `json(v)`                           | `json`     | `json({ tags: ["a", "b"] })`                    |
+| `blob(hash, mimeType, size, name?)` | `blob`     | `blob("sha256:…", "image/png", 2048)`           |
 
 `ref` values link entities together and are what graph-style queries traverse. A
 `datetime` is stored as epoch milliseconds.
@@ -108,13 +102,13 @@ Assert one fact, a batch, or an atomic transaction, and read facts back by entit
 by pattern:
 
 ```ts
-import { number, ref, string } from "effect-triples";
+import { number, ref, string, Triples } from "effect-triples";
 
 Effect.gen(function* () {
-  const store = yield* TripleStore;
+  const triples = yield* Triples;
 
   // one fact
-  const triple = yield* store.assert({
+  const triple = yield* triples.assert({
     entityId: "person:alice",
     attribute: ":person/name",
     value: string("Alice"),
@@ -122,14 +116,14 @@ Effect.gen(function* () {
   });
 
   // many facts at once
-  yield* store.assertBatch([
+  yield* triples.assertBatch([
     { entityId: "person:alice", attribute: ":person/age", value: number(30) },
     { entityId: "person:bob", attribute: ":person/name", value: string("Bob") },
     { entityId: "person:alice", attribute: ":person/knows", value: ref("person:bob") },
   ]);
 
   // an atomic transaction with metadata (records :_tx/user and :_tx/instant)
-  const tx = yield* store.transact(
+  const tx = yield* triples.transact(
     [
       { op: "assert", entityId: "person:carol", attribute: ":person/name", value: string("Carol") },
       { op: "retract", id: triple.id },
@@ -138,8 +132,8 @@ Effect.gen(function* () {
   );
 
   // reads
-  const alice = yield* store.getEntity("person:alice"); // all facts for the entity
-  const names = yield* store.query({ attribute: ":person/name" }); // by pattern
+  const alice = yield* triples.entity("person:alice"); // all facts for the entity
+  const names = yield* triples.match({ attribute: ":person/name" }); // by pattern
   return { tx: tx.txId, alice, names };
 });
 ```
@@ -156,16 +150,16 @@ methods expose this directly:
 
 ```ts
 Effect.gen(function* () {
-  const store = yield* TripleStore;
+  const triples = yield* Triples;
 
   // point-in-time: facts that were live at a given instant (epoch millis)
-  const asOfLastWeek = yield* store.queryAsOf(
+  const asOfLastWeek = yield* triples.matchAsOf(
     { attribute: ":person/name" },
     Date.now() - 7 * 24 * 60 * 60 * 1000,
   );
 
   // full assertion/retraction history for one entity
-  const timeline = yield* store.history("person:alice");
+  const timeline = yield* triples.history("person:alice");
 
   return { asOfLastWeek, timeline };
 });
@@ -177,7 +171,7 @@ any other fact — see the transaction-metadata Datalog example below.
 
 ## Datalog queries
 
-Datalog is the primary query language. Call `datalog.query(query)`; it resolves to
+Datalog is the primary query language. Call `triples.query(query)`; it resolves to
 `{ results }`, where `results` is an array of binding objects whose keys keep the `?`
 prefix. `find` lists the variables (or constants) to project; `where` is a list of
 clauses. Sharing a variable across two patterns joins them.
@@ -186,7 +180,7 @@ clauses. Sharing a variable across two patterns joins them.
 
 ```ts
 // implicit join on ?person across two patterns
-datalog.query({
+triples.query({
   find: ["?name", "?age"],
   where: [
     ["?person", ":person/name", "?name"],
@@ -209,7 +203,7 @@ Inline comparison clauses filter bound variables. Operators: `>`, `>=`, `<`, `<=
 `=`, `!=`.
 
 ```ts
-datalog.query({
+triples.query({
   find: ["?name", "?age"],
   where: [
     ["?person", ":person/name", "?name"],
@@ -230,10 +224,13 @@ where: [
 
 // Alice OR Bob
 where: [
-  ["or", [
-    ["?person", ":person/name", "Alice"],
-    ["?person", ":person/name", "Bob"],
-  ]],
+  [
+    "or",
+    [
+      ["?person", ":person/name", "Alice"],
+      ["?person", ":person/name", "Bob"],
+    ],
+  ],
 ];
 ```
 
@@ -244,7 +241,7 @@ where: [
 `orderBy`, `limit`, and `offset` are also supported.
 
 ```ts
-datalog.query({
+triples.query({
   find: ["?count"],
   where: [["?person", ":person/age", "?age"]],
   aggregate: [["count", "?person", "?count"]],
@@ -266,24 +263,31 @@ where: [
 
 ### Recursive rules
 
-Recursive rules (e.g. ancestor/descendant closures) are a compile-only API rather than
-part of the `Datalog` service: `compileWithRules(query)` returns SQL (recursive CTEs)
-that you run through a SQL client. Provide `rules` alongside `find`/`where`, where each
-rule is `{ name, body, maxDepth? }` and same-named rules union together.
+Recursive rules (e.g. ancestor/descendant closures) run through `triples.query` like any
+other query — provide `rules` alongside `find`/`where`. Each rule is
+`{ name, body, maxDepth? }`, and same-named rules union together. A rule-application
+clause `["ancestor", "person:alice", "?ancestor"]` invokes a rule. SQL backends compile
+rules to recursive CTEs; KV backends evaluate them with semi-naive evaluation.
 
 ```ts
-import { compileWithRules } from "effect-triples";
-
-const { sql, params } = compileWithRules({
+triples.query({
   find: ["?ancestor"],
   where: [["ancestor", "person:alice", "?ancestor"]],
   rules: [
     { name: "ancestor", body: [["?x", ":parent", "?y"]] },
-    { name: "ancestor", body: [["?x", ":parent", "?z"], ["ancestor", "?z", "?y"]] },
+    {
+      name: "ancestor",
+      body: [
+        ["?x", ":parent", "?z"],
+        ["ancestor", "?z", "?y"],
+      ],
+    },
   ],
 });
-// run `sql` with `params` via a SQL-backed client (see effect-triples-sql)
 ```
+
+The compile-only entrypoint is still available for tooling: `compileWithRules(query)`
+returns the SQL and params without executing.
 
 ## SPARQL queries
 
@@ -350,7 +354,10 @@ Effect.gen(function* () {
   const subs = yield* SubscriptionManager;
   yield* subs.register("active-people", {
     find: ["?name"],
-    where: [["?p", ":person/name", "?name"], ["?p", ":person/status", "active"]],
+    where: [
+      ["?p", ":person/name", "?name"],
+      ["?p", ":person/status", "active"],
+    ],
   });
   const affected = yield* subs.checkAffected(changes); // from a write's change set
   return affected;
@@ -360,48 +367,37 @@ Effect.gen(function* () {
 ## Storage backends
 
 The core package runs entirely in memory. Durable backends are separate packages that
-provide the same `TripleStore`/`Datalog`/`Sparql` services over a real store.
+provide the same `Triples` service over a real store, each with a one-line convenience
+layer.
 
-| Package                       | Purpose                                                                        | Runtime                                        |
-| ----------------------------- | ------------------------------------------------------------------------------ | ---------------------------------------------- |
-| `effect-triples`              | Core store, in-memory hexastore, Datalog, SPARQL, snapshots, and subscriptions | Node.js 22+, browsers, edge runtimes           |
-| `effect-triples-sql`          | Shared SQL storage and query layers (`DatalogLive`, `SparqlLive`, executor)    | SQL-capable runtimes                           |
-| `effect-triples-sqlite`       | SQLite adapter using `@effect/sql-sqlite-node`                                 | Node.js 22+                                    |
-| `effect-triples-postgres`     | PostgreSQL adapter using `@effect/sql-pg`                                      | Node.js 22+                                    |
-| `effect-triples-cloudflare`   | Cloudflare Durable Object SQLite adapter                                       | Cloudflare Workers                             |
-| `effect-triples-foundationdb` | Ordered-KV backend for FoundationDB                                            | Node.js 22+ with FoundationDB client libraries |
-| `effect-triples-testkit`      | Shared backend test helpers                                                    | Node.js 22+                                    |
+| Package                       | Convenience layer                         | Runtime                                        |
+| ----------------------------- | ----------------------------------------- | ---------------------------------------------- |
+| `effect-triples`              | `KvTriples.layer` (in-memory)             | Node.js 22+, browsers, edge runtimes           |
+| `effect-triples-sql`          | shared SQL query/executor + SPARQL layers | SQL-capable runtimes                           |
+| `effect-triples-sqlite`       | `SqliteTriples.layer({ filename })`       | Node.js 22+                                    |
+| `effect-triples-postgres`     | `PgTriples.layer(config)`                 | Node.js 22+                                    |
+| `effect-triples-cloudflare`   | Cloudflare Durable Object SQLite adapter  | Cloudflare Workers                             |
+| `effect-triples-foundationdb` | `FdbTriples.layer(config)`                | Node.js 22+ with FoundationDB client libraries |
+| `effect-triples-testkit`      | `makeTriplesConformanceSuite` + fixtures  | Node.js 22+                                    |
 
-A SQL-backed stack composes the SQL layers over an adapter and a client. For SQLite:
+A durable stack is a single convenience layer. For SQLite:
 
 ```ts
-import { SqliteClient } from "@effect/sql-sqlite-node";
-import {
-  TripleStoreLive,
-  TripleStoreRuntimeLayer,
-  RuntimeServicesLive,
-} from "effect-triples";
-import { DatalogLive, SqlQueryExecutorLive } from "effect-triples-sql";
-import { SqliteAdapterLive } from "effect-triples-sqlite";
+import { SqliteTriples } from "effect-triples-sqlite";
 
-const SqliteLive = DatalogLive.pipe(
-  Layer.provideMerge(SqlQueryExecutorLive),
-  Layer.provideMerge(TripleStoreLive),
-  Layer.provideMerge(SqliteAdapterLive),
-  Layer.provideMerge(SqliteClient.layer({ filename: "app.db" })),
-  Layer.provide(TripleStoreRuntimeLayer),
-  Layer.provideMerge(RuntimeServicesLive),
-);
+const SqliteLive = SqliteTriples.layer({ filename: "app.db" });
+// or SqliteTriples.layerMemory for an in-memory database
 ```
 
-The rest of your program is unchanged — it still depends only on the `TripleStore` and
-`Datalog` service tags.
+The rest of your program is unchanged — it still depends only on the `Triples` service
+tag. For manual wiring, provide `TriplesLive` over a `StorageAdapter`, a
+`QueryExecutor` (`SqlQueryExecutorLive`), and a `TripleStoreRuntime`.
 
 ## Entrypoints
 
 Everything is re-exported from the package root, so `import { … } from "effect-triples"`
-always works — this is where the service tags (`TripleStore`, `Datalog`, `Sparql`,
-`SnapshotService`, `SubscriptionManager`), the value helpers, and the layers live.
+always works — this is where the service tags (`Triples`, `Sparql`, `SnapshotService`,
+and `SubscriptionManager`), the value helpers, and the layers live.
 
 The core package also exposes tree-shakeable ESM subpaths for the schemas, types, and
 transport surface:
@@ -415,8 +411,8 @@ import { Pattern } from "effect-triples/types/Pattern";
 ```
 
 Note that `./Datalog`, `./Sparql`, and `./Snapshot` contain query/response **schemas**,
-not the runtime service tags — import the `Datalog`, `Sparql`, and `SnapshotService`
-tags from the root. The HTTP/RPC surface is exposed under `./DatalogApi`,
+not the runtime service tags — import `Triples`, `Sparql`, and `SnapshotService`
+from the root. The HTTP/RPC surface is exposed under `./DatalogApi`,
 `./DatalogRpc`, `./Database`, `./DatabaseApi`, `./DatabaseRpc`, `./SnapshotApi`,
 `./TripleApi`, and `./TripleRpc`.
 

@@ -2,8 +2,10 @@ import { describe, it, expect } from "vitest";
 import { Effect, Layer, Option } from "effect";
 import { SqliteClient } from "@effect/sql-sqlite-node";
 import {
-  TripleStore,
-  TripleStoreLive,
+  Triples,
+  TriplesLive,
+  CurrentDialect,
+  SqliteDialect,
   TripleStoreRuntime,
   DeterministicTripleStoreRuntimeLive,
   TxAttributes,
@@ -12,24 +14,27 @@ import {
   boolean,
   ref,
 } from "effect-triples";
+import { SqlQueryExecutorLive } from "effect-triples-sql";
 import { SqliteAdapterLive } from "effect-triples-sqlite";
 import type { EntityId, TripleId } from "effect-triples";
 import { SqliteTestLayer } from "./fixtures/SqliteTestLayer.js";
 
 const TestLayer = SqliteTestLayer;
 const makeRuntimeTestLayer = (runtimeLayer: Layer.Layer<TripleStoreRuntime>) =>
-  TripleStoreLive.pipe(
-    Layer.provide(SqliteAdapterLive),
-    Layer.provide(SqliteClient.layer({ filename: ":memory:" })),
+  TriplesLive.pipe(
+    Layer.provideMerge(SqlQueryExecutorLive),
+    Layer.provideMerge(SqliteAdapterLive),
+    Layer.provideMerge(Layer.succeed(CurrentDialect, SqliteDialect)),
+    Layer.provideMerge(SqliteClient.layer({ filename: ":memory:" })),
     Layer.provide(runtimeLayer),
   );
 
-describe("TripleStore", () => {
+describe("Triples", () => {
   describe("assert", () => {
     it("should create a triple with string value", async () => {
       const result = await Effect.runPromise(
         Effect.gen(function* () {
-          const store = yield* TripleStore;
+          const store = yield* Triples;
 
           const triple = yield* store.assert({
             entityId: "person-1",
@@ -55,7 +60,7 @@ describe("TripleStore", () => {
     it("should create a triple with number value", async () => {
       const result = await Effect.runPromise(
         Effect.gen(function* () {
-          const store = yield* TripleStore;
+          const store = yield* Triples;
 
           const triple = yield* store.assert({
             entityId: "person-1",
@@ -74,7 +79,7 @@ describe("TripleStore", () => {
     it("should create a triple with boolean value", async () => {
       const result = await Effect.runPromise(
         Effect.gen(function* () {
-          const store = yield* TripleStore;
+          const store = yield* Triples;
 
           const triple = yield* store.assert({
             entityId: "person-1",
@@ -93,7 +98,7 @@ describe("TripleStore", () => {
     it("should create a triple with ref value", async () => {
       const result = await Effect.runPromise(
         Effect.gen(function* () {
-          const store = yield* TripleStore;
+          const store = yield* Triples;
 
           const triple = yield* store.assert({
             entityId: "person-1",
@@ -114,7 +119,7 @@ describe("TripleStore", () => {
     it("should create multiple triples", async () => {
       const result = await Effect.runPromise(
         Effect.gen(function* () {
-          const store = yield* TripleStore;
+          const store = yield* Triples;
 
           const triples = yield* store.assertBatch([
             { entityId: "person-1", attribute: ":name", value: string("Alice") },
@@ -135,7 +140,7 @@ describe("TripleStore", () => {
     it("should retrieve a triple by id", async () => {
       const result = await Effect.runPromise(
         Effect.gen(function* () {
-          const store = yield* TripleStore;
+          const store = yield* Triples;
 
           const created = yield* store.assert({
             entityId: "person-1",
@@ -143,7 +148,7 @@ describe("TripleStore", () => {
             value: string("Alice"),
           });
 
-          const retrieved = yield* store.getTriple(created.id);
+          const retrieved = yield* store.get(created.id);
 
           expect(retrieved).not.toBeNull();
           expect(retrieved?.id).toBe(created.id);
@@ -158,8 +163,8 @@ describe("TripleStore", () => {
     it("should return null for non-existent triple", async () => {
       const result = await Effect.runPromise(
         Effect.gen(function* () {
-          const store = yield* TripleStore;
-          const retrieved = yield* store.getTriple("non-existent" as TripleId);
+          const store = yield* Triples;
+          const retrieved = yield* store.get("non-existent" as TripleId);
           return retrieved;
         }).pipe(Effect.provide(TestLayer)),
       );
@@ -172,7 +177,7 @@ describe("TripleStore", () => {
     it("should retrieve all triples for an entity", async () => {
       const result = await Effect.runPromise(
         Effect.gen(function* () {
-          const store = yield* TripleStore;
+          const store = yield* Triples;
 
           yield* store.assertBatch([
             { entityId: "person-1", attribute: ":name", value: string("Alice") },
@@ -180,7 +185,7 @@ describe("TripleStore", () => {
             { entityId: "person-2", attribute: ":name", value: string("Bob") },
           ]);
 
-          const triples = yield* store.getEntity("person-1" as EntityId);
+          const triples = yield* store.entity("person-1" as EntityId);
 
           expect(triples).toHaveLength(2);
           return triples;
@@ -195,7 +200,7 @@ describe("TripleStore", () => {
     it("should soft-delete a triple", async () => {
       const result = await Effect.runPromise(
         Effect.gen(function* () {
-          const store = yield* TripleStore;
+          const store = yield* Triples;
 
           const created = yield* store.assert({
             entityId: "person-1",
@@ -205,7 +210,7 @@ describe("TripleStore", () => {
 
           yield* store.retract(created.id);
 
-          const retrieved = yield* store.getTriple(created.id);
+          const retrieved = yield* store.get(created.id);
           expect(retrieved).toBeNull();
 
           // But history should still have it
@@ -238,7 +243,7 @@ describe("TripleStore", () => {
 
       const result = await Effect.runPromise(
         Effect.gen(function* () {
-          const store = yield* TripleStore;
+          const store = yield* Triples;
 
           const batch = yield* store.assertBatch([
             { entityId: "person-1", attribute: ":name", value: string("Alice") },
@@ -263,7 +268,7 @@ describe("TripleStore", () => {
 
           expect(tx.txId).toBe("tx:det-2");
 
-          const txMeta = yield* store.query({ entityId: tx.txId, attribute: TxAttributes.INSTANT });
+          const txMeta = yield* store.match({ entityId: tx.txId, attribute: TxAttributes.INSTANT });
           expect(txMeta).toHaveLength(1);
           expect(txMeta[0]!.id).toBe("triple:det-4");
           expect(txMeta[0]!.value).toEqual({ type: "datetime", value: 1020 });
@@ -288,7 +293,7 @@ describe("TripleStore", () => {
 
       await Effect.runPromise(
         Effect.gen(function* () {
-          const store = yield* TripleStore;
+          const store = yield* Triples;
 
           const triple = yield* store.assert({
             entityId: "person-1",
@@ -315,7 +320,7 @@ describe("TripleStore", () => {
     it("should query by entity type", async () => {
       const result = await Effect.runPromise(
         Effect.gen(function* () {
-          const store = yield* TripleStore;
+          const store = yield* Triples;
 
           yield* store.assertBatch([
             {
@@ -338,7 +343,7 @@ describe("TripleStore", () => {
             },
           ]);
 
-          const people = yield* store.query({ entityType: "Person" });
+          const people = yield* store.match({ entityType: "Person" });
 
           expect(people).toHaveLength(2);
           return people;
@@ -351,7 +356,7 @@ describe("TripleStore", () => {
     it("should query by attribute", async () => {
       const result = await Effect.runPromise(
         Effect.gen(function* () {
-          const store = yield* TripleStore;
+          const store = yield* Triples;
 
           yield* store.assertBatch([
             { entityId: "person-1", attribute: ":name", value: string("Alice") },
@@ -359,7 +364,7 @@ describe("TripleStore", () => {
             { entityId: "person-2", attribute: ":name", value: string("Bob") },
           ]);
 
-          const names = yield* store.query({ attribute: ":name" });
+          const names = yield* store.match({ attribute: ":name" });
 
           expect(names).toHaveLength(2);
           return names;
@@ -372,7 +377,7 @@ describe("TripleStore", () => {
     it("should query by value", async () => {
       const result = await Effect.runPromise(
         Effect.gen(function* () {
-          const store = yield* TripleStore;
+          const store = yield* Triples;
 
           yield* store.assertBatch([
             { entityId: "person-1", attribute: ":name", value: string("Alice") },
@@ -380,7 +385,7 @@ describe("TripleStore", () => {
             { entityId: "person-3", attribute: ":name", value: string("Bob") },
           ]);
 
-          const alices = yield* store.query({ value: string("Alice") });
+          const alices = yield* store.match({ value: string("Alice") });
 
           expect(alices).toHaveLength(2);
           return alices;
@@ -395,7 +400,7 @@ describe("TripleStore", () => {
     it("should query entity state as of a specific time", async () => {
       const result = await Effect.runPromise(
         Effect.gen(function* () {
-          const store = yield* TripleStore;
+          const store = yield* Triples;
 
           // Create initial state
           const first = yield* store.assert({
@@ -418,13 +423,13 @@ describe("TripleStore", () => {
           });
 
           // Query as of before the change
-          const pastState = yield* store.queryAsOf({ entityId: "person-1" }, timeAfterFirst);
+          const pastState = yield* store.matchAsOf({ entityId: "person-1" }, timeAfterFirst);
 
           expect(pastState).toHaveLength(1);
           expect(pastState[0]!.value).toEqual({ type: "string", value: "Alice" });
 
           // Query current state
-          const currentState = yield* store.getEntity("person-1" as EntityId);
+          const currentState = yield* store.entity("person-1" as EntityId);
           expect(currentState).toHaveLength(1);
           expect(currentState[0]!.value).toEqual({ type: "string", value: "Alice Smith" });
 
@@ -439,7 +444,7 @@ describe("TripleStore", () => {
     it("should get full entity history", async () => {
       const result = await Effect.runPromise(
         Effect.gen(function* () {
-          const store = yield* TripleStore;
+          const store = yield* Triples;
 
           const first = yield* store.assert({
             entityId: "person-1",

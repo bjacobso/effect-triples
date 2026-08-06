@@ -6,9 +6,9 @@
  *
  * @example
  * ```typescript
- * import { Datalog, DatalogLive } from "./datalog"
+ * import { Triples } from "effect-triples"
  *
- * const result = yield* Datalog.query({
+ * const result = yield* Triples.query({
  *   find: ["?name", "?age"],
  *   where: [
  *     ["?person", ":name", "?name"],
@@ -72,14 +72,5 @@ export {
   evaluatePredicateSync,
 } from "./predicates.js";
 
-// Service (Layer implementations live in effect-triples-sql)
-export {
-  Datalog,
-  type DatalogService,
-  type QueryPlan,
-  type WrappedQueryResult,
-} from "./service.js";
-
-// NOTE: DatalogLive and SqlQueryExecutorLive have moved to effect-triples-sql.
 // NOTE: QueryPlan translation (toDatalogQuery) and type checker (typeCheckDatalogQuery)
 // live in the compiler layer — they depend on compiler/lisp infrastructure.

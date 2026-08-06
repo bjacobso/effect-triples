@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { Effect, Layer } from "effect";
 import {
-  TripleStore,
+  Triples,
   SnapshotService,
   SnapshotWriter,
   SnapshotServiceLive,
@@ -18,7 +18,7 @@ import type { EntityId } from "effect-triples";
 import { SqliteTestLayer } from "./fixtures/SqliteTestLayer.js";
 
 // ---------------------------------------------------------------------------
-// Test layer: TripleStore + SnapshotService + SnapshotWriter, all in-memory
+// Test layer: Triples + SnapshotService + SnapshotWriter, all in-memory
 // ---------------------------------------------------------------------------
 
 const SnapshotTestLayer = SnapshotServiceLive.pipe(
@@ -104,7 +104,7 @@ describe("canonical", () => {
     it("should convert triples to attribute map", async () => {
       const result = await Effect.runPromise(
         Effect.gen(function* () {
-          const store = yield* TripleStore;
+          const store = yield* Triples;
           yield* store.assert({
             entityId: "p:alice",
             attribute: ":person/name",
@@ -115,7 +115,7 @@ describe("canonical", () => {
             attribute: ":person/age",
             value: number(30),
           });
-          const triples = yield* store.getEntity("p:alice" as EntityId);
+          const triples = yield* store.entity("p:alice" as EntityId);
           return triplesToAttributeMap(triples);
         }).pipe(Effect.provide(SqliteTestLayer)),
       );
@@ -127,7 +127,7 @@ describe("canonical", () => {
     it("should produce arrays for multi-valued attributes", async () => {
       const result = await Effect.runPromise(
         Effect.gen(function* () {
-          const store = yield* TripleStore;
+          const store = yield* Triples;
           yield* store.assert({
             entityId: "p:alice",
             attribute: ":person/tag",
@@ -138,7 +138,7 @@ describe("canonical", () => {
             attribute: ":person/tag",
             value: string("backend"),
           });
-          const triples = yield* store.getEntity("p:alice" as EntityId);
+          const triples = yield* store.entity("p:alice" as EntityId);
           return triplesToAttributeMap(triples);
         }).pipe(Effect.provide(SqliteTestLayer)),
       );
@@ -197,7 +197,7 @@ describe("SnapshotWriter", () => {
   it("should materialize a snapshot for an entity", async () => {
     await Effect.runPromise(
       Effect.gen(function* () {
-        const store = yield* TripleStore;
+        const store = yield* Triples;
         const writer = yield* SnapshotWriter;
         const snapService = yield* SnapshotService;
 
@@ -233,7 +233,7 @@ describe("SnapshotWriter", () => {
   it("should deduplicate identical entity states (structural sharing)", async () => {
     await Effect.runPromise(
       Effect.gen(function* () {
-        const store = yield* TripleStore;
+        const store = yield* Triples;
         const writer = yield* SnapshotWriter;
 
         // Create two entities with identical attributes
@@ -256,7 +256,7 @@ describe("SnapshotWriter", () => {
   it("should produce different hashes for different entity states", async () => {
     await Effect.runPromise(
       Effect.gen(function* () {
-        const store = yield* TripleStore;
+        const store = yield* Triples;
         const writer = yield* SnapshotWriter;
 
         const r1 = yield* store.transact([
@@ -277,7 +277,7 @@ describe("SnapshotWriter", () => {
   it("should handle entity retraction with tombstone hash", async () => {
     await Effect.runPromise(
       Effect.gen(function* () {
-        const store = yield* TripleStore;
+        const store = yield* Triples;
         const writer = yield* SnapshotWriter;
         const snapService = yield* SnapshotService;
 
@@ -322,7 +322,7 @@ describe("SnapshotService", () => {
     it("should return snapshot at a specific transaction", async () => {
       await Effect.runPromise(
         Effect.gen(function* () {
-          const store = yield* TripleStore;
+          const store = yield* Triples;
           const writer = yield* SnapshotWriter;
           const snapService = yield* SnapshotService;
 
@@ -346,7 +346,7 @@ describe("SnapshotService", () => {
     it("should return hash at a specific transaction", async () => {
       await Effect.runPromise(
         Effect.gen(function* () {
-          const store = yield* TripleStore;
+          const store = yield* Triples;
           const writer = yield* SnapshotWriter;
           const snapService = yield* SnapshotService;
 
@@ -371,7 +371,7 @@ describe("SnapshotService", () => {
     it("should return latest snapshot at or before the given time", async () => {
       await Effect.runPromise(
         Effect.gen(function* () {
-          const store = yield* TripleStore;
+          const store = yield* Triples;
           const writer = yield* SnapshotWriter;
           const snapService = yield* SnapshotService;
 
@@ -415,7 +415,7 @@ describe("SnapshotService", () => {
     it("should batch read multiple entities", async () => {
       await Effect.runPromise(
         Effect.gen(function* () {
-          const store = yield* TripleStore;
+          const store = yield* Triples;
           const writer = yield* SnapshotWriter;
           const snapService = yield* SnapshotService;
 
@@ -459,7 +459,7 @@ describe("SnapshotService", () => {
     it("should return hash chain for an entity", async () => {
       await Effect.runPromise(
         Effect.gen(function* () {
-          const store = yield* TripleStore;
+          const store = yield* Triples;
           const writer = yield* SnapshotWriter;
           const snapService = yield* SnapshotService;
 
@@ -499,7 +499,7 @@ describe("SnapshotService", () => {
     it("should compute diff between two snapshots", async () => {
       await Effect.runPromise(
         Effect.gen(function* () {
-          const store = yield* TripleStore;
+          const store = yield* Triples;
           const writer = yield* SnapshotWriter;
           const snapService = yield* SnapshotService;
 
@@ -545,7 +545,7 @@ describe("SnapshotService", () => {
     it("should detect changes via hash comparison", async () => {
       await Effect.runPromise(
         Effect.gen(function* () {
-          const store = yield* TripleStore;
+          const store = yield* Triples;
           const writer = yield* SnapshotWriter;
           const snapService = yield* SnapshotService;
 
@@ -579,7 +579,7 @@ describe("SnapshotService", () => {
     it("should detect structural sharing when entity reverts", async () => {
       await Effect.runPromise(
         Effect.gen(function* () {
-          const store = yield* TripleStore;
+          const store = yield* Triples;
           const writer = yield* SnapshotWriter;
           const snapService = yield* SnapshotService;
 
@@ -608,7 +608,7 @@ describe("SnapshotService", () => {
           const h2 = yield* snapService.hashAt("p:alice", r2.txId);
 
           // Retract age — revert to first state
-          const ageTriple = (yield* store.getEntity("p:alice" as EntityId)).find(
+          const ageTriple = (yield* store.entity("p:alice" as EntityId)).find(
             (t) => t.attribute === ":person/age",
           );
           const r3 = yield* store.transact([{ op: "retract", id: ageTriple!.id }]);
@@ -628,7 +628,7 @@ describe("SnapshotService", () => {
     it("should find entities with the same hash", async () => {
       await Effect.runPromise(
         Effect.gen(function* () {
-          const store = yield* TripleStore;
+          const store = yield* Triples;
           const writer = yield* SnapshotWriter;
           const snapService = yield* SnapshotService;
 
@@ -662,7 +662,7 @@ describe("SnapshotService", () => {
     it("should find entities changed since a transaction", async () => {
       await Effect.runPromise(
         Effect.gen(function* () {
-          const store = yield* TripleStore;
+          const store = yield* Triples;
           const writer = yield* SnapshotWriter;
           const snapService = yield* SnapshotService;
 
@@ -714,7 +714,7 @@ describe("SnapshotService", () => {
     it("should produce entity→hash map at a point in time", async () => {
       await Effect.runPromise(
         Effect.gen(function* () {
-          const store = yield* TripleStore;
+          const store = yield* Triples;
           const writer = yield* SnapshotWriter;
           const snapService = yield* SnapshotService;
 
@@ -745,7 +745,7 @@ describe("SnapshotService", () => {
     it("should respect time boundary", async () => {
       await Effect.runPromise(
         Effect.gen(function* () {
-          const store = yield* TripleStore;
+          const store = yield* Triples;
           const writer = yield* SnapshotWriter;
           const snapService = yield* SnapshotService;
 
@@ -783,7 +783,7 @@ describe("SnapshotService", () => {
     it("should create snapshots for existing entities", async () => {
       await Effect.runPromise(
         Effect.gen(function* () {
-          const store = yield* TripleStore;
+          const store = yield* Triples;
           const writer = yield* SnapshotWriter;
           const snapService = yield* SnapshotService;
 

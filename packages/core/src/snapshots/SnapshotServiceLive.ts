@@ -7,7 +7,7 @@
 
 import { Clock, Effect, Layer, Option } from "effect";
 import { StorageAdapter } from "../storage/StorageAdapter.js";
-import { TripleStore } from "../store/TripleStore.js";
+import { Triples } from "../store/Triples.js";
 import { TxAttributes } from "../utils/id.js";
 import {
   SnapshotService,
@@ -158,7 +158,7 @@ const freezeTransactionAggregates = (
 
 const makeSnapshotWriter = Effect.gen(function* () {
   const adapter = yield* StorageAdapter;
-  const store = yield* TripleStore;
+  const store = yield* Triples;
 
   const materialize: SnapshotWriterShape["materialize"] = (txId, txTime, changedEntityIds) =>
     Effect.gen(function* () {
@@ -166,7 +166,7 @@ const makeSnapshotWriter = Effect.gen(function* () {
 
       for (const entityId of changedEntityIds) {
         // Read current active triples for this entity
-        const triples = yield* store.getEntity(entityId as EntityId).pipe(
+        const triples = yield* store.entity(entityId as EntityId).pipe(
           Effect.mapError(
             (e) =>
               new SnapshotError({

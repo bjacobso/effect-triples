@@ -4,7 +4,7 @@
  * In Cloudflare Workers, database isolation is handled by the Worker routing
  * requests to the correct Durable Object based on the URL path. Within a DO,
  * we don't need to manage multiple databases - we just return the DO's own
- * TripleStore and Datalog services.
+ * Triples service.
  *
  * This shim implements the DatabaseManagerService interface so that existing
  * Consumers can provide this manager to their own API handlers in the Durable Object context.
@@ -16,8 +16,7 @@ import {
   type DatabaseManagerService,
   type Database,
   type ClearResult,
-  type TripleStoreService,
-  type DatalogService,
+  type TriplesService,
   InternalError,
 } from "effect-triples";
 
@@ -33,8 +32,7 @@ export type { DatabaseManagerService, Database };
  * Context provided by the Durable Object containing its services
  */
 export interface DOContext {
-  readonly store: TripleStoreService;
-  readonly datalog: DatalogService;
+  readonly triples: TriplesService;
   readonly databaseName: string;
   /**
    * Clear all storage and reinitialize services.
@@ -69,11 +67,8 @@ export const CloudflareDatabaseManagerLive: Layer.Layer<DatabaseManager, never, 
       const ctx = yield* DOContextService;
 
       const service: DatabaseManagerService = {
-        // Always return this DO's store (database name is ignored)
-        getStore: (_name: string) => Effect.succeed(ctx.store),
-
-        // Always return this DO's datalog (database name is ignored)
-        getDatalog: (_name: string) => Effect.succeed(ctx.datalog),
+        // Always return this DO's Triples service (database name is ignored)
+        getTriples: (_name: string) => Effect.succeed(ctx.triples),
         getSnapshotService: (_name: string) => Effect.succeed(null),
 
         // Return metadata for this DO's database

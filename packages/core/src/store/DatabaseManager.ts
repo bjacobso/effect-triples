@@ -1,15 +1,14 @@
 /**
  * DatabaseManager service definition
  *
- * Manages database lifecycle and provides database-scoped TripleStore and Datalog services.
+ * Manages database lifecycle and provides database-scoped Triples services.
  * Each database is backed by a storage backend (SQLite, PostgreSQL, etc.).
  *
  * This is a pure database concern — no runtime services (snapshots, compliance, etc.).
  */
 
 import { Context, Effect } from "effect";
-import type { TripleStoreService } from "./TripleStore.js";
-import type { DatalogService } from "../datalog/service.js";
+import type { TriplesService } from "./Triples.js";
 import type { DatabaseNotFound, DatabaseAlreadyExists, InternalError } from "../Error.js";
 
 /**
@@ -55,13 +54,9 @@ export interface DatabaseManagerService {
 
   readonly get: (name: string) => Effect.Effect<Database, DatabaseNotFound | InternalError>;
 
-  readonly getStore: (
+  readonly getTriples: (
     name: string,
-  ) => Effect.Effect<TripleStoreService, DatabaseNotFound | InternalError>;
-
-  readonly getDatalog: (
-    name: string,
-  ) => Effect.Effect<DatalogService, DatabaseNotFound | InternalError>;
+  ) => Effect.Effect<TriplesService, DatabaseNotFound | InternalError>;
 
   readonly getSnapshotService: (
     name: string,

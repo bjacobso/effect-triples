@@ -22,9 +22,10 @@
  *   subspace: Buffer.from("ontology/tenant-123/"),
  * });
  *
- * // Wire into hexastore triple store
- * const app = KvTripleStoreLive.pipe(
+ * // Wire into the KV-backed Triples service
+ * const app = KvTriples.layerBackend.pipe(
  *   Layer.provide(layer),
+ *   Layer.provide(TripleStoreRuntimeLayer),
  * );
  * ```
  */
@@ -758,8 +759,9 @@ export const makeFdbKvBackendService = (
  * });
  *
  * // Full stack
- * const app = KvTripleStoreLive.pipe(
+ * const app = KvTriples.layerBackend.pipe(
  *   Layer.provide(layer),
+ *   Layer.provide(TripleStoreRuntimeLayer),
  * );
  * ```
  */

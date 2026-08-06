@@ -6,21 +6,19 @@
  *
  * Exported layers:
  *
- * - `SqliteTestLayer`      — TripleStore (in-memory)
- * - `SqliteFullTestLayer`  — TripleStore + Datalog + SqlQueryExecutor (in-memory)
- * - `SqliteFileTestLayer`  — TripleStore (file-based, auto-cleanup)
- * - `SqliteFileFullTestLayer` — TripleStore + Datalog (file-based, auto-cleanup)
+ * - `SqliteTestLayer` — Triples + SQL support (in-memory)
+ * - `SqliteFileTestLayer` — Triples + SQL support (file-based, auto-cleanup)
  *
  * Usage with @effect/vitest:
  *
  * ```ts
  * import { layer } from "@effect/vitest"
- * import { SqliteFullTestLayer } from "../fixtures/SqliteTestLayer.js"
+ * import { SqliteTestLayer } from "../fixtures/SqliteTestLayer.js"
  *
- * layer(SqliteFullTestLayer)("my tests", (it) => {
+ * layer(SqliteTestLayer)("my tests", (it) => {
  *   it.effect("queries work", () =>
  *     Effect.gen(function* () {
- *       const store = yield* TripleStore
+ *       const triples = yield* Triples
  *       // ...
  *     })
  *   )
@@ -43,33 +41,25 @@ import { SqliteClient } from "@effect/sql-sqlite-node";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import * as os from "node:os";
-import { RuntimeServicesLive, TripleStoreLive, TripleStoreRuntimeLayer } from "effect-triples";
-import { DatalogLive, SqlQueryExecutorLive } from "effect-triples-sql";
+import {
+  CurrentDialect,
+  RuntimeServicesLive,
+  SqliteDialect,
+  TriplesLive,
+  TripleStoreRuntimeLayer,
+} from "effect-triples";
+import { SqlQueryExecutorLive } from "effect-triples-sql";
 import { SqliteAdapterLive } from "effect-triples-sqlite";
 
 // ─── Pre-composed layers (in-memory, most common) ──────────────────────────
 
 /**
- * TripleStore backed by in-memory SQLite.
- *
- * Use when your test only needs TripleStore operations.
+ * Triples and SQL support backed by in-memory SQLite.
  */
-export const SqliteTestLayer = TripleStoreLive.pipe(
-  Layer.provideMerge(SqliteAdapterLive),
-  Layer.provideMerge(SqliteClient.layer({ filename: ":memory:" })),
-  Layer.provide(TripleStoreRuntimeLayer),
-  Layer.provideMerge(RuntimeServicesLive),
-);
-
-/**
- * TripleStore + Datalog + SqlQueryExecutor backed by in-memory SQLite.
- *
- * Use when your test needs both TripleStore and Datalog queries.
- */
-export const SqliteFullTestLayer = DatalogLive.pipe(
+export const SqliteTestLayer = TriplesLive.pipe(
   Layer.provideMerge(SqlQueryExecutorLive),
-  Layer.provideMerge(TripleStoreLive),
   Layer.provideMerge(SqliteAdapterLive),
+  Layer.provideMerge(Layer.succeed(CurrentDialect, SqliteDialect)),
   Layer.provideMerge(SqliteClient.layer({ filename: ":memory:" })),
   Layer.provide(TripleStoreRuntimeLayer),
   Layer.provideMerge(RuntimeServicesLive),
@@ -130,25 +120,15 @@ const FileSqliteClientLayer = Layer.unwrapEffect(
 const FileSqliteLayer = FileSqliteClientLayer.pipe(Layer.provide(SqliteFileLifecycleLayer));
 
 /**
- * TripleStore backed by file-based SQLite with auto-cleanup.
+ * Triples and SQL support backed by file-based SQLite with auto-cleanup.
  *
  * Creates a unique temp directory per layer instantiation. The directory
  * and DB file are removed when the layer scope closes.
  */
-export const SqliteFileTestLayer = TripleStoreLive.pipe(
-  Layer.provideMerge(SqliteAdapterLive),
-  Layer.provide(FileSqliteLayer),
-  Layer.provide(TripleStoreRuntimeLayer),
-  Layer.provideMerge(RuntimeServicesLive),
-);
-
-/**
- * TripleStore + Datalog backed by file-based SQLite with auto-cleanup.
- */
-export const SqliteFileFullTestLayer = DatalogLive.pipe(
+export const SqliteFileTestLayer = TriplesLive.pipe(
   Layer.provideMerge(SqlQueryExecutorLive),
-  Layer.provideMerge(TripleStoreLive),
   Layer.provideMerge(SqliteAdapterLive),
+  Layer.provideMerge(Layer.succeed(CurrentDialect, SqliteDialect)),
   Layer.provide(FileSqliteLayer),
   Layer.provide(TripleStoreRuntimeLayer),
   Layer.provideMerge(RuntimeServicesLive),

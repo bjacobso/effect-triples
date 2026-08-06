@@ -1,12 +1,12 @@
 /**
  * StoreCapability — composable triple store capability system.
  *
- * A capability is a function that takes a `TripleStoreService` and returns an
- * enhanced `TripleStoreService`. Each capability:
+ * A capability is a function that takes a `TriplesService` and returns an
+ * enhanced `TriplesService`. Each capability:
  *
  * 1. Wraps the inner store's methods to add behavior (before/after hooks)
  * 2. May require additional services via the Effect context
- * 3. Preserves the `TripleStoreService` interface for the next capability
+ * 3. Preserves the `TriplesService` interface for the next capability
  *
  * Capabilities are composed by sorting by priority (higher = outermost) and
  * folding over the base store. Dependencies are validated at composition time.
@@ -15,7 +15,7 @@
  */
 
 import { Data } from "effect";
-import type { TripleStoreService } from "./TripleStore.js";
+import type { TriplesService } from "./Triples.js";
 
 // =============================================================================
 // Error
@@ -30,7 +30,7 @@ export class CapabilityError extends Data.TaggedError("CapabilityError")<{
 // =============================================================================
 
 /**
- * A composable capability that decorates a TripleStoreService.
+ * A composable capability that decorates a TriplesService.
  *
  * The `wrap` function receives the inner store and returns an enhanced store.
  * Capabilities declare:
@@ -43,7 +43,7 @@ export interface StoreCapability {
   readonly name: string;
   readonly priority: number;
   readonly requires: ReadonlyArray<string>;
-  readonly wrap: (inner: TripleStoreService) => TripleStoreService;
+  readonly wrap: (inner: TriplesService) => TriplesService;
 }
 
 // =============================================================================
@@ -84,7 +84,7 @@ export const validateDependencies = (capabilities: readonly StoreCapability[]): 
 // =============================================================================
 
 /**
- * Compose capabilities over a base TripleStoreService.
+ * Compose capabilities over a base TriplesService.
  *
  * Capabilities are sorted by priority (lowest = closest to base, highest = outermost).
  * This means capabilities with higher priority see the result of capabilities with
@@ -93,14 +93,14 @@ export const validateDependencies = (capabilities: readonly StoreCapability[]): 
  * Example ordering (outermost → innermost):
  *   Metrics (100) → RateLimiter (90) → AuditLog (80) → EntitySnapshots (60) → ChangeEmission (50) → Base (0)
  *
- * @param base - The base TripleStoreService (raw store without decorators)
+ * @param base - The base TriplesService (raw service without decorators)
  * @param capabilities - Capabilities to compose over the base
- * @returns The fully-composed TripleStoreService
+ * @returns The fully-composed TriplesService
  */
 export const composeStore = (
-  base: TripleStoreService,
+  base: TriplesService,
   ...capabilities: StoreCapability[]
-): TripleStoreService => {
+): TriplesService => {
   // Validate all dependency requirements
   validateDependencies(capabilities);
 
@@ -110,7 +110,7 @@ export const composeStore = (
   const sorted = [...capabilities].sort((a, b) => a.priority - b.priority);
 
   // Fold capabilities over the base store
-  return sorted.reduce<TripleStoreService>((inner, cap) => cap.wrap(inner), base);
+  return sorted.reduce<TriplesService>((inner, cap) => cap.wrap(inner), base);
 };
 
 // =============================================================================

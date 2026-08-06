@@ -1,16 +1,14 @@
 /**
- * Tests for KvDatalogLive through the DatalogService Effect interface.
+ * Datalog-query tests for the KV-backed Triples service.
  *
  * These tests verify the KV-backed Datalog engine works correctly when
- * accessed through the standard DatalogService API.
+ * accessed through the standard Triples API.
  */
 
 import { describe, it, expect } from "vitest";
 import { Effect, Layer } from "effect";
-import { TripleStore } from "../../../src/store/TripleStore.js";
-import { Datalog } from "../../../src/datalog/service.js";
-import { KvTripleStoreLive } from "../../../src/kv/layers/KvTripleStoreLive.js";
-import { KvDatalogLive } from "../../../src/kv/layers/KvDatalogLive.js";
+import { Triples } from "../../../src/store/Triples.js";
+import { KvTriplesLive } from "../../../src/kv/layers/KvTriplesLive.js";
 import { KvBackend } from "../../../src/kv/kv/KvBackend.js";
 import { makeTestKvBackend } from "../../../src/kv/kv/InMemoryKvBackend.js";
 import { TripleStoreRuntimeLayer } from "../../../src/store/TripleStoreRuntime.js";
@@ -21,25 +19,21 @@ const str = (value: string) => ({ type: "string" as const, value });
 const num = (value: number) => ({ type: "number" as const, value });
 const refVal = (value: string) => ({ type: "ref" as const, value });
 
-// Layer: KvDatalogLive + KvTripleStoreLive ← fresh InMemoryKvBackend per test
+// Fresh KV-backed Triples layer per test.
 const makeTestLayer = () => {
   const freshKvBackend = Layer.effect(
     KvBackend,
     Effect.sync(() => makeTestKvBackend()),
   );
-  return KvDatalogLive.pipe(
-    Layer.provideMerge(KvTripleStoreLive),
-    Layer.provide(TripleStoreRuntimeLayer),
-    Layer.provide(freshKvBackend),
-  );
+  return KvTriplesLive.pipe(Layer.provide(TripleStoreRuntimeLayer), Layer.provide(freshKvBackend));
 };
 
-const runTest = <A, E>(effect: Effect.Effect<A, E, TripleStore | Datalog>): Promise<A> =>
+const runTest = <A, E>(effect: Effect.Effect<A, E, Triples>): Promise<A> =>
   Effect.runPromise(Effect.provide(effect, makeTestLayer()));
 
 // Shared seed data
 const seedPeople = Effect.gen(function* () {
-  const store = yield* TripleStore;
+  const store = yield* Triples;
   yield* store.assertBatch([
     { entityId: "p:alice", attribute: ":person/name", value: str("Alice") },
     { entityId: "p:alice", attribute: ":person/age", value: num(30) },
@@ -57,12 +51,12 @@ const seedPeople = Effect.gen(function* () {
 
 // ─── Basic queries ─────────────────────────────────────────────────────────
 
-describe("KvDatalogLive - query", () => {
+describe("KvTriplesLive - query", () => {
   it("executes a simple pattern query", async () => {
     await runTest(
       Effect.gen(function* () {
         yield* seedPeople;
-        const datalog = yield* Datalog;
+        const datalog = yield* Triples;
 
         const { results } = yield* datalog.query({
           find: ["?name"],
@@ -80,7 +74,7 @@ describe("KvDatalogLive - query", () => {
     await runTest(
       Effect.gen(function* () {
         yield* seedPeople;
-        const datalog = yield* Datalog;
+        const datalog = yield* Triples;
 
         const { results } = yield* datalog.query({
           find: ["?name", "?age"],
@@ -101,7 +95,7 @@ describe("KvDatalogLive - query", () => {
     await runTest(
       Effect.gen(function* () {
         yield* seedPeople;
-        const datalog = yield* Datalog;
+        const datalog = yield* Triples;
 
         const { results } = yield* datalog.query({
           find: ["?name"],
@@ -123,7 +117,7 @@ describe("KvDatalogLive - query", () => {
     await runTest(
       Effect.gen(function* () {
         yield* seedPeople;
-        const datalog = yield* Datalog;
+        const datalog = yield* Triples;
 
         const { results } = yield* datalog.query({
           find: ["?name", "?deptName"],
@@ -145,32 +139,16 @@ describe("KvDatalogLive - query", () => {
   });
 });
 
-// ─── Query validation ──────────────────────────────────────────────────────
+// ─── query ─────────────────────────────────────────────────────────────────
 
-describe("KvDatalogLive - query validation", () => {
-  it("rejects invalid queries", async () => {
-    await runTest(
-      Effect.gen(function* () {
-        const datalog = yield* Datalog;
-
-        const result = yield* Effect.either(datalog.query({ not: "a valid query" }));
-
-        expect(result._tag).toBe("Left");
-      }),
-    );
-  });
-});
-
-// ─── queryValidated ────────────────────────────────────────────────────────
-
-describe("KvDatalogLive - queryValidated", () => {
-  it("executes pre-validated queries", async () => {
+describe("KvTriplesLive - query", () => {
+  it("executes typed queries", async () => {
     await runTest(
       Effect.gen(function* () {
         yield* seedPeople;
-        const datalog = yield* Datalog;
+        const datalog = yield* Triples;
 
-        const { results } = yield* datalog.queryValidated({
+        const { results } = yield* datalog.query({
           find: ["?name"],
           where: [["?person", ":person/name", "?name"]],
         });
@@ -184,14 +162,14 @@ describe("KvDatalogLive - queryValidated", () => {
     await runTest(
       Effect.gen(function* () {
         yield* seedPeople;
-        const datalog = yield* Datalog;
+        const datalog = yield* Triples;
 
-        const { results, debug } = yield* datalog.queryValidated(
+        const { results, debug } = yield* datalog.query(
           {
             find: ["?name"],
             where: [["?person", ":person/name", "?name"]],
           },
-          true,
+          { debug: true },
         );
 
         expect(results.length).toBe(3);
@@ -202,16 +180,16 @@ describe("KvDatalogLive - queryValidated", () => {
   });
 });
 
-// ─── queryWrapped ──────────────────────────────────────────────────────────
+// ─── queryPage ─────────────────────────────────────────────────────────────
 
-describe("KvDatalogLive - queryWrapped", () => {
+describe("KvTriplesLive - queryPage", () => {
   it("executes wrapped queries with pagination", async () => {
     await runTest(
       Effect.gen(function* () {
         yield* seedPeople;
-        const datalog = yield* Datalog;
+        const datalog = yield* Triples;
 
-        const result = yield* datalog.queryWrapped({
+        const result = yield* datalog.queryPage({
           inner: {
             find: ["?name", "?age"],
             where: [
@@ -234,9 +212,9 @@ describe("KvDatalogLive - queryWrapped", () => {
     await runTest(
       Effect.gen(function* () {
         yield* seedPeople;
-        const datalog = yield* Datalog;
+        const datalog = yield* Triples;
 
-        const result = yield* datalog.queryWrapped({
+        const result = yield* datalog.queryPage({
           inner: {
             find: ["?name", "?age"],
             where: [
@@ -256,11 +234,11 @@ describe("KvDatalogLive - queryWrapped", () => {
 
 // ─── explain ───────────────────────────────────────────────────────────────
 
-describe("KvDatalogLive - explain", () => {
+describe("KvTriplesLive - explain", () => {
   it("returns a query plan without executing", async () => {
     await runTest(
       Effect.gen(function* () {
-        const datalog = yield* Datalog;
+        const datalog = yield* Triples;
 
         const { queryPlan } = yield* datalog.explain({
           find: ["?name"],
@@ -277,9 +255,9 @@ describe("KvDatalogLive - explain", () => {
   it("returns a plan for wrapped queries", async () => {
     await runTest(
       Effect.gen(function* () {
-        const datalog = yield* Datalog;
+        const datalog = yield* Triples;
 
-        const { queryPlan } = yield* datalog.explainWrapped({
+        const { queryPlan } = yield* datalog.explainPage({
           inner: {
             find: ["?name"],
             where: [["?p", ":name", "?name"]],

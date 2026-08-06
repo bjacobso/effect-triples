@@ -1,10 +1,10 @@
 import { describe, it, expect } from "vitest";
 import { Effect, Layer } from "effect";
-import { TripleStore, Sparql, string, number, ref } from "effect-triples";
+import { Triples, Sparql, string, number, ref } from "effect-triples";
 import { SparqlLive } from "effect-triples-sql";
 import { SqliteTestLayer } from "./fixtures/SqliteTestLayer.js";
 
-// Combined test layer: Sparql + TripleStore + SQLite
+// Combined test layer: Sparql + Triples + SQLite
 const TestLayer = SparqlLive.pipe(Layer.provideMerge(SqliteTestLayer));
 
 /**
@@ -27,7 +27,7 @@ const TestLayer = SparqlLive.pipe(Layer.provideMerge(SqliteTestLayer));
  * - p4 works in d2
  */
 const setupTestData = Effect.gen(function* () {
-  const store = yield* TripleStore;
+  const store = yield* Triples;
 
   // People
   yield* store.assertBatch([

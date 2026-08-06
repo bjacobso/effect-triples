@@ -1,5 +1,5 @@
 import { Effect } from "effect";
-import { TripleStore } from "../store/TripleStore.js";
+import { Triples } from "../store/Triples.js";
 import type { Triple } from "../Triple.js";
 import type { Filter, SortSpec } from "./Filter.js";
 import type { ReadError, QueryError } from "../errors/index.js";
@@ -107,12 +107,12 @@ export class Query {
   }
 
   /**
-   * Execute the query against the TripleStore.
+   * Execute the query against Triples.
    *
    * Returns all triples for matching entities.
    */
-  run(): Effect.Effect<readonly Triple[], ReadError | QueryError, TripleStore> {
-    return Effect.flatMap(TripleStore, (store) => store.queryWithBuilder(this.state));
+  run(): Effect.Effect<readonly Triple[], ReadError | QueryError, Triples> {
+    return Effect.flatMap(Triples, (triples) => triples.entities(this.state));
   }
 
   /**

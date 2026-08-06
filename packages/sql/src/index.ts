@@ -33,9 +33,6 @@ export { type Migration, migrations, runMigrations } from "./migrations.js";
 // SQL-based query executors
 export { SqlQueryExecutorLive } from "./SqlQueryExecutor.js";
 
-// Datalog SQL layer
-export { DatalogLive, DatalogLayer } from "./DatalogSqlLayer.js";
-
 // SPARQL SQL layer
 export { SparqlLive, SparqlLayer } from "./SparqlSqlLayer.js";
 
@@ -46,4 +43,4 @@ export { StorageBackend, type StorageBackendService } from "./StorageBackend.js"
 export { DatabaseRegistryLive } from "./DatabaseRegistryLayer.js";
 
 // Database manager layer (SQL-backed)
-export { DatabaseManagerLive, wrapStoreWithEmitter } from "./DatabaseManagerLayer.js";
+export { DatabaseManagerLive } from "./DatabaseManagerLayer.js";

@@ -33,3 +33,4 @@ export {
   type FdbSubscriptionService,
   type FdbSubscriptionWatchOptions,
 } from "./FdbSubscriptions.js";
+export { FdbTriples, type FdbTriplesLayer } from "./FdbTriples.js";

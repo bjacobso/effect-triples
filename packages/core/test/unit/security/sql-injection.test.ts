@@ -7,7 +7,7 @@
 
 import { describe, it, expect } from "vitest";
 import { compile, compileWithRules } from "../../../src/index.js";
-import type { DatalogQuery, DatalogQueryWithRules } from "../../../src/index.js";
+import type { DatalogQuery } from "../../../src/index.js";
 
 describe("SQL Injection Prevention", () => {
   describe("Datalog Compiler", () => {
@@ -155,7 +155,7 @@ describe("SQL Injection Prevention", () => {
 
   describe("Query with Rules", () => {
     it("should use parameters for constant arguments in rule applications", () => {
-      const query: DatalogQueryWithRules = {
+      const query: DatalogQuery = {
         find: ["?ancestor"],
         where: [["ancestor", "'; DROP TABLE triples; --", "?ancestor"]],
         rules: [{ name: "ancestor", body: [["?x", ":parent", "?y"]] }],
@@ -212,7 +212,7 @@ describe("SQL Injection Prevention", () => {
     });
 
     it("should have params for constant values in rule queries", () => {
-      const query: DatalogQueryWithRules = {
+      const query: DatalogQuery = {
         find: ["?ancestor"],
         where: [["ancestor", "person1", "?ancestor"]],
         rules: [{ name: "ancestor", body: [["?x", ":parent", "?y"]] }],
