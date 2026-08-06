@@ -394,6 +394,8 @@ export const DatalogQuery = Schema.Struct({
   orderBy: Schema.optional(Schema.Array(OrderBySpec)),
   limit: Schema.optional(Schema.Number.pipe(Schema.int(), Schema.positive())),
   offset: Schema.optional(Schema.Number.pipe(Schema.int(), Schema.nonNegative())),
+  /** Recursive rule definitions applied by rule-application clauses in `where`. */
+  rules: Schema.optional(Schema.Array(Rule)),
   optionalProjection: Schema.optional(
     Schema.Struct({
       rowBinding: Variable,

@@ -146,41 +146,23 @@ void Testkit;
 
   writeFileSync(
     join(consumerDir, "smoke.mjs"),
-    `import { Effect, Layer } from "effect";
-import {
-  Datalog,
-  RuntimeServicesLive,
-  TripleStore,
-  TripleStoreLive,
-  TripleStoreRuntimeLayer,
-  string,
-} from "effect-triples";
-import { DatalogLive, SqlQueryExecutorLive } from "effect-triples-sql";
-import { SqliteAdapterLive, SqliteTestLayer } from "effect-triples-sqlite";
-
-const StorageLive = DatalogLive.pipe(
-  Layer.provideMerge(SqlQueryExecutorLive),
-  Layer.provideMerge(TripleStoreLive),
-  Layer.provideMerge(SqliteAdapterLive),
-  Layer.provideMerge(SqliteTestLayer),
-  Layer.provide(TripleStoreRuntimeLayer),
-  Layer.provideMerge(RuntimeServicesLive),
-);
+    `import { Effect } from "effect";
+import { Triples, string } from "effect-triples";
+import { SqliteTriples } from "effect-triples-sqlite";
 
 const result = await Effect.runPromise(
   Effect.gen(function* () {
-    const store = yield* TripleStore;
-    const datalog = yield* Datalog;
-    yield* store.assert({
+    const triples = yield* Triples;
+    yield* triples.assert({
       entityId: "person:alice",
       attribute: ":person/name",
       value: string("Alice"),
     });
-    return yield* datalog.query({
+    return yield* triples.query({
       find: ["?name"],
       where: [["?person", ":person/name", "?name"]],
     });
-  }).pipe(Effect.provide(StorageLive)),
+  }).pipe(Effect.provide(SqliteTriples.layerMemory)),
 );
 
 if (result.results.length !== 1 || result.results[0]?.["?name"] !== "Alice") {

@@ -2,8 +2,10 @@ import { describe, it, expect } from "vitest";
 import { Effect, Layer } from "effect";
 import { SqliteClient } from "@effect/sql-sqlite-node";
 import {
-  TripleStore,
-  TripleStoreLive,
+  Triples,
+  TriplesLive,
+  CurrentDialect,
+  SqliteDialect,
   Query,
   RuntimeServicesLive,
   StorageAdapter,
@@ -13,6 +15,7 @@ import {
 } from "effect-triples";
 import { SqliteTestLayer } from "./fixtures/SqliteTestLayer.js";
 import { SqliteAdapterLive } from "effect-triples-sqlite";
+import { SqlQueryExecutorLive } from "effect-triples-sql";
 
 const TestLayer = SqliteTestLayer;
 const makeRawQueryCountingLayer = (counter: { count: number; sql: string | null }) => {
@@ -33,8 +36,11 @@ const makeRawQueryCountingLayer = (counter: { count: number; sql: string | null 
     }),
   ).pipe(Layer.provide(adapterLayer));
 
-  return TripleStoreLive.pipe(
-    Layer.provide(countingAdapterLayer),
+  return TriplesLive.pipe(
+    Layer.provideMerge(SqlQueryExecutorLive),
+    Layer.provideMerge(countingAdapterLayer),
+    Layer.provideMerge(Layer.succeed(CurrentDialect, SqliteDialect)),
+    Layer.provideMerge(sqliteLayer),
     Layer.provide(TripleStoreRuntimeLayer),
     Layer.provideMerge(RuntimeServicesLive),
   );
@@ -55,7 +61,7 @@ const makeRawQueryCountingLayer = (counter: { count: number; sql: string | null 
  * - c2: Beta, employees 50
  */
 const setupTestData = Effect.gen(function* () {
-  const store = yield* TripleStore;
+  const store = yield* Triples;
 
   // Person 1: Alice
   yield* store.assertBatch([

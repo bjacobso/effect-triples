@@ -1,23 +1,26 @@
 /**
- * TripleStoreAdapterLayer - TripleStore implementation using StorageAdapter
+ * TriplesLive — the canonical `Triples` implementation over `StorageAdapter`
+ * plus `QueryExecutor`.
  *
- * This layer provides the TripleStore service using the StorageAdapter abstraction,
- * allowing different backends (SQLite, PostgreSQL, Cloudflare DO, etc.) to use
- * their optimal primitives.
+ * Writes and triple-level reads go through the `StorageAdapter` abstraction so
+ * every SQL backend (SQLite, PostgreSQL, Cloudflare DO, …) can use its optimal
+ * primitives. Datalog reads go through the `QueryExecutor` SPI (compiles
+ * Datalog → SQL for SQL backends).
  *
- * This is the canonical TripleStore implementation. All backends go through
- * the StorageAdapter interface.
+ * The same service owns storage mutations and query execution.
  */
 
 import { Effect, Layer, Option } from "effect";
 import {
-  TripleStore,
-  type TripleStoreService,
+  Triples,
+  type TriplesService,
   type TransactionResult,
   type TransactionMeta,
   type BulkInsertOptions,
-} from "./TripleStore.js";
+  type QueryOptions,
+} from "./Triples.js";
 import { StorageAdapter } from "../storage/StorageAdapter.js";
+import { QueryExecutor } from "../storage/QueryExecutor.js";
 import type {
   Triple,
   TripleInput,
@@ -31,7 +34,8 @@ import { queryToPattern } from "../Triple.js";
 import type { Pattern } from "../types/Pattern.js";
 import type { QueryState } from "../types/QueryBuilder.js";
 import type { Filter, SortSpec } from "../types/Filter.js";
-import { WriteError, ReadError, QueryError } from "../errors/index.js";
+import type { DatalogQuery, WrappedQuery } from "../datalog/types.js";
+import { WriteError, ReadError, QueryError, DatalogError } from "../errors/index.js";
 import type { SqlDialect } from "../dialects/index.js";
 import { CurrentDialect } from "../dialects/index.js";
 import { SqliteDialect } from "../dialects/sqlite.js";
@@ -44,7 +48,6 @@ import { TripleStoreRuntime } from "./TripleStoreRuntime.js";
 // =============================================================================
 
 const rowToTriple = (row: TripleRow): Triple => {
-  // Unpack value from row
   let value: Triple["value"];
   switch (row.value_type) {
     case "string":
@@ -211,17 +214,14 @@ const buildMatchedEntitySort = (
 };
 
 // =============================================================================
-// TripleStore Layer using StorageAdapter
+// Triples Layer using StorageAdapter + QueryExecutor
 // =============================================================================
 
-/**
- * TripleStore implementation using StorageAdapter.
- * This allows different backends to use their optimal primitives.
- */
-export const TripleStoreLive = Layer.effect(
-  TripleStore,
+export const TriplesLive = Layer.effect(
+  Triples,
   Effect.gen(function* () {
     const adapter = yield* StorageAdapter;
+    const executor = yield* QueryExecutor;
     const runtime = yield* TripleStoreRuntime;
     const now = runtime.now;
     const nextTripleId = runtime.nextTripleId;
@@ -279,7 +279,6 @@ export const TripleStoreLive = Layer.effect(
           };
         });
 
-        // Single insert — avoid batchInsert overhead
         if (inputs.length === 1) {
           const row = yield* adapter.insert(inputs[0]!, txId, timestamp, yield* nextTripleId);
           return [rowToTriple(row)];
@@ -306,7 +305,6 @@ export const TripleStoreLive = Layer.effect(
           const triples: Triple[] = [];
           let retractedCount = 0;
 
-          // Collect consecutive assert ops and flush them as batches
           let pendingAsserts: TransactOp[] = [];
 
           for (const op of operations) {
@@ -315,7 +313,6 @@ export const TripleStoreLive = Layer.effect(
               continue;
             }
 
-            // Non-assert op: flush any pending asserts first
             if (pendingAsserts.length > 0) {
               const batch = yield* flushAssertBatch(pendingAsserts, txId, timestamp);
               triples.push(...batch);
@@ -337,13 +334,12 @@ export const TripleStoreLive = Layer.effect(
             }
           }
 
-          // Flush any remaining asserts
           if (pendingAsserts.length > 0) {
             const batch = yield* flushAssertBatch(pendingAsserts, txId, timestamp);
             triples.push(...batch);
           }
 
-          // Insert transaction metadata triples
+          // Insert transaction metadata triples (provenance).
           yield* adapter.insert(
             {
               entityId: txId,
@@ -389,7 +385,7 @@ export const TripleStoreLive = Layer.effect(
       timestamp?: number,
     ): Effect.Effect<number, WriteError | ReadError> =>
       Effect.gen(function* () {
-        const triples = yield* query(pattern);
+        const triples = yield* match(pattern);
         const resolvedTxId = txId ?? (yield* nextTxId);
         const resolvedTimestamp = timestamp ?? (yield* now);
         for (const triple of triples) {
@@ -399,28 +395,28 @@ export const TripleStoreLive = Layer.effect(
       });
 
     // =========================================================================
-    // Read Operations
+    // Triple-level Reads
     // =========================================================================
 
-    const getTriple = (id: TripleId): Effect.Effect<Triple | null, ReadError> =>
+    const get = (id: TripleId): Effect.Effect<Triple | null, ReadError> =>
       Effect.gen(function* () {
         const row = yield* adapter.getById(id);
         return row ? rowToTriple(row) : null;
       });
 
-    const getEntity = (entityId: EntityId): Effect.Effect<readonly Triple[], ReadError> =>
+    const entity = (entityId: EntityId): Effect.Effect<readonly Triple[], ReadError> =>
       Effect.gen(function* () {
         const rows = yield* adapter.getByEntity(entityId);
         return rows.map(rowToTriple);
       });
 
-    const query = (pattern: Pattern): Effect.Effect<readonly Triple[], ReadError> =>
+    const match = (pattern: Pattern): Effect.Effect<readonly Triple[], ReadError> =>
       Effect.gen(function* () {
         const rows = yield* adapter.query(pattern);
         return rows.map(rowToTriple);
       });
 
-    const queryAsOf = (
+    const matchAsOf = (
       pattern: Pattern,
       asOf: number,
     ): Effect.Effect<readonly Triple[], ReadError> =>
@@ -436,20 +432,18 @@ export const TripleStoreLive = Layer.effect(
       });
 
     // =========================================================================
-    // Query Builder Support
+    // Fluent-builder execution
     // =========================================================================
 
-    const queryWithBuilder = (
+    const entities = (
       state: QueryState,
     ): Effect.Effect<readonly Triple[], ReadError | QueryError> =>
       Effect.gen(function* () {
-        // Resolve dialect from context (optional — defaults to SQLite)
         const dialectOpt = yield* Effect.serviceOption(CurrentDialect);
         const dialect: SqlDialect = dialectOpt._tag === "Some" ? dialectOpt.value : SqliteDialect;
 
         const collector = createParamCollector(dialect);
 
-        // Separate filters by type
         const regularFilters = state.filters.filter(
           (f) => f.type !== "exists" && f.type !== "notExists",
         );
@@ -460,7 +454,6 @@ export const TripleStoreLive = Layer.effect(
         const joins: string[] = [];
         const whereConditions: string[] = [];
 
-        // Build sort aliases and LEFT JOINs
         const sortAliases = new Map<string, string>();
         state.sorts.forEach((sort, idx) => {
           const alias = `s${idx + 1}`;
@@ -470,11 +463,9 @@ export const TripleStoreLive = Layer.effect(
           );
         });
 
-        // Base conditions
         whereConditions.push(`t0.entity_type = ${collector.add(state.entityType)}`);
         whereConditions.push(`t0.retracted_at IS NULL`);
 
-        // Add JOINs for regular filters
         regularFilters.forEach((filter, idx) => {
           const alias = `f${idx + 1}`;
           joins.push(
@@ -483,7 +474,6 @@ export const TripleStoreLive = Layer.effect(
           whereConditions.push(buildFilterCondition(filter, alias, collector));
         });
 
-        // Add EXISTS/NOT EXISTS conditions
         existenceFilters.forEach((filter) => {
           const condition = buildExistsCondition(filter, "t0", collector);
           if (condition) {
@@ -532,7 +522,33 @@ export const TripleStoreLive = Layer.effect(
       });
 
     // =========================================================================
-    // Return Service
+    // Datalog Reads (via QueryExecutor)
+    // =========================================================================
+
+    const query = (q: DatalogQuery, options?: QueryOptions) =>
+      executor.execute(q, options?.debug ?? false).pipe(Effect.withSpan("triples.query"));
+
+    const queryPage = (q: WrappedQuery, options?: QueryOptions) =>
+      executor.executePage(q, options?.debug ?? false).pipe(Effect.withSpan("triples.queryPage"));
+
+    const explain = (q: DatalogQuery) =>
+      executor.explain(q).pipe(
+        Effect.mapError(
+          (error) => new DatalogError({ message: error.message, cause: error.cause }),
+        ),
+        Effect.withSpan("triples.explain"),
+      );
+
+    const explainPage = (q: WrappedQuery) =>
+      executor.explainPage(q).pipe(
+        Effect.mapError(
+          (error) => new DatalogError({ message: error.message, cause: error.cause }),
+        ),
+        Effect.withSpan("triples.explainPage"),
+      );
+
+    // =========================================================================
+    // Transaction scope
     // =========================================================================
 
     const withTransaction = <A, E>(effect: Effect.Effect<A, E>): Effect.Effect<A, E | WriteError> =>
@@ -544,18 +560,17 @@ export const TripleStoreLive = Layer.effect(
       retract,
       retractByPattern,
       transact,
-      getTriple,
-      getEntity,
-      query,
-      queryAsOf,
-      history,
-      queryWithBuilder,
       withTransaction,
-    } satisfies TripleStoreService;
+      get,
+      entity,
+      match,
+      matchAsOf,
+      history,
+      query,
+      queryPage,
+      explain,
+      explainPage,
+      entities,
+    } satisfies TriplesService;
   }),
 );
-
-/**
- * @deprecated Use `TripleStoreLive` instead. This alias is kept for backward compatibility.
- */
-export const TripleStoreAdapterLive = TripleStoreLive;

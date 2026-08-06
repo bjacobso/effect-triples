@@ -9,7 +9,7 @@
  */
 
 import { Effect, Option, pipe } from "effect";
-import type { TripleStoreService } from "./TripleStore.js";
+import type { TriplesService } from "./Triples.js";
 import type { ChangeEvent, TripleChange } from "./ChangeEmitter.js";
 
 // =============================================================================
@@ -25,7 +25,7 @@ import type { ChangeEvent, TripleChange } from "./ChangeEmitter.js";
 export type WriteEventCallback = (event: ChangeEvent) => Effect.Effect<void>;
 
 /**
- * Create write-side methods for a TripleStoreService that intercept every
+ * Create write-side methods for a TriplesService that intercept every
  * mutation, delegate to the inner store, build a ChangeEvent, and invoke
  * the callback. Read operations are NOT included — callers should spread
  * the inner store's read methods directly.
@@ -34,11 +34,11 @@ export type WriteEventCallback = (event: ChangeEvent) => Effect.Effect<void>;
  * includes correct entityId/attribute even after the triple is removed.
  */
 export const makeWriteInterceptors = (
-  inner: TripleStoreService,
+  inner: TriplesService,
   onEvent: WriteEventCallback,
   now: Effect.Effect<number>,
 ): Pick<
-  TripleStoreService,
+  TriplesService,
   "assert" | "assertBatch" | "retract" | "retractByPattern" | "transact"
 > => ({
   assert: (input) =>
@@ -77,7 +77,7 @@ export const makeWriteInterceptors = (
 
   retract: (id) =>
     pipe(
-      inner.getTriple(id),
+      inner.get(id),
       Effect.catchAll(() => Effect.succeed(null)),
       Effect.flatMap((triple) =>
         pipe(
@@ -128,7 +128,7 @@ export const makeWriteInterceptors = (
       for (const op of operations) {
         if (op.op === "retract") {
           const triple = yield* inner
-            .getTriple(op.id as any)
+            .get(op.id as any)
             .pipe(Effect.catchAll(() => Effect.succeed(null)));
           if (triple) {
             tripleMap.set(op.id, { entityId: triple.entityId, attribute: triple.attribute });

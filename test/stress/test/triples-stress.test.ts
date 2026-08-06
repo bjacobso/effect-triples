@@ -24,7 +24,7 @@ import {
   getDatabaseSize,
   describeBackend,
   supportsBulkOptions,
-  getStoreAndDatalog,
+  getTriples,
   makeSqlLayer,
   getInsertBatchSize,
 } from "../src/backend.js";
@@ -120,7 +120,7 @@ describe(`Triple Store Stress Test [${BACKEND}] - ${(EMPLOYEE_COUNT * TRIPLES_PE
   it("should insert triples efficiently", async () => {
     const result = await Effect.runPromise(
       Effect.gen(function* () {
-        const { store } = yield* getStoreAndDatalog();
+        const triples = yield* getTriples();
 
         // Generate all triples upfront
         process.stderr.write(
@@ -177,7 +177,7 @@ describe(`Triple Store Stress Test [${BACKEND}] - ${(EMPLOYEE_COUNT * TRIPLES_PE
             Math.min((i + INSERT_BATCH_SIZE) * TRIPLES_PER_EMPLOYEE, allTriples.length),
           );
 
-          yield* store.assertBatch(batch, BULK_OPTIONS);
+          yield* triples.assertBatch(batch, BULK_OPTIONS);
           stopStallLogger();
 
           const batchTime = Date.now() - batchStart;
@@ -276,7 +276,7 @@ describe(`Triple Store Stress Test [${BACKEND}] - ${(EMPLOYEE_COUNT * TRIPLES_PE
       const combinedLayer = Layer.merge(TestLayer, SQL_LAYER);
       await Effect.runPromise(
         Effect.gen(function* () {
-          const { store } = yield* getStoreAndDatalog();
+          const triples = yield* getTriples();
           const sql = yield* SqlClient.SqlClient;
 
           for (let round = 1; round <= UPDATE_ROUNDS; round++) {
@@ -314,7 +314,7 @@ describe(`Triple Store Stress Test [${BACKEND}] - ${(EMPLOYEE_COUNT * TRIPLES_PE
 
                   // Bulk assert — batchInsert's inner withTransaction becomes a SAVEPOINT
                   const newTriples = generateUpdateTriples(i, endIdx, round);
-                  yield* store.assertBatch(newTriples);
+                  yield* triples.assertBatch(newTriples);
                 }),
               );
 
@@ -413,17 +413,17 @@ describe(`Triple Store Stress Test [${BACKEND}] - ${(EMPLOYEE_COUNT * TRIPLES_PE
   );
 
   // ============================================================================
-  // TripleStore Query Performance
+  // Triple-pattern query performance
   // ============================================================================
 
-  describe("TripleStore Query Performance", () => {
+  describe("Triple-Pattern Query Performance", () => {
     it("Q1: Single entity lookup", async () => {
       const targetId = `emp:${Math.floor(EMPLOYEE_COUNT / 2)}`;
       const start = Date.now();
       const result = await Effect.runPromise(
         Effect.gen(function* () {
-          const { store } = yield* getStoreAndDatalog();
-          return yield* store.getEntity(targetId as EntityId);
+          const triples = yield* getTriples();
+          return yield* triples.entity(targetId as EntityId);
         }).pipe(Effect.provide(TestLayer)),
       );
       const duration = Date.now() - start;
@@ -444,8 +444,8 @@ describe(`Triple Store Stress Test [${BACKEND}] - ${(EMPLOYEE_COUNT * TRIPLES_PE
       const start = Date.now();
       const result = await Effect.runPromise(
         Effect.gen(function* () {
-          const { store } = yield* getStoreAndDatalog();
-          return yield* store.query({ attribute: ":salary" });
+          const triples = yield* getTriples();
+          return yield* triples.match({ attribute: ":salary" });
         }).pipe(Effect.provide(TestLayer)),
       );
       const duration = Date.now() - start;
@@ -465,8 +465,8 @@ describe(`Triple Store Stress Test [${BACKEND}] - ${(EMPLOYEE_COUNT * TRIPLES_PE
       const start = Date.now();
       const result = await Effect.runPromise(
         Effect.gen(function* () {
-          const { store } = yield* getStoreAndDatalog();
-          return yield* store.query({ entityType: "Employee" });
+          const triples = yield* getTriples();
+          return yield* triples.match({ entityType: "Employee" });
         }).pipe(Effect.provide(TestLayer)),
       );
       const duration = Date.now() - start;
@@ -486,8 +486,8 @@ describe(`Triple Store Stress Test [${BACKEND}] - ${(EMPLOYEE_COUNT * TRIPLES_PE
       const start = Date.now();
       const result = await Effect.runPromise(
         Effect.gen(function* () {
-          const { store } = yield* getStoreAndDatalog();
-          return yield* store.query({
+          const triples = yield* getTriples();
+          return yield* triples.match({
             attribute: ":department",
             value: string("Engineering"),
           });
@@ -517,8 +517,8 @@ describe(`Triple Store Stress Test [${BACKEND}] - ${(EMPLOYEE_COUNT * TRIPLES_PE
       const start = Date.now();
       const result = await Effect.runPromise(
         Effect.gen(function* () {
-          const { store } = yield* getStoreAndDatalog();
-          return yield* store.query({
+          const triples = yield* getTriples();
+          return yield* triples.match({
             attribute: ":manager",
             value: ref(mgrId),
           });
@@ -544,8 +544,8 @@ describe(`Triple Store Stress Test [${BACKEND}] - ${(EMPLOYEE_COUNT * TRIPLES_PE
       const start = Date.now();
       const result = await Effect.runPromise(
         Effect.gen(function* () {
-          const { store } = yield* getStoreAndDatalog();
-          return yield* store.query({
+          const triples = yield* getTriples();
+          return yield* triples.match({
             attribute: ":active",
             value: boolean(true),
           });
@@ -584,8 +584,8 @@ describe(`Triple Store Stress Test [${BACKEND}] - ${(EMPLOYEE_COUNT * TRIPLES_PE
       const start = Date.now();
       const result = await Effect.runPromise(
         Effect.gen(function* () {
-          const { datalog } = yield* getStoreAndDatalog();
-          return yield* datalog.queryValidated({
+          const triples = yield* getTriples();
+          return yield* triples.query({
             find: ["?name"],
             where: [["?e", ":name", "?name"]],
           });
@@ -608,8 +608,8 @@ describe(`Triple Store Stress Test [${BACKEND}] - ${(EMPLOYEE_COUNT * TRIPLES_PE
       const start = Date.now();
       const result = await Effect.runPromise(
         Effect.gen(function* () {
-          const { datalog } = yield* getStoreAndDatalog();
-          return yield* datalog.queryValidated({
+          const triples = yield* getTriples();
+          return yield* triples.query({
             find: ["?name", "?dept"],
             where: [
               ["?e", ":name", "?name"],
@@ -647,8 +647,8 @@ describe(`Triple Store Stress Test [${BACKEND}] - ${(EMPLOYEE_COUNT * TRIPLES_PE
       const start = Date.now();
       const result = await Effect.runPromise(
         Effect.gen(function* () {
-          const { datalog } = yield* getStoreAndDatalog();
-          return yield* datalog.queryValidated({
+          const triples = yield* getTriples();
+          return yield* triples.query({
             find: ["?name", "?salary"],
             where: [
               ["?e", ":name", "?name"],
@@ -677,8 +677,8 @@ describe(`Triple Store Stress Test [${BACKEND}] - ${(EMPLOYEE_COUNT * TRIPLES_PE
       const start = Date.now();
       const result = await Effect.runPromise(
         Effect.gen(function* () {
-          const { datalog } = yield* getStoreAndDatalog();
-          return yield* datalog.queryValidated({
+          const triples = yield* getTriples();
+          return yield* triples.query({
             find: ["?name", "?title"],
             where: [
               ["?e", ":name", "?name"],
@@ -709,8 +709,8 @@ describe(`Triple Store Stress Test [${BACKEND}] - ${(EMPLOYEE_COUNT * TRIPLES_PE
       const start = Date.now();
       const result = await Effect.runPromise(
         Effect.gen(function* () {
-          const { datalog } = yield* getStoreAndDatalog();
-          return yield* datalog.queryValidated({
+          const triples = yield* getTriples();
+          return yield* triples.query({
             find: ["?dept", "?count"],
             where: [["?e", ":department", "?dept"]],
             aggregate: [["count", "?e", "?count"]],
@@ -734,8 +734,8 @@ describe(`Triple Store Stress Test [${BACKEND}] - ${(EMPLOYEE_COUNT * TRIPLES_PE
       const start = Date.now();
       const result = await Effect.runPromise(
         Effect.gen(function* () {
-          const { datalog } = yield* getStoreAndDatalog();
-          return yield* datalog.queryValidated({
+          const triples = yield* getTriples();
+          return yield* triples.query({
             find: ["?empName", "?mgrName"],
             where: [
               ["?e", ":name", "?empName"],

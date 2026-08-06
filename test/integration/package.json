@@ -13,7 +13,8 @@
     "effect": "catalog:",
     "effect-triples": "workspace:^",
     "effect-triples-sql": "workspace:^",
-    "effect-triples-sqlite": "workspace:^"
+    "effect-triples-sqlite": "workspace:^",
+    "effect-triples-testkit": "workspace:^"
   },
   "devDependencies": {
     "@types/node": "catalog:",

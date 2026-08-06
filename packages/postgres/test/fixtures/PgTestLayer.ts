@@ -2,7 +2,7 @@
  * Testcontainers-based PostgreSQL test layer.
  *
  * Spins up a PostgreSQL Docker container, runs migrations, and provides
- * TripleStore + Datalog services backed by PostgreSQL.
+ * Triples service backed by PostgreSQL.
  *
  * Follows the same acquireRelease pattern as FdbTestLayer.
  *
@@ -10,17 +10,17 @@
  *
  * ```ts
  * import { layer } from "@effect/vitest"
- * import { PgFullTestLayer } from "../fixtures/PgTestLayer.js"
+ * import { PgTestLayer } from "../fixtures/PgTestLayer.js"
  *
  * const pgAvailable = checkDockerAvailable()
  * const describePg = pgAvailable
- *   ? layer(PgFullTestLayer, { timeout: "60 seconds" })
+ *   ? layer(PgTestLayer, { timeout: "60 seconds" })
  *   : (name: string, _fn: () => void) => describe.skip(name, () => {})
  *
  * describePg("PostgreSQL tests", (it) => {
  *   it.effect("queries work", () =>
  *     Effect.gen(function* () {
- *       const store = yield* TripleStore
+ *       const triples = yield* Triples
  *       // ...
  *     })
  *   )
@@ -34,8 +34,8 @@
 import { Context, Effect, Layer } from "effect";
 import { GenericContainer, Wait } from "testcontainers";
 import type { StartedTestContainer } from "testcontainers";
-import { CurrentDialect, TripleStoreLive, TripleStoreRuntimeLayer } from "effect-triples";
-import { DatalogLive, SqlQueryExecutorLive } from "effect-triples-sql";
+import { CurrentDialect, TriplesLive, TripleStoreRuntimeLayer } from "effect-triples";
+import { SqlQueryExecutorLive } from "effect-triples-sql";
 import {
   makePostgresqlLayerFromUrl,
   PostgresqlAdapterLive,
@@ -125,29 +125,13 @@ const PgSqlClientLayer = Layer.unwrapEffect(
 );
 
 /**
- * TripleStore backed by containerized PostgreSQL.
+ * Triples backed by containerized PostgreSQL.
  */
-export const PgTestLayer = TripleStoreLive.pipe(
+export const PgTestLayer = TriplesLive.pipe(
+  Layer.provideMerge(SqlQueryExecutorLive),
   Layer.provideMerge(PostgresqlAdapterLive),
-  Layer.provide(PgSqlClientLayer),
-  Layer.provide(PgContainerLayer),
-  Layer.provide(TripleStoreRuntimeLayer),
-);
-
-/**
- * TripleStore + Datalog + CurrentDialect backed by containerized PostgreSQL.
- *
- * Complete test layer for PostgreSQL integration tests.
- */
-export const PgFullTestLayer = Layer.mergeAll(
-  TripleStoreLive.pipe(Layer.provide(PostgresqlAdapterLive)),
-  DatalogLive.pipe(
-    Layer.provide(TripleStoreLive.pipe(Layer.provide(PostgresqlAdapterLive))),
-    Layer.provide(SqlQueryExecutorLive),
-  ),
-).pipe(
-  Layer.provide(Layer.succeed(CurrentDialect, PostgresqlDialect)),
-  Layer.provide(PgSqlClientLayer),
+  Layer.provideMerge(Layer.succeed(CurrentDialect, PostgresqlDialect)),
+  Layer.provideMerge(PgSqlClientLayer),
   Layer.provide(PgContainerLayer),
   Layer.provide(TripleStoreRuntimeLayer),
 );

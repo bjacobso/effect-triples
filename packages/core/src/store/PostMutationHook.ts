@@ -2,7 +2,7 @@
  * PostMutationHook — abstract interface for reacting to storage-layer mutations.
  *
  * Called after every successful write operation (assert, retract, transact)
- * by the TripleStore change-emission wrapper. Implementations can trigger
+ * by the Triples change-emission capability. Implementations can trigger
  * downstream logic such as reactive rule evaluation.
  *
  * Hooks are fire-and-forget: failures must never break the underlying mutation.

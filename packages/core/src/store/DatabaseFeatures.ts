@@ -11,8 +11,7 @@
 
 import { Context, Effect } from "effect";
 import type { StoreCapability } from "./StoreCapability.js";
-import type { TripleStoreService } from "./TripleStore.js";
-import type { DatalogService } from "../datalog/service.js";
+import type { TriplesService } from "./Triples.js";
 import type { StorageAdapterService } from "../storage/StorageAdapter.js";
 import type { WriteError, ReadError } from "../errors/index.js";
 import type { IdGenerator } from "./RuntimeServices.js";
@@ -36,12 +35,11 @@ export interface DatabaseFeature {
 
   /**
    * Factory that produces a store capability for this feature.
-   * Called after initialize, receives the raw store + datalog.
+   * Called after initialize and receives the raw Triples service.
    * Return null to skip (graceful degradation).
    */
   readonly capabilityFactory?: (
-    store: TripleStoreService,
-    datalog: DatalogService,
+    triples: TriplesService,
     now: Effect.Effect<number>,
   ) => Effect.Effect<StoreCapability | null, never, IdGenerator>;
 }

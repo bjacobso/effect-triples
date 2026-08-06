@@ -1,8 +1,8 @@
 /**
  * Backend factory for multi-backend stress tests.
  *
- * Uses DatabaseManager (the public API) to construct TripleStore and Datalog
- * services for SQL backends — the same path production code uses.
+ * Uses DatabaseManager (the public API) to construct Triples services for SQL
+ * backends — the same path production code uses.
  *
  * Supports four backends:
  * - sqlite (default): File-based SQLite via better-sqlite3
@@ -23,17 +23,11 @@ import { SqlClient } from "@effect/sql";
 import { SqliteClient } from "@effect/sql-sqlite-node";
 import { NodeContext } from "@effect/platform-node";
 import { DatabaseManager } from "effect-triples";
-import { TripleStore, type TripleStoreService } from "effect-triples";
-import { Datalog, type DatalogService } from "effect-triples";
+import { Triples, type TriplesService } from "effect-triples";
 import { DatabaseManagerLive, DatabaseRegistryLive } from "effect-triples-sql";
 import { makeSqliteBackend } from "effect-triples-sqlite";
 import { makePostgresqlBackendFromUrl, makePostgresqlLayerFromUrl } from "effect-triples-postgres";
-import {
-  KvTripleStoreLive,
-  KvDatalogLive,
-  InMemoryKvBackendLive,
-  TripleStoreRuntimeLayer,
-} from "effect-triples";
+import { KvTriplesLive, InMemoryKvBackendLive, TripleStoreRuntimeLayer } from "effect-triples";
 import { makeFdbKvBackend, type FdbKvBackendConfig } from "effect-triples-foundationdb";
 import { promises as fs } from "node:fs";
 
@@ -283,21 +277,19 @@ const makeFdbSubspace = (): Buffer => {
 /**
  * Build the Effect Layer for the given backend.
  *
- * For sqlite/pg: provides DatabaseManager (use getStoreAndDatalog() to get services).
- * For kv/fdb: provides TripleStore + Datalog directly (use getStoreAndDatalog() which handles both).
+ * For sqlite/pg: provides DatabaseManager (use getTriples() to get the service).
+ * For kv/fdb: provides Triples directly (use getTriples() which handles both).
  */
-export function makeTestLayer(
-  backend: BackendName,
-): Layer.Layer<DatabaseManager | TripleStore | Datalog> {
+export function makeTestLayer(backend: BackendName): Layer.Layer<DatabaseManager | Triples> {
   switch (backend) {
     case "sqlite":
-      return makeSqliteManagerLayer() as Layer.Layer<DatabaseManager | TripleStore | Datalog>;
+      return makeSqliteManagerLayer() as Layer.Layer<DatabaseManager | Triples>;
     case "pg":
-      return makePgManagerLayer() as Layer.Layer<DatabaseManager | TripleStore | Datalog>;
+      return makePgManagerLayer() as Layer.Layer<DatabaseManager | Triples>;
     case "kv":
-      return makeKvTestLayer() as Layer.Layer<DatabaseManager | TripleStore | Datalog>;
+      return makeKvTestLayer() as Layer.Layer<DatabaseManager | Triples>;
     case "fdb":
-      return makeFdbTestLayer() as Layer.Layer<DatabaseManager | TripleStore | Datalog>;
+      return makeFdbTestLayer() as Layer.Layer<DatabaseManager | Triples>;
   }
 }
 
@@ -327,14 +319,7 @@ function makePgManagerLayer(): Layer.Layer<DatabaseManager> {
 
 function makeKvTestLayer() {
   const kvBackend = InMemoryKvBackendLive;
-  const storeLayer = KvTripleStoreLive.pipe(
-    Layer.provide(TripleStoreRuntimeLayer),
-    Layer.provide(kvBackend),
-  );
-  const datalogLayer = KvDatalogLive.pipe(Layer.provide(kvBackend));
-  return Layer.mergeAll(storeLayer, datalogLayer) as unknown as Layer.Layer<
-    DatabaseManager | TripleStore | Datalog
-  >;
+  return KvTriplesLive.pipe(Layer.provide(TripleStoreRuntimeLayer), Layer.provide(kvBackend));
 }
 
 function makeFdbTestLayer() {
@@ -355,14 +340,7 @@ function makeFdbTestLayer() {
   } satisfies FdbKvBackendConfig;
 
   const fdbBackend = makeFdbKvBackend(fdbConfig);
-  const storeLayer = KvTripleStoreLive.pipe(
-    Layer.provide(TripleStoreRuntimeLayer),
-    Layer.provide(fdbBackend),
-  );
-  const datalogLayer = KvDatalogLive.pipe(Layer.provide(fdbBackend));
-  return Layer.mergeAll(storeLayer, datalogLayer) as unknown as Layer.Layer<
-    DatabaseManager | TripleStore | Datalog
-  >;
+  return KvTriplesLive.pipe(Layer.provide(TripleStoreRuntimeLayer), Layer.provide(fdbBackend));
 }
 
 /**
@@ -395,27 +373,19 @@ export function makeSqlLayer(backend: BackendName): Layer.Layer<SqlClient.SqlCli
  */
 export const STRESS_DATABASE = STRESS_DB_NAME;
 
-// ─── Helper to get TripleStore and Datalog ─────────────────────────────────
+// ─── Helper to get Triples ─────────────────────────────────────────────────
 
 /**
- * Get TripleStore and Datalog services.
+ * Get the Triples service.
  *
- * For sqlite/pg: uses DatabaseManager.getStore/getDatalog (the production path).
- * For kv/fdb: reads TripleStore and Datalog directly from the layer (no DatabaseManager).
+ * For sqlite/pg: uses DatabaseManager.getTriples (the production path).
+ * For kv/fdb: reads Triples directly from the layer (no DatabaseManager).
  */
-export function getStoreAndDatalog(): Effect.Effect<
-  { store: TripleStoreService; datalog: DatalogService },
-  unknown,
-  DatabaseManager | TripleStore | Datalog
-> {
+export function getTriples(): Effect.Effect<TriplesService, unknown, DatabaseManager | Triples> {
   const backend = getBackendName();
 
   if (backend === "kv" || backend === "fdb") {
-    return Effect.gen(function* () {
-      const store = yield* TripleStore;
-      const datalog = yield* Datalog;
-      return { store, datalog };
-    });
+    return Triples;
   }
 
   return Effect.gen(function* () {
@@ -424,10 +394,7 @@ export function getStoreAndDatalog(): Effect.Effect<
     // Create database (ignore if already exists)
     yield* manager.create(STRESS_DB_NAME, "Stress test database").pipe(Effect.ignore);
 
-    const store = yield* manager.getStore(STRESS_DB_NAME);
-    const datalog = yield* manager.getDatalog(STRESS_DB_NAME);
-
-    return { store, datalog };
+    return yield* manager.getTriples(STRESS_DB_NAME);
   });
 }
 

@@ -16,7 +16,7 @@
 
 import { Effect, Either, Encoding, Option, pipe } from "effect";
 import type { StoreCapability } from "../store/StoreCapability.js";
-import type { TripleStoreService } from "../store/TripleStore.js";
+import type { TriplesService } from "../store/Triples.js";
 import type { SnapshotWriterShape, SnapshotServiceShape } from "./SnapshotService.js";
 import type { Triple, EntityId } from "../Triple.js";
 import { generateTransactionId, SystemPrefixes, TxAttributes } from "../utils/id.js";
@@ -50,7 +50,7 @@ const parseSnapshotTripleId = (
 };
 
 const resolveTxTime = (
-  store: TripleStoreService,
+  store: TriplesService,
   txId: string,
   assertedTriples: readonly Triple[],
 ): Effect.Effect<number, WriteError> =>
@@ -60,7 +60,7 @@ const resolveTxTime = (
     }
 
     const txMetaTriples = yield* store
-      .query({ entityId: txId, attribute: TxAttributes.INSTANT })
+      .match({ entityId: txId, attribute: TxAttributes.INSTANT })
       .pipe(Effect.catchAll(() => Effect.succeed([] as readonly Triple[])));
     const txInstant = txMetaTriples.find((triple) => triple.value.type === "datetime");
     if (txInstant && txInstant.value.type === "datetime") {
@@ -75,7 +75,7 @@ const resolveTxTime = (
   });
 
 const resolveRetractionMeta = (
-  store: TripleStoreService,
+  store: TriplesService,
   entityId: EntityId,
   tripleId: Triple["id"],
 ): Effect.Effect<{ txId: string; txTime: number } | null> =>
@@ -147,12 +147,11 @@ export const makeEntitySnapshotsCapability = (
   name: "EntitySnapshots",
   priority: 60,
   requires: [],
-  wrap: (store: TripleStoreService): TripleStoreService => ({
+  wrap: (store: TriplesService): TriplesService => ({
+    ...store,
     // -----------------------------------------------------------------------
     // Read operations — enhanced getEntity, rest pass through
     // -----------------------------------------------------------------------
-
-    getTriple: store.getTriple,
 
     // NOTE: The snapshot-based getEntity fast-path is intentionally disabled.
     // snapshotToTriples() produces synthetic `snap:` IDs that don't conform
@@ -160,13 +159,6 @@ export const makeEntitySnapshotsCapability = (
     // failures in callers that serialize Triple objects. The SnapshotService
     // should be queried directly for snapshot data; getEntity always returns
     // real triples from the underlying store.
-    getEntity: store.getEntity,
-
-    query: store.query,
-    queryAsOf: store.queryAsOf,
-    history: store.history,
-    queryWithBuilder: store.queryWithBuilder,
-
     // -----------------------------------------------------------------------
     // Write operations — materialize snapshots after each write
     // -----------------------------------------------------------------------
@@ -208,7 +200,7 @@ export const makeEntitySnapshotsCapability = (
 
         if (parsed) {
           const candidates = yield* store
-            .query({
+            .match({
               entityId: parsed.entityId,
               attribute: parsed.attribute,
               value: parsed.value,
@@ -236,7 +228,7 @@ export const makeEntitySnapshotsCapability = (
           return;
         }
 
-        const triple = yield* store.getTriple(id).pipe(Effect.catchAll(() => Effect.succeed(null)));
+        const triple = yield* store.get(id).pipe(Effect.catchAll(() => Effect.succeed(null)));
         if (!triple) {
           yield* store.retract(id);
           return;
@@ -265,7 +257,7 @@ export const makeEntitySnapshotsCapability = (
     retractByPattern: (pattern) =>
       Effect.gen(function* () {
         const matchingTriples = yield* store
-          .query(pattern)
+          .match(pattern)
           .pipe(Effect.catchAll(() => Effect.succeed([] as readonly Triple[])));
         const count = yield* store.retractByPattern(pattern);
         if (matchingTriples.length > 0) {
@@ -293,7 +285,7 @@ export const makeEntitySnapshotsCapability = (
         for (const op of operations) {
           if (op.op === "retract") {
             const triple = yield* store
-              .getTriple(op.id as any)
+              .get(op.id as any)
               .pipe(Effect.catchAll(() => Effect.succeed(null)));
             if (triple) {
               retractEntityMap.set(op.id, triple.entityId);

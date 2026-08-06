@@ -1148,19 +1148,8 @@ export const compileToSql = (query: DatalogQuery, dialect: SqlDialect = SqliteDi
 };
 
 // =============================================================================
-// Recursive Query Types and Compilation
+// Recursive Query Compilation
 // =============================================================================
-
-/**
- * A Datalog query with recursive rules
- */
-export interface DatalogQueryWithRules {
-  find: readonly Term[];
-  where: readonly (PatternClause | PredicateClause | NotClause | OrClause | RuleApplication)[];
-  rules?: readonly Rule[];
-  aggregate?: readonly [string, string, string][];
-  optionalProjection?: DatalogQuery["optionalProjection"];
-}
 
 /**
  * Group rules by name for generating CTEs
@@ -1530,7 +1519,7 @@ const compileRuleApplicationInWhere = (ruleApp: RuleApplication, ctx: CompilerCo
  * Compile a Datalog query with recursive rules to SQL using CTEs
  */
 export const compileWithRules = (
-  query: DatalogQueryWithRules,
+  query: DatalogQuery,
   dialect: SqlDialect = SqliteDialect,
   includeMetrics = false,
 ): CompiledQuery => {
@@ -1690,7 +1679,7 @@ export const compileWithRules = (
  * Compile a query with rules and return just the SQL string
  */
 export const compileWithRulesToSql = (
-  query: DatalogQueryWithRules,
+  query: DatalogQuery,
   dialect: SqlDialect = SqliteDialect,
 ): string => {
   return compileWithRules(query, dialect).sql;

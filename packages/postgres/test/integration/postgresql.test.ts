@@ -13,17 +13,17 @@
 
 import { describe, it, expect } from "vitest";
 import { Effect } from "effect";
-import { TripleStore, Datalog, string, number, ref, compile } from "effect-triples";
+import { Triples, string, number, ref, compile } from "effect-triples";
 import { PostgresqlDialect } from "effect-triples-postgres";
-import { PgFullTestLayer, checkDockerAvailable } from "../fixtures/PgTestLayer.js";
+import { PgTestLayer, checkDockerAvailable } from "../fixtures/PgTestLayer.js";
 
 // Skip all container-based tests if Docker is not available
 const DOCKER_AVAILABLE = checkDockerAvailable();
 
 describe("PostgreSQL Integration", () => {
   // Helper to run effects with PostgreSQL via testcontainers
-  const runWithPostgres = <A, E>(effect: Effect.Effect<A, E, TripleStore | Datalog>) =>
-    Effect.runPromise(Effect.provide(effect, PgFullTestLayer));
+  const runWithPostgres = <A, E>(effect: Effect.Effect<A, E, Triples>) =>
+    Effect.runPromise(Effect.provide(effect, PgTestLayer));
 
   describe("basic operations (requires Docker)", () => {
     it.skipIf(!DOCKER_AVAILABLE)(
@@ -32,7 +32,7 @@ describe("PostgreSQL Integration", () => {
       async () => {
         const result = await runWithPostgres(
           Effect.gen(function* () {
-            const store = yield* TripleStore;
+            const store = yield* Triples;
 
             const triple = yield* store.assert({
               entityId: "pg-test-1",
@@ -41,7 +41,7 @@ describe("PostgreSQL Integration", () => {
               entityType: "test",
             });
 
-            const retrieved = yield* store.getTriple(triple.id);
+            const retrieved = yield* store.get(triple.id);
             yield* store.retract(triple.id);
 
             return { triple, retrieved };
@@ -56,7 +56,7 @@ describe("PostgreSQL Integration", () => {
     it.skipIf(!DOCKER_AVAILABLE)("should query triples", { timeout: 60_000 }, async () => {
       const result = await runWithPostgres(
         Effect.gen(function* () {
-          const store = yield* TripleStore;
+          const store = yield* Triples;
 
           const t1 = yield* store.assert({
             entityId: "pg-query-1",
@@ -76,7 +76,7 @@ describe("PostgreSQL Integration", () => {
             entityType: "person",
           });
 
-          const entity = yield* store.getEntity("pg-query-1" as any);
+          const entity = yield* store.entity("pg-query-1" as any);
 
           yield* store.retract(t1.id);
           yield* store.retract(t2.id);
@@ -97,8 +97,8 @@ describe("PostgreSQL Integration", () => {
       async () => {
         const result = await runWithPostgres(
           Effect.gen(function* () {
-            const store = yield* TripleStore;
-            const datalog = yield* Datalog;
+            const store = yield* Triples;
+            const datalog = yield* Triples;
 
             const triples = yield* Effect.all([
               store.assert({
@@ -141,8 +141,8 @@ describe("PostgreSQL Integration", () => {
       async () => {
         const result = await runWithPostgres(
           Effect.gen(function* () {
-            const store = yield* TripleStore;
-            const datalog = yield* Datalog;
+            const store = yield* Triples;
+            const datalog = yield* Triples;
 
             const triples = yield* Effect.all([
               store.assert({
@@ -192,7 +192,7 @@ describe("PostgreSQL Integration", () => {
       async () => {
         const result = await runWithPostgres(
           Effect.gen(function* () {
-            const datalog = yield* Datalog;
+            const datalog = yield* Triples;
 
             const explained = yield* datalog.explain({
               find: ["?name"],
@@ -213,8 +213,8 @@ describe("PostgreSQL Integration", () => {
       async () => {
         const result = await runWithPostgres(
           Effect.gen(function* () {
-            const store = yield* TripleStore;
-            const datalog = yield* Datalog;
+            const store = yield* Triples;
+            const datalog = yield* Triples;
 
             const triples = yield* Effect.all([
               store.assert({

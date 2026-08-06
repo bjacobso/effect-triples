@@ -8,7 +8,7 @@
  * QueryExecutor directly using index scans.
  */
 
-import { Effect, Layer, Schema } from "effect";
+import { Effect, Layer } from "effect";
 import { SqlClient } from "@effect/sql";
 import {
   QueryExecutor,
@@ -17,8 +17,8 @@ import {
   type QueryExecutorMetrics,
   CurrentDialect,
   ReadError,
-  DatalogQuery,
   compile,
+  compileWithRules,
   compileWrapped,
   type CompiledQuery,
   type CompiledWrappedQuery,
@@ -125,17 +125,14 @@ export const SqlQueryExecutorLive = Layer.effect(
     const dialectOpt = yield* Effect.serviceOption(CurrentDialect);
     const dialect = dialectOpt._tag === "Some" ? dialectOpt.value : SqliteDialect;
 
-    const executeValidated: NonNullable<QueryExecutorService["executeValidated"]> = (
-      validatedQuery,
-      debug = false,
-    ) =>
+    const execute: QueryExecutorService["execute"] = (q, debug = false) =>
       Effect.gen(function* () {
-        const q = validatedQuery as typeof DatalogQuery.Type;
-
-        // 1. Compile to SQL
+        // 1. Compile to SQL. Recursive rules go through the CTE compiler.
         let compiled: CompiledQuery;
         try {
-          compiled = compile(q, dialect, debug);
+          compiled = q.rules?.length
+            ? compileWithRules(q, dialect, debug)
+            : compile(q, dialect, debug);
         } catch (error) {
           return yield* Effect.fail(
             new ReadError({
@@ -177,28 +174,8 @@ export const SqlQueryExecutorLive = Layer.effect(
         return { results: results as QueryResult };
       });
 
-    const execute: QueryExecutorService["execute"] = (rawQuery, debug = false) =>
+    const executePage: QueryExecutorService["executePage"] = (q, debug = false) =>
       Effect.gen(function* () {
-        // Validate query with Effect Schema
-        const parseResult = Schema.decodeUnknownEither(DatalogQuery)(rawQuery);
-
-        if (parseResult._tag === "Left") {
-          return yield* Effect.fail(
-            new ReadError({
-              message: `Invalid Datalog query: ${parseResult.left.message}`,
-              cause: parseResult.left,
-            }),
-          );
-        }
-
-        return yield* executeValidated(parseResult.right, debug);
-      });
-
-    const executeWrapped: QueryExecutorService["executeWrapped"] = (rawQuery, debug = false) =>
-      Effect.gen(function* () {
-        // Cast to WrappedQuery (expected to be pre-validated by DatalogLive)
-        const q = rawQuery as import("effect-triples").WrappedQuery;
-
         // 1. Compile to SQL with CTE wrapper
         let compiled: CompiledWrappedQuery;
         try {
@@ -297,21 +274,13 @@ export const SqlQueryExecutorLive = Layer.effect(
         };
       });
 
-    const explain: QueryExecutorService["explain"] = (rawQuery) =>
+    const explain: QueryExecutorService["explain"] = (q) =>
       Effect.gen(function* () {
-        const parseResult = Schema.decodeUnknownEither(DatalogQuery)(rawQuery);
-        if (parseResult._tag === "Left") {
-          return yield* Effect.fail(
-            new ReadError({
-              message: `Invalid Datalog query: ${parseResult.left.message}`,
-              cause: parseResult.left,
-            }),
-          );
-        }
-
         let compiled: CompiledQuery;
         try {
-          compiled = compile(parseResult.right, dialect, true);
+          compiled = q.rules?.length
+            ? compileWithRules(q, dialect, true)
+            : compile(q, dialect, true);
         } catch (error) {
           return yield* Effect.fail(
             new ReadError({
@@ -327,11 +296,36 @@ export const SqlQueryExecutorLive = Layer.effect(
         };
       });
 
+    const explainPage: QueryExecutorService["explainPage"] = (q) =>
+      Effect.gen(function* () {
+        let compiled: CompiledWrappedQuery;
+        try {
+          compiled = compileWrapped(q, dialect);
+        } catch (error) {
+          return yield* Effect.fail(
+            new ReadError({
+              message: `Failed to compile wrapped query: ${String(error)}`,
+              cause: error,
+            }),
+          );
+        }
+
+        return {
+          queryPlan: buildQueryPlan(
+            dialect.name,
+            compiled.sql,
+            compiled.params,
+            compiled.countSql,
+            compiled.countParams,
+          ),
+        };
+      });
+
     return {
       execute,
-      executeValidated,
-      executeWrapped,
+      executePage,
       explain,
+      explainPage,
     } satisfies QueryExecutorService;
   }),
 );

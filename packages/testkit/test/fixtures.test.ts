@@ -1,6 +1,13 @@
 import { describe, expect, it } from "vitest";
+import { Effect } from "effect";
+import { KvTriples } from "effect-triples";
 
-import { defineBackendFixture, expectBackendCapability } from "../src/index.js";
+import {
+  defineBackendFixture,
+  expectBackendCapability,
+  makeTriplesConformanceSuite,
+  triplesConformanceCases,
+} from "../src/index.js";
 
 describe("database-testkit", () => {
   it("defines lightweight backend fixtures", () => {
@@ -12,5 +19,17 @@ describe("database-testkit", () => {
     expect(fixture.name).toBe("sqlite");
     expect(expectBackendCapability(fixture, "transactions")).toBe(true);
     expect(expectBackendCapability(fixture, "changefeed")).toBe(false);
+  });
+
+  describe("Triples conformance (in-memory KV)", () => {
+    it("passes the full conformance suite", async () => {
+      await Effect.runPromise(makeTriplesConformanceSuite().pipe(Effect.provide(KvTriples.layer)));
+    });
+
+    for (const c of triplesConformanceCases) {
+      it(c.name, async () => {
+        await Effect.runPromise(c.run.pipe(Effect.provide(KvTriples.layer)));
+      });
+    }
   });
 });

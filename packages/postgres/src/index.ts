@@ -18,3 +18,4 @@ export {
   PostgresqlLiveFromUrl,
   type PostgresqlConfig,
 } from "./PostgresqlLayer.js";
+export { PgTriples, type PgTriplesLayer } from "./PgTriples.js";

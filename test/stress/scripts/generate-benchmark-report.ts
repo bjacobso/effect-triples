@@ -512,14 +512,14 @@ function generateMarkdown(results: BenchmarkResults[]): string {
     }
   }
 
-  // ── TripleStore Query Latency ──
+  // ── Triple-Pattern Query Latency ──
 
-  w("## TripleStore Query Latency");
+  w("## Triple-Pattern Query Latency");
   w("");
   const queryContext = hasUpdates
-    ? `Direct \`TripleStore.query()\` and \`TripleStore.getEntity()\` calls after ${updateRounds} update rounds. ` +
+    ? `Direct \`Triples.match()\` and \`Triples.entity()\` calls after ${updateRounds} update rounds. ` +
       "Retracted rows are excluded via partial indexes, so current-state queries should be unaffected by historical data."
-    : "Direct `TripleStore.query()` and `TripleStore.getEntity()` calls against the triple store.";
+    : "Direct `Triples.match()` and `Triples.entity()` calls against the triple store.";
   w(queryContext);
   w("");
 
@@ -568,7 +568,7 @@ function generateMarkdown(results: BenchmarkResults[]): string {
 
   w("## Query Descriptions");
   w("");
-  w("### TripleStore Queries (Q1-Q6)");
+  w("### Triple-Pattern Queries (Q1-Q6)");
   w("");
   w("| ID | Pattern | What it measures |");
   w("|---|---|---|");
