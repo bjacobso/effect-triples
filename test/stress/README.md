@@ -8,12 +8,12 @@ These tests validate that each storage backend can handle production workloads b
 
 - Inserting ~10 million triples (1M employee records × 10 attributes)
 - Running 10 rounds of updates (retract-then-assert) across 5 attributes per employee
-- Running common TripleStore query patterns (Q1-Q6)
+- Running common triple-pattern reads (Q1-Q6)
 - Running Datalog query patterns including joins, predicates, aggregations, and reference traversal (D1-D6)
 - Measuring insertion, update, and query throughput with backend-specific thresholds
 - Identifying performance bottlenecks across backends
 
-Tests use `DatabaseManager` — the same public API that production code uses — to construct `TripleStore` and `Datalog` services.
+Tests use `DatabaseManager` — the same public API that production code uses — to construct the `Triples` service.
 
 ## Supported Backends
 
@@ -50,7 +50,7 @@ BENCHMARK_SKIP_FDB=true pnpm --filter effect-triples-stress benchmark
 
 > Note: FoundationDB benchmarking also requires host-side FoundationDB client libraries (`libfdb_c`). Use `BENCHMARK_SKIP_FDB=true` to disable it.
 
-The generated report includes insertion throughput, update throughput with per-round breakdown, TripleStore query latency (Q1-Q6), and Datalog query latency (D1-D6) with system information and methodology notes.
+The generated report includes insertion throughput, update throughput with per-round breakdown, triple-pattern latency (Q1-Q6), and Datalog query latency (D1-D6) with system information and methodology notes.
 
 ## Running Tests
 
@@ -186,22 +186,22 @@ The stress test generates employee records with **10 attributes each**:
 - **Graph structure**: Manager references create queryable relationships (20% of employees)
 - **Realistic distributions**: Age cycles 25-65, departments evenly distributed
 
-## TripleStore Query Tests (Q1-Q6)
+## Triple-Pattern Tests (Q1-Q6)
 
-These tests exercise the `TripleStore.query` and `TripleStore.getEntity` APIs directly:
+These tests exercise `Triples.match` and `Triples.entity` directly:
 
 | ID  | Test                 | Query Pattern                                               | Expected Results | Description                |
 | --- | -------------------- | ----------------------------------------------------------- | ---------------- | -------------------------- |
-| Q1  | Single entity lookup | `getEntity("emp:N")`                                        | 9-10 triples     | Point lookup by entity ID  |
-| Q2  | Attribute scan       | `query({ attribute: ":salary" })`                           | All employees    | Full scan of one attribute |
-| Q3  | Entity type filter   | `query({ entityType: "Employee" })`                         | All employees    | Filter by entity type      |
-| Q4  | Specific value       | `query({ attribute: ":department", value: "Engineering" })` | 1/8 of employees | Composite attribute+value  |
-| Q5  | Reference lookup     | `query({ attribute: ":manager", value: ref("emp:100") })`   | > 0              | Reference traversal        |
-| Q6  | Boolean filter       | `query({ attribute: ":active", value: true })`              | 90% of employees | Boolean value filter       |
+| Q1  | Single entity lookup | `entity("emp:N")`                                           | 9-10 triples     | Point lookup by entity ID  |
+| Q2  | Attribute scan       | `match({ attribute: ":salary" })`                           | All employees    | Full scan of one attribute |
+| Q3  | Entity type filter   | `match({ entityType: "Employee" })`                         | All employees    | Filter by entity type      |
+| Q4  | Specific value       | `match({ attribute: ":department", value: "Engineering" })` | 1/8 of employees | Composite attribute+value  |
+| Q5  | Reference lookup     | `match({ attribute: ":manager", value: ref("emp:100") })`   | > 0              | Reference traversal        |
+| Q6  | Boolean filter       | `match({ attribute: ":active", value: true })`              | 90% of employees | Boolean value filter       |
 
 ## Datalog Query Tests (D1-D6)
 
-These tests exercise the `Datalog.queryValidated` API with increasingly complex query patterns:
+These tests exercise `Triples.query` with increasingly complex Datalog patterns:
 
 | ID  | Test                | Datalog Pattern                                                                           | Expected Results | Description                  |
 | --- | ------------------- | ----------------------------------------------------------------------------------------- | ---------------- | ---------------------------- |
@@ -216,7 +216,7 @@ These tests exercise the `Datalog.queryValidated` API with increasingly complex 
 
 Performance thresholds are backend-specific to account for different storage characteristics:
 
-### TripleStore Queries
+### Triple-Pattern Queries
 
 | Metric               | SQLite    | PostgreSQL |
 | -------------------- | --------- | ---------- |
@@ -304,7 +304,7 @@ SELECT COUNT(*) FROM triples;
       DatabaseManager path          Direct KV path
         (sqlite / pg)                (kv / fdb)
                |                           |
-      manager.getStore/Datalog      TripleStore + Datalog
+          manager.getTriples             Triples
                \______________________/
                           |
                    stress queries
@@ -352,7 +352,7 @@ This package uses `disableConsoleIntercept: true` in vitest.config.ts to show re
 
 When adding new stress tests:
 
-1. Follow existing patterns in `test/triple-store-stress.test.ts`
+1. Follow existing patterns in `test/triples-stress.test.ts`
 2. Use realistic data from `src/data-generator.ts` or create new generators
 3. Add backend-specific thresholds in `src/backend.ts`
 4. Update performance tables in this README

@@ -2,8 +2,10 @@ import { describe, it, expect } from "vitest";
 import { Effect, Layer } from "effect";
 import { SqliteClient } from "@effect/sql-sqlite-node";
 import {
-  TripleStore,
-  TripleStoreLive,
+  Triples,
+  TriplesLive,
+  CurrentDialect,
+  SqliteDialect,
   SnapshotService,
   SnapshotWriter,
   SnapshotServiceLive,
@@ -24,13 +26,16 @@ import {
 } from "effect-triples";
 import type { EntityId, TripleId } from "effect-triples";
 import { SqliteAdapterLive } from "effect-triples-sqlite";
+import { SqlQueryExecutorLive } from "effect-triples-sql";
+
+const sqliteDialectLayer = Layer.succeed(CurrentDialect, SqliteDialect);
 
 // ---------------------------------------------------------------------------
-// Test layer: TripleStore wrapped with automatic snapshot materialization
+// Test layer: Triples wrapped with automatic snapshot materialization
 // ---------------------------------------------------------------------------
 
 /**
- * Creates a test layer where the TripleStore is wrapped with snapshot auto-materialization.
+ * Creates a test layer where the Triples is wrapped with snapshot auto-materialization.
  * This mirrors how the system would work in production: every write automatically
  * materializes snapshots for all touched entities.
  */
@@ -39,8 +44,11 @@ const makeIntegrationLayer = () => {
   const adapterLayer = SqliteAdapterLive.pipe(Layer.provide(sqliteLayer));
 
   // Base store
-  const baseStoreLayer = TripleStoreLive.pipe(
-    Layer.provide(adapterLayer),
+  const baseStoreLayer = TriplesLive.pipe(
+    Layer.provideMerge(SqlQueryExecutorLive),
+    Layer.provideMerge(adapterLayer),
+    Layer.provideMerge(sqliteDialectLayer),
+    Layer.provideMerge(sqliteLayer),
     Layer.provide(TripleStoreRuntimeLayer),
   );
 
@@ -51,11 +59,11 @@ const makeIntegrationLayer = () => {
   );
   const readerLayer = SnapshotServiceLive.pipe(Layer.provide(adapterLayer));
 
-  // Combined: wrap the TripleStore with automatic snapshot materialization
+  // Combined: wrap the Triples with automatic snapshot materialization
   const wrappedStoreLayer = Layer.effect(
-    TripleStore,
+    Triples,
     Effect.gen(function* () {
-      const baseStore = yield* TripleStore;
+      const baseStore = yield* Triples;
       const writer = yield* SnapshotWriter;
       const reader = yield* SnapshotService;
       return wrapStoreWithSnapshots(baseStore, writer, reader);
@@ -72,7 +80,7 @@ describe("Snapshot Integration (auto-materialization)", () => {
 
       await Effect.runPromise(
         Effect.gen(function* () {
-          const store = yield* TripleStore;
+          const store = yield* Triples;
           const snapService = yield* SnapshotService;
 
           const created = yield* store.transact(
@@ -151,7 +159,7 @@ describe("Snapshot Integration (auto-materialization)", () => {
 
       await Effect.runPromise(
         Effect.gen(function* () {
-          const store = yield* TripleStore;
+          const store = yield* Triples;
           const snapService = yield* SnapshotService;
 
           const created = yield* store.transact(
@@ -195,7 +203,7 @@ describe("Snapshot Integration (auto-materialization)", () => {
 
       await Effect.runPromise(
         Effect.gen(function* () {
-          const store = yield* TripleStore;
+          const store = yield* Triples;
           const snapService = yield* SnapshotService;
 
           // Before: no snapshot
@@ -235,7 +243,7 @@ describe("Snapshot Integration (auto-materialization)", () => {
 
       await Effect.runPromise(
         Effect.gen(function* () {
-          const store = yield* TripleStore;
+          const store = yield* Triples;
           const snapService = yield* SnapshotService;
 
           const entityId = "p:alice-modify";
@@ -284,7 +292,7 @@ describe("Snapshot Integration (auto-materialization)", () => {
 
       await Effect.runPromise(
         Effect.gen(function* () {
-          const store = yield* TripleStore;
+          const store = yield* Triples;
           const snapService = yield* SnapshotService;
 
           yield* store.transact([
@@ -321,7 +329,7 @@ describe("Snapshot Integration (auto-materialization)", () => {
 
       await Effect.runPromise(
         Effect.gen(function* () {
-          const store = yield* TripleStore;
+          const store = yield* Triples;
           const snapService = yield* SnapshotService;
 
           yield* store.assert({
@@ -347,7 +355,7 @@ describe("Snapshot Integration (auto-materialization)", () => {
 
       await Effect.runPromise(
         Effect.gen(function* () {
-          const store = yield* TripleStore;
+          const store = yield* Triples;
           const snapService = yield* SnapshotService;
 
           yield* store.assertBatch([
@@ -370,7 +378,7 @@ describe("Snapshot Integration (auto-materialization)", () => {
 
       await Effect.runPromise(
         Effect.gen(function* () {
-          const store = yield* TripleStore;
+          const store = yield* Triples;
           const snapService = yield* SnapshotService;
 
           // Create entity with two attributes
@@ -417,7 +425,7 @@ describe("Snapshot Integration (auto-materialization)", () => {
 
       await Effect.runPromise(
         Effect.gen(function* () {
-          const store = yield* TripleStore;
+          const store = yield* Triples;
           const snapService = yield* SnapshotService;
 
           yield* store.transact([
@@ -450,7 +458,7 @@ describe("Snapshot Integration (auto-materialization)", () => {
 
       await Effect.runPromise(
         Effect.gen(function* () {
-          const store = yield* TripleStore;
+          const store = yield* Triples;
 
           yield* store.transact([
             {
@@ -468,7 +476,7 @@ describe("Snapshot Integration (auto-materialization)", () => {
           ]);
 
           // getEntity should work via snapshot fast path
-          const triples = yield* store.getEntity("p:alice" as EntityId);
+          const triples = yield* store.entity("p:alice" as EntityId);
           expect(triples.length).toBe(2);
 
           const nameTriple = triples.find((t) => t.attribute === ":person/name");
@@ -486,7 +494,7 @@ describe("Snapshot Integration (auto-materialization)", () => {
 
       await Effect.runPromise(
         Effect.gen(function* () {
-          const store = yield* TripleStore;
+          const store = yield* Triples;
 
           yield* store.transact([
             {
@@ -497,12 +505,12 @@ describe("Snapshot Integration (auto-materialization)", () => {
             },
           ]);
 
-          const triples = yield* store.getEntity("p:alice" as EntityId);
+          const triples = yield* store.entity("p:alice" as EntityId);
           expect(triples).toHaveLength(1);
 
           yield* store.retract(triples[0]!.id as TripleId);
 
-          const after = yield* store.getEntity("p:alice" as EntityId);
+          const after = yield* store.entity("p:alice" as EntityId);
           expect(after).toHaveLength(0);
         }).pipe(Effect.provide(TestLayer)),
       );
@@ -515,7 +523,7 @@ describe("Snapshot Integration (auto-materialization)", () => {
 
       await Effect.runPromise(
         Effect.gen(function* () {
-          const store = yield* TripleStore;
+          const store = yield* Triples;
           const snapService = yield* SnapshotService;
 
           // State 1: name only
@@ -564,7 +572,7 @@ describe("Snapshot Integration (auto-materialization)", () => {
 
       await Effect.runPromise(
         Effect.gen(function* () {
-          const store = yield* TripleStore;
+          const store = yield* Triples;
           const snapService = yield* SnapshotService;
 
           // Two entities with identical attributes
@@ -657,7 +665,7 @@ describe("StoreCapability composition", () => {
      * instead of the legacy `wrapStoreWithSnapshots` function.
      *
      * Uses the same layer construction pattern as `makeIntegrationLayer` above
-     * to ensure layer memoization shares the same TripleStore + StorageAdapter
+     * to ensure layer memoization shares the same Triples + StorageAdapter
      * instances between the base store, writer, and reader.
      */
     const makeCapabilityLayer = () => {
@@ -665,12 +673,15 @@ describe("StoreCapability composition", () => {
       const adapterLayer = SqliteAdapterLive.pipe(Layer.provide(sqliteLayer));
 
       // Base store
-      const baseStoreLayer = TripleStoreLive.pipe(
-        Layer.provide(adapterLayer),
+      const baseStoreLayer = TriplesLive.pipe(
+        Layer.provideMerge(SqlQueryExecutorLive),
+        Layer.provideMerge(adapterLayer),
+        Layer.provideMerge(sqliteDialectLayer),
+        Layer.provideMerge(sqliteLayer),
         Layer.provide(TripleStoreRuntimeLayer),
       );
 
-      // Snapshot layers need StorageAdapter + TripleStore
+      // Snapshot layers need StorageAdapter + Triples
       const writerLayer = SnapshotWriterLive.pipe(
         Layer.provide(baseStoreLayer),
         Layer.provide(adapterLayer),
@@ -680,9 +691,9 @@ describe("StoreCapability composition", () => {
       // Use composeStore + makeEntitySnapshotsCapability
       // Same pattern as makeIntegrationLayer but using capabilities
       const composedStoreLayer = Layer.effect(
-        TripleStore,
+        Triples,
         Effect.gen(function* () {
-          const baseStore = yield* TripleStore;
+          const baseStore = yield* Triples;
           const writer = yield* SnapshotWriter;
           const reader = yield* SnapshotService;
 
@@ -699,7 +710,7 @@ describe("StoreCapability composition", () => {
 
       await Effect.runPromise(
         Effect.gen(function* () {
-          const store = yield* TripleStore;
+          const store = yield* Triples;
           const snapService = yield* SnapshotService;
 
           yield* store.transact([
@@ -723,8 +734,11 @@ describe("StoreCapability composition", () => {
     it("should work with multiple capabilities composed", async () => {
       const sqliteLayer = SqliteClient.layer({ filename: ":memory:" });
       const adapterLayer = SqliteAdapterLive.pipe(Layer.provide(sqliteLayer));
-      const baseStoreLayer = TripleStoreLive.pipe(
-        Layer.provide(adapterLayer),
+      const baseStoreLayer = TriplesLive.pipe(
+        Layer.provideMerge(SqlQueryExecutorLive),
+        Layer.provideMerge(adapterLayer),
+        Layer.provideMerge(sqliteDialectLayer),
+        Layer.provideMerge(sqliteLayer),
         Layer.provide(TripleStoreRuntimeLayer),
       );
 
@@ -736,9 +750,9 @@ describe("StoreCapability composition", () => {
 
       // Compose both ChangeEmission and EntitySnapshots capabilities
       const composedStoreLayer = Layer.effect(
-        TripleStore,
+        Triples,
         Effect.gen(function* () {
-          const baseStore = yield* TripleStore;
+          const baseStore = yield* Triples;
           const writer = yield* SnapshotWriter;
           const reader = yield* SnapshotService;
 
@@ -756,7 +770,7 @@ describe("StoreCapability composition", () => {
 
       await Effect.runPromise(
         Effect.gen(function* () {
-          const store = yield* TripleStore;
+          const store = yield* Triples;
           const snapService = yield* SnapshotService;
 
           yield* store.transact([
@@ -775,7 +789,7 @@ describe("StoreCapability composition", () => {
 
       await Effect.runPromise(
         Effect.gen(function* () {
-          const store = yield* TripleStore;
+          const store = yield* Triples;
 
           yield* store.transact([
             {
@@ -787,7 +801,7 @@ describe("StoreCapability composition", () => {
             { op: "assert", entityId: "p:alice", attribute: ":person/age", value: number(25) },
           ]);
 
-          const triples = yield* store.getEntity("p:alice" as EntityId);
+          const triples = yield* store.entity("p:alice" as EntityId);
           expect(triples.length).toBe(2);
           const nameTriple = triples.find((t) => t.attribute === ":person/name");
           expect(nameTriple!.value).toEqual({ type: "string", value: "Alice" });
@@ -800,7 +814,7 @@ describe("StoreCapability composition", () => {
 
       await Effect.runPromise(
         Effect.gen(function* () {
-          const store = yield* TripleStore;
+          const store = yield* Triples;
 
           yield* store.transact([
             {
@@ -811,12 +825,12 @@ describe("StoreCapability composition", () => {
             },
           ]);
 
-          const triples = yield* store.getEntity("p:alice" as EntityId);
+          const triples = yield* store.entity("p:alice" as EntityId);
           expect(triples).toHaveLength(1);
 
           yield* store.retract(triples[0]!.id as TripleId);
 
-          const after = yield* store.getEntity("p:alice" as EntityId);
+          const after = yield* store.entity("p:alice" as EntityId);
           expect(after).toHaveLength(0);
         }).pipe(Effect.provide(TestLayer)),
       );
@@ -827,7 +841,7 @@ describe("StoreCapability composition", () => {
 
       await Effect.runPromise(
         Effect.gen(function* () {
-          const store = yield* TripleStore;
+          const store = yield* Triples;
           const snapService = yield* SnapshotService;
 
           const result = yield* store.transact([
@@ -876,8 +890,11 @@ describe("StoreCapability composition", () => {
         ),
       });
 
-      const baseStoreLayer = TripleStoreLive.pipe(
-        Layer.provide(adapterLayer),
+      const baseStoreLayer = TriplesLive.pipe(
+        Layer.provideMerge(SqlQueryExecutorLive),
+        Layer.provideMerge(adapterLayer),
+        Layer.provideMerge(sqliteDialectLayer),
+        Layer.provideMerge(sqliteLayer),
         Layer.provide(runtimeLayer),
       );
       const writerLayer = SnapshotWriterLive.pipe(
@@ -887,9 +904,9 @@ describe("StoreCapability composition", () => {
       const readerLayer = SnapshotServiceLive.pipe(Layer.provide(adapterLayer));
 
       const composedStoreLayer = Layer.effect(
-        TripleStore,
+        Triples,
         Effect.gen(function* () {
-          const baseStore = yield* TripleStore;
+          const baseStore = yield* Triples;
           const writer = yield* SnapshotWriter;
           const reader = yield* SnapshotService;
 
@@ -902,7 +919,7 @@ describe("StoreCapability composition", () => {
 
       await Effect.runPromise(
         Effect.gen(function* () {
-          const store = yield* TripleStore;
+          const store = yield* Triples;
           const snapService = yield* SnapshotService;
 
           const result = yield* store.transact([

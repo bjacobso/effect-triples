@@ -511,7 +511,7 @@ export function makeCloudflareAdapter(ctx: DOState): StorageAdapterService {
  * Usage in a Durable Object:
  * ```typescript
  * const adapterLayer = makeCloudflareAdapterLayer(ctx);
- * const tripleStoreLayer = TripleStoreAdapterLive.pipe(Layer.provide(adapterLayer));
+ * const triplesLayer = TriplesLive.pipe(Layer.provide(adapterLayer));
  * ```
  */
 export const makeCloudflareAdapterLayer = (ctx: DOState) =>

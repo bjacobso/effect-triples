@@ -12,6 +12,7 @@
 
 import { Context, Effect } from "effect";
 import type { ReadError } from "../errors/index.js";
+import type { DatalogQuery, WrappedQuery } from "../datalog/types.js";
 
 /**
  * Variable-to-value binding from query execution
@@ -110,23 +111,16 @@ export interface QueryExecutorService {
   /**
    * Execute a Datalog query, returning variable bindings.
    *
-   * @param query - The raw Datalog query (will be validated by the executor)
+   * Callers pass an already-decoded {@link DatalogQuery}; validation happens
+   * upstream (in the `Triples` service or the RPC layer), so the executor
+   * never re-decodes.
+   *
+   * @param query - The (pre-validated) Datalog query
    * @param debug - Whether to include debug metrics
    * @returns Query results and optional debug info
    */
   readonly execute: (
-    query: unknown,
-    debug?: boolean,
-  ) => Effect.Effect<{ results: QueryResult; debug?: QueryDebugInfo }, ReadError>;
-
-  /**
-   * Execute a pre-validated query, skipping schema decoding when supported.
-   *
-   * Implementations that don't expose a distinct fast-path can omit this
-   * method; callers should fall back to `execute`.
-   */
-  readonly executeValidated?: (
-    query: unknown,
+    query: DatalogQuery,
     debug?: boolean,
   ) => Effect.Effect<{ results: QueryResult; debug?: QueryDebugInfo }, ReadError>;
 
@@ -137,8 +131,8 @@ export interface QueryExecutorService {
    * @param debug - Whether to include debug metrics
    * @returns Results with optional total count and cursor
    */
-  readonly executeWrapped: (
-    query: unknown,
+  readonly executePage: (
+    query: WrappedQuery,
     debug?: boolean,
   ) => Effect.Effect<WrappedQueryResult, ReadError>;
 
@@ -149,8 +143,16 @@ export interface QueryExecutorService {
    * @returns The query plan
    */
   readonly explain: (
-    query: unknown,
+    query: DatalogQuery,
   ) => Effect.Effect<{ queryPlan: QueryPlan; metrics?: QueryMetrics }, ReadError>;
+
+  /**
+   * Explain a wrapped query plan without executing.
+   *
+   * @param query - The wrapped query to explain
+   * @returns The query plan (may include multiple steps for main + count)
+   */
+  readonly explainPage: (query: WrappedQuery) => Effect.Effect<{ queryPlan: QueryPlan }, ReadError>;
 }
 
 // =============================================================================

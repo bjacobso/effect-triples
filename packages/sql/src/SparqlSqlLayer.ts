@@ -1,14 +1,14 @@
 /**
  * SPARQL SQL layer implementation
  *
- * Connects the SPARQL query engine to the TripleStore service.
+ * Connects the SPARQL query engine to the Triples service.
  * Uses SQL compilation for efficient query execution.
  */
 
 import { Effect, Layer, Schema } from "effect";
 import { SqlClient } from "@effect/sql";
 import {
-  TripleStore,
+  Triples,
   Sparql,
   type SparqlService,
   type SparqlQueryDebugInfo as QueryDebugInfo,
@@ -85,14 +85,14 @@ const rowToContext = (row: ResultRow, columnMap: Map<string, string>): Context =
  * SparqlLive layer
  *
  * Provides the SPARQL service using SQL compilation for query execution.
- * Requires both TripleStore and SqlClient services.
+ * Requires both Triples and SqlClient services.
  */
 export const SparqlLive = Layer.effect(
   Sparql,
   Effect.gen(function* () {
     const sql = yield* SqlClient.SqlClient;
-    // Note: We still require TripleStore for consistency, but queries go directly to SQL
-    yield* TripleStore;
+    // Require Triples so SPARQL and writes share the same database context.
+    yield* Triples;
 
     /**
      * Execute a SPARQL query with validation

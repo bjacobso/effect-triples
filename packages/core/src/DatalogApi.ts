@@ -47,7 +47,7 @@ export class DatalogApi extends HttpApiGroup.make("datalog")
       .addError(InternalError),
   )
   .add(
-    HttpApiEndpoint.post("queryWrapped")`/db/${databaseParam}/datalog/wrapped`
+    HttpApiEndpoint.post("queryPage")`/db/${databaseParam}/datalog/page`
       .setPayload(WrappedQuery)
       .setUrlParams(
         Schema.Struct({
@@ -69,7 +69,7 @@ export class DatalogApi extends HttpApiGroup.make("datalog")
       .addError(InternalError),
   )
   .add(
-    HttpApiEndpoint.post("explainWrapped")`/db/${databaseParam}/datalog/explain/wrapped`
+    HttpApiEndpoint.post("explainPage")`/db/${databaseParam}/datalog/explain/page`
       .setPayload(WrappedQuery)
       .addSuccess(ExplainResult)
       .addError(DatabaseNotFound)

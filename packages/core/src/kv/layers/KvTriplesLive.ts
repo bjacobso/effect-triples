@@ -1,9 +1,9 @@
 /**
- * KV-backed implementation of TripleStoreService.
+ * KV-backed implementation of the merged `Triples` service.
  *
- * Adapts the hexastore KvTripleStore to the TripleStoreService interface
- * expected by the rest of the system. Handles conversion between the
- * domain Triple type (with Options, branded IDs) and the internal Datom type.
+ * It calls `createKvTripleStore(kvBackend)` **once** and builds both the
+ * write/triple-read path and the Datalog path over that single hexastore
+ * handle, keeping their in-memory datom cache coherent.
  */
 
 import { Effect, Layer, Option, Stream } from "effect";
@@ -13,17 +13,23 @@ import type { Pattern } from "../../types/Pattern.js";
 import type { QueryState } from "../../types/QueryBuilder.js";
 import type { Filter } from "../../types/Filter.js";
 import {
-  TripleStore,
-  type TripleStoreService,
+  Triples,
+  type TriplesService,
   type BulkInsertOptions,
   type TransactionResult,
   type TransactionMeta,
-} from "../../store/TripleStore.js";
+  type QueryOptions,
+} from "../../store/Triples.js";
+import type { QueryDebugInfo, QueryMetrics, QueryResult } from "../../storage/QueryExecutor.js";
+import type { DatalogQuery, WrappedQuery } from "../datalog/types.js";
 import { WriteError, ReadError } from "../../errors/index.js";
 import { KvBackend } from "../kv/KvBackend.js";
+import { makeTestKvBackend } from "../kv/InMemoryKvBackend.js";
 import { createKvTripleStore, type Datom } from "../hexastore/KvTripleStore.js";
 import type { ScanPattern } from "../hexastore/scan.js";
-import { TripleStoreRuntime } from "../../store/TripleStoreRuntime.js";
+import { executeQuery, executeWrappedQuery } from "../datalog/executor.js";
+import { TripleStoreRuntime, TripleStoreRuntimeLayer } from "../../store/TripleStoreRuntime.js";
+import { TxAttributes } from "../../utils/id.js";
 
 // ─── Datom ↔ Triple conversion ─────────────────────────────────────────────
 
@@ -82,7 +88,23 @@ const patternToScan = (pattern: Pattern): ScanPattern => {
   return result;
 };
 
-// ─── Filter evaluation ─────────────────────────────────────────────────────
+// ─── Filter evaluation (for the fluent builder) ─────────────────────────────
+
+const tripleValueEquals = (tv: TripleValue, raw: unknown): boolean => {
+  switch (tv.type) {
+    case "string":
+    case "ref":
+    case "blob":
+      return tv.value === raw;
+    case "number":
+    case "datetime":
+      return tv.value === raw;
+    case "boolean":
+      return tv.value === raw;
+    case "json":
+      return JSON.stringify(tv.value) === JSON.stringify(raw);
+  }
+};
 
 const evaluateFilter = (triples: readonly Triple[], filter: Filter): Triple[] => {
   switch (filter.type) {
@@ -171,30 +193,105 @@ const evaluateFilter = (triples: readonly Triple[], filter: Filter): Triple[] =>
   }
 };
 
-const tripleValueEquals = (tv: TripleValue, raw: unknown): boolean => {
+const extractSortValue = (tv: TripleValue): string | number | boolean | null => {
   switch (tv.type) {
     case "string":
     case "ref":
     case "blob":
-      return tv.value === raw;
+      return tv.value;
     case "number":
     case "datetime":
-      return tv.value === raw;
+      return tv.value;
     case "boolean":
-      return tv.value === raw;
+      return tv.value;
     case "json":
-      return JSON.stringify(tv.value) === JSON.stringify(raw);
+      return JSON.stringify(tv.value);
   }
 };
 
+// ─── Datalog debug metrics (KV backends generate no SQL) ────────────────────
+
+const makeKvMetrics = (query: DatalogQuery): QueryMetrics => ({
+  joinCount: 0,
+  whereConditionCount: query.where.length,
+  subqueryCount: 0,
+  cteCount: 0,
+  sqlLength: 0,
+  paramCount: 0,
+  patternCount: query.where.filter((c) => Array.isArray(c) && c.length >= 3 && c.length <= 4)
+    .length,
+  predicateCount: query.where.filter(
+    (c) => Array.isArray(c) && [">", ">=", "<", "<=", "=", "!="].includes(c[0] as string),
+  ).length,
+  notClauseCount: query.where.filter((c) => Array.isArray(c) && c[0] === "not").length,
+  orClauseCount: query.where.filter((c) => Array.isArray(c) && c[0] === "or").length,
+  linkClauseCount: query.where.filter((c) => Array.isArray(c) && c[0] === "link").length,
+  hasAggregation: (query.aggregate?.length ?? 0) > 0,
+  isRecursive: (query.rules?.length ?? 0) > 0,
+  aggregateOps: (query.aggregate ?? []).map((a) => a[0]),
+  compilationTimeMs: 0,
+});
+
 // ─── Service implementation ────────────────────────────────────────────────
 
-const makeKvTripleStoreService = Effect.gen(function* () {
+const makeKvTriplesService = Effect.gen(function* () {
   const kvBackend = yield* KvBackend;
   const runtime = yield* TripleStoreRuntime;
+
+  // Single hexastore handle shared by the write path and the Datalog path so
+  // their datom caches can never diverge.
   const hexaStore = createKvTripleStore(kvBackend);
 
-  const service: TripleStoreService = {
+  // === Triple-level reads (needed by retractByPattern below) ===============
+
+  const match = (pattern: Pattern): Effect.Effect<readonly Triple[], ReadError> =>
+    Effect.gen(function* () {
+      // Fast path: entityType-only query uses the KV TYPE index
+      if (pattern.entityType && !pattern.entityId && !pattern.attribute && !pattern.value) {
+        const datoms = hexaStore.getByEntityType(pattern.entityType);
+        if (datoms !== null) {
+          return datoms.map(datomToTriple);
+        }
+        const asyncDatoms = yield* hexaStore.getByEntityTypeAsync(pattern.entityType);
+        return asyncDatoms.map(datomToTriple);
+      }
+
+      const scanPat = patternToScan(pattern);
+      const syncDatoms = hexaStore.scanCollect(scanPat);
+      let results: Triple[];
+      if (syncDatoms !== null) {
+        if (pattern.entityType) {
+          results = [];
+          for (let i = 0; i < syncDatoms.length; i++) {
+            const d = syncDatoms[i]!;
+            if (d.entityType === pattern.entityType) {
+              results.push(datomToTriple(d));
+            }
+          }
+          return results;
+        }
+        results = syncDatoms.map(datomToTriple);
+      } else {
+        const datoms = yield* hexaStore.scanCollectAsync(scanPat);
+        results = datoms.map(datomToTriple);
+      }
+
+      if (pattern.entityType) {
+        results = results.filter(
+          (t) => Option.isSome(t.entityType) && t.entityType.value === pattern.entityType,
+        );
+      }
+
+      return results;
+    }).pipe(
+      Effect.catchAll((e) =>
+        Effect.fail(new ReadError({ message: `Query failed: ${String(e)}`, cause: e })),
+      ),
+    );
+
+  const service: TriplesService = {
+    // === Writes ============================================================
+
     assert: (input: TripleInput) =>
       Effect.gen(function* () {
         const tripleId = yield* runtime.nextTripleId;
@@ -307,6 +404,38 @@ const makeKvTripleStoreService = Effect.gen(function* () {
           }
         }
 
+        // Provenance datoms — mirror the SQL path so the README provenance
+        // example (`:_tx/instant`, `:_tx/user`) works on KV backends too.
+        yield* hexaStore.assert(
+          tripleInputToDatom(
+            {
+              entityId: txId,
+              attribute: TxAttributes.INSTANT,
+              value: { type: "datetime", value: now },
+              entityType: "_Transaction",
+            },
+            yield* runtime.nextTripleId,
+            txId,
+            now,
+          ),
+        );
+
+        if (meta?.user) {
+          yield* hexaStore.assert(
+            tripleInputToDatom(
+              {
+                entityId: txId,
+                attribute: TxAttributes.USER,
+                value: { type: "string", value: meta.user },
+                entityType: "_Transaction",
+              },
+              yield* runtime.nextTripleId,
+              txId,
+              now,
+            ),
+          );
+        }
+
         return {
           txId,
           triples: asserted,
@@ -318,92 +447,50 @@ const makeKvTripleStoreService = Effect.gen(function* () {
         ),
       ),
 
-    getTriple: (id: TripleId) =>
+    withTransaction: <A, E>(effect: Effect.Effect<A, E>) =>
+      effect.pipe(
+        Effect.catchAll((e) => {
+          if (e instanceof WriteError) return Effect.fail(e) as Effect.Effect<A, E | WriteError>;
+          return Effect.fail(e);
+        }),
+      ),
+
+    // === Triple-level reads ================================================
+
+    get: (id: TripleId) =>
       Effect.gen(function* () {
         const datom = yield* hexaStore.getById(id);
         return datom !== null ? datomToTriple(datom) : null;
       }).pipe(
         Effect.catchAll((e) =>
-          Effect.fail(new ReadError({ message: `GetTriple failed: ${String(e)}`, cause: e })),
+          Effect.fail(new ReadError({ message: `Get failed: ${String(e)}`, cause: e })),
         ),
       ),
 
-    getEntity: (entityId: EntityId) =>
+    entity: (entityId: EntityId) =>
       Effect.gen(function* () {
-        // Sync fast path
         const syncDatoms = hexaStore.scanCollect({ entity: entityId });
         if (syncDatoms !== null) {
           return syncDatoms.map(datomToTriple);
         }
-        // Batched async path (2 round trips instead of N+1)
         const datoms = yield* hexaStore.scanCollectAsync({ entity: entityId });
         return datoms.map(datomToTriple);
       }).pipe(
         Effect.catchAll((e) =>
-          Effect.fail(new ReadError({ message: `GetEntity failed: ${String(e)}`, cause: e })),
+          Effect.fail(new ReadError({ message: `Entity failed: ${String(e)}`, cause: e })),
         ),
       ),
 
-    query: (pattern: Pattern) =>
-      Effect.gen(function* () {
-        // Fast path: entityType-only query uses the KV TYPE index
-        if (pattern.entityType && !pattern.entityId && !pattern.attribute && !pattern.value) {
-          const datoms = hexaStore.getByEntityType(pattern.entityType);
-          if (datoms !== null) {
-            return datoms.map(datomToTriple);
-          }
-          // Batched async path for entity type queries (FDB)
-          const asyncDatoms = yield* hexaStore.getByEntityTypeAsync(pattern.entityType);
-          return asyncDatoms.map(datomToTriple);
-        }
+    match,
 
-        const scanPat = patternToScan(pattern);
-
-        // Use sync scan path when available (Datom cache eliminates JSON.parse overhead)
-        const syncDatoms = hexaStore.scanCollect(scanPat);
-        let results: Triple[];
-        if (syncDatoms !== null) {
-          // If filtering by entityType, filter at the Datom level to avoid
-          // creating Triple objects for non-matching datoms
-          if (pattern.entityType) {
-            results = [];
-            for (let i = 0; i < syncDatoms.length; i++) {
-              const d = syncDatoms[i]!;
-              if (d.entityType === pattern.entityType) {
-                results.push(datomToTriple(d));
-              }
-            }
-            return results;
-          }
-          results = syncDatoms.map(datomToTriple);
-        } else {
-          // Batched async path (2 round trips instead of N+1)
-          const datoms = yield* hexaStore.scanCollectAsync(scanPat);
-          results = datoms.map(datomToTriple);
-        }
-
-        // Apply entityType filter if specified (async path only)
-        if (pattern.entityType) {
-          results = results.filter(
-            (t) => Option.isSome(t.entityType) && t.entityType.value === pattern.entityType,
-          );
-        }
-
-        return results;
-      }).pipe(
-        Effect.catchAll((e) =>
-          Effect.fail(new ReadError({ message: `Query failed: ${String(e)}`, cause: e })),
-        ),
-      ),
-
-    queryAsOf: (pattern: Pattern, asOf: number) =>
+    matchAsOf: (pattern: Pattern, asOf: number) =>
       Effect.gen(function* () {
         const scanPat = patternToScan(pattern);
         const datoms = yield* Stream.runCollect(hexaStore.scanAsOf(scanPat, asOf));
         return Array.from(datoms).map(datomToTriple);
       }).pipe(
         Effect.catchAll((e) =>
-          Effect.fail(new ReadError({ message: `QueryAsOf failed: ${String(e)}`, cause: e })),
+          Effect.fail(new ReadError({ message: `MatchAsOf failed: ${String(e)}`, cause: e })),
         ),
       ),
 
@@ -417,9 +504,60 @@ const makeKvTripleStoreService = Effect.gen(function* () {
         ),
       ),
 
-    queryWithBuilder: (state: QueryState) =>
+    // === Datalog reads =====================================================
+
+    query: (q: DatalogQuery, options?: QueryOptions) =>
+      executeQuery(hexaStore, q, q.rules ?? []).pipe(
+        Effect.map((result) => {
+          const results = result.results as unknown as QueryResult;
+          if (options?.debug) {
+            const debug: QueryDebugInfo = {
+              metrics: makeKvMetrics(q),
+              executionTimeMs: 0,
+              resultCount: result.results.length,
+            };
+            return { results, debug };
+          }
+          return { results };
+        }),
+        Effect.mapError(
+          (e) => new ReadError({ message: `Query execution failed: ${String(e)}`, cause: e }),
+        ),
+      ),
+
+    queryPage: (q: WrappedQuery, _options?: QueryOptions) =>
+      executeWrappedQuery(hexaStore, q, q.inner.rules ?? []).pipe(
+        Effect.map((result) => ({
+          results: result.results as unknown as QueryResult,
+          ...(result.totalCount !== undefined ? { totalCount: result.totalCount } : {}),
+          ...(result.nextCursor !== undefined ? { nextCursor: result.nextCursor } : {}),
+        })),
+        Effect.mapError(
+          (e) => new ReadError({ message: `Wrapped query failed: ${String(e)}`, cause: e }),
+        ),
+      ),
+
+    explain: (q: DatalogQuery) =>
+      Effect.succeed({
+        queryPlan: {
+          backend: "kv-store" as const,
+          steps: [{ label: "main", query: JSON.stringify(q, null, 2) }],
+        },
+        metrics: makeKvMetrics(q),
+      }),
+
+    explainPage: (q: WrappedQuery) =>
+      Effect.succeed({
+        queryPlan: {
+          backend: "kv-store" as const,
+          steps: [{ label: "main", query: JSON.stringify(q, null, 2) }],
+        },
+      }),
+
+    // === Fluent-builder execution =========================================
+
+    entities: (state: QueryState) =>
       Effect.gen(function* () {
-        // Find entities of the specified type using AVET index
         const typeScanPat: ScanPattern = {
           attribute: ":entity/type",
           value: { type: "string", value: state.entityType },
@@ -437,7 +575,6 @@ const makeKvTripleStoreService = Effect.gen(function* () {
           }
         }
 
-        // Get all triples for matching entities
         let allTriples: Triple[] = [];
         for (const eid of entityIds) {
           const syncEntityDatoms = hexaStore.scanCollect({ entity: eid });
@@ -451,14 +588,12 @@ const makeKvTripleStoreService = Effect.gen(function* () {
           }
         }
 
-        // Apply filters
         for (const filter of state.filters) {
           const matching = evaluateFilter(allTriples, filter);
           const matchingEntities = new Set(matching.map((t) => t.entityId));
           allTriples = allTriples.filter((t) => matchingEntities.has(t.entityId));
         }
 
-        // Apply sorting
         if (state.sorts.length > 0) {
           const byEntity = new Map<string, Triple[]>();
           for (const t of allTriples) {
@@ -493,7 +628,6 @@ const makeKvTripleStoreService = Effect.gen(function* () {
           allTriples = entityOrder.flatMap((eid) => byEntity.get(eid) ?? []);
         }
 
-        // Apply limit/offset on entities
         if (state.offset !== undefined || state.limit !== undefined) {
           const uniqueEntities = [...new Set(allTriples.map((t) => t.entityId))];
           const start = state.offset ?? 0;
@@ -505,49 +639,52 @@ const makeKvTripleStoreService = Effect.gen(function* () {
         return allTriples;
       }).pipe(
         Effect.catchAll((e) =>
-          Effect.fail(
-            new ReadError({ message: `QueryWithBuilder failed: ${String(e)}`, cause: e }),
-          ),
+          Effect.fail(new ReadError({ message: `Entities query failed: ${String(e)}`, cause: e })),
         ),
-      ),
-
-    withTransaction: <A, E>(effect: Effect.Effect<A, E>) =>
-      effect.pipe(
-        Effect.catchAll((e) => {
-          if (e instanceof WriteError) return Effect.fail(e) as Effect.Effect<A, E | WriteError>;
-          return Effect.fail(e);
-        }),
       ),
   };
 
   return service;
 });
 
-const extractSortValue = (tv: TripleValue): string | number | boolean | null => {
-  switch (tv.type) {
-    case "string":
-    case "ref":
-    case "blob":
-      return tv.value;
-    case "number":
-    case "datetime":
-      return tv.value;
-    case "boolean":
-      return tv.value;
-    case "json":
-      return JSON.stringify(tv.value);
-  }
-};
-
-// ─── Layer ─────────────────────────────────────────────────────────────────
+// ─── Layers ────────────────────────────────────────────────────────────────
 
 /**
- * Layer that provides TripleStoreService backed by the KV hexastore.
- * Requires KvBackend.
+ * Layer providing the merged `Triples` service backed by the KV hexastore.
+ * Requires a `KvBackend` (in-memory, FoundationDB, Cloudflare, …) and a
+ * `TripleStoreRuntime` (clock + id generation).
  */
-export const KvTripleStoreLive: Layer.Layer<TripleStore, never, KvBackend | TripleStoreRuntime> =
-  Layer.effect(TripleStore, makeKvTripleStoreService) as unknown as Layer.Layer<
-    TripleStore,
+export const KvTriplesLive: Layer.Layer<Triples, never, KvBackend | TripleStoreRuntime> =
+  Layer.effect(Triples, makeKvTriplesService) as unknown as Layer.Layer<
+    Triples,
     never,
     KvBackend | TripleStoreRuntime
   >;
+
+/**
+ * Convenience namespace for wiring KV-backed `Triples`.
+ */
+export const KvTriples = {
+  /**
+   * `Triples` over the KV hexastore, requiring only a `KvBackend` and
+   * `TripleStoreRuntime`. Use this to reuse a real KV backend (e.g. FDB).
+   */
+  layerBackend: KvTriplesLive,
+
+  /**
+   * Fully self-contained in-memory `Triples` — bundles a **fresh** in-memory KV
+   * backend and the default runtime. One line to a working store:
+   *
+   * ```ts
+   * program.pipe(Effect.provide(KvTriples.layer))
+   * ```
+   *
+   * Each instantiation gets its own isolated store (unlike the shared
+   * `InMemoryKvBackendLive` singleton), which is what you want for tests and
+   * ephemeral workloads.
+   */
+  layer: KvTriplesLive.pipe(
+    Layer.provide(Layer.sync(KvBackend, makeTestKvBackend)),
+    Layer.provide(TripleStoreRuntimeLayer),
+  ),
+} as const;

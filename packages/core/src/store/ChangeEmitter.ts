@@ -1,7 +1,7 @@
 /**
  * ChangeEmitter — abstract interface for broadcasting storage-layer changes.
  *
- * The TripleStore wrapper calls `emit` after every write operation.
+ * The Triples capability calls `emit` after every write operation.
  * Concrete implementations (Cloudflare WebSocket broadcast, Node.js ws broadcast)
  * fan out the event to connected clients.
  */
@@ -26,7 +26,7 @@ export interface TripleChange {
  * A batch of changes emitted after a write operation.
  */
 export interface ChangeEvent {
-  /** Transaction ID from TripleStore (matches `txId` in TransactionResult) */
+  /** Transaction ID from Triples (matches `txId` in TransactionResult) */
   readonly txId: string;
   /** Unix timestamp (milliseconds) */
   readonly timestamp: number;

@@ -1,26 +1,20 @@
 /**
- * Integration tests: FoundationDB → Hexastore → TripleStore → Datalog.
+ * Integration tests: FoundationDB → Hexastore → Triples.
  *
  * Uses Testcontainers to spin up a real FDB instance. Tests the full stack:
- * FdbKvBackend → KvTripleStore → KvTripleStoreLive → KvDatalogLive
+ * FdbKvBackend → KvTripleStore → KvTriplesLive
  *
  * Requires Docker + FoundationDB client libraries to be available.
  *
  * ```bash
- * pnpm test --filter effect-triples-foundationdb -- test/fdb-triplestore.test.ts
+ * pnpm test --filter effect-triples-foundationdb -- test/fdb-triples.test.ts
  * ```
  */
 
 import { Effect, Layer } from "effect";
 import { describe, expect, layer } from "@effect/vitest";
 import { createRequire } from "node:module";
-import {
-  TripleStore,
-  Datalog,
-  KvTripleStoreLive,
-  KvDatalogLive,
-  TripleStoreRuntimeLayer,
-} from "effect-triples";
+import { Triples, KvTriplesLive, TripleStoreRuntimeLayer } from "effect-triples";
 import { FdbTestLayer } from "./fixtures/FdbTestLayer.js";
 
 // ─── Helpers ───────────────────────────────────────────────────────────────
@@ -38,26 +32,25 @@ const fdbAvailable = (() => {
   }
 })();
 
-// ─── Full-stack layer: FDB → KvBackend → TripleStore + Datalog ─────────────
+// ─── Full-stack layer: FDB → KvBackend → Triples ──────────────────────────
 
-const FdbTripleStoreLayer = KvDatalogLive.pipe(
-  Layer.provideMerge(KvTripleStoreLive),
+const FdbTriplesLayer = KvTriplesLive.pipe(
   Layer.provide(TripleStoreRuntimeLayer),
   Layer.provide(FdbTestLayer),
 );
 
 const describeFdb = fdbAvailable
-  ? layer(FdbTripleStoreLayer, { timeout: "60 seconds" })
+  ? layer(FdbTriplesLayer, { timeout: "60 seconds" })
   : (name: string, _fn: () => void) => describe.skip(name, () => {});
 
 // ─── Tests ─────────────────────────────────────────────────────────────────
 
-describeFdb("FDB Integration: TripleStore + Datalog", (it) => {
-  // ── TripleStore CRUD ────────────────────────────────────────────────────
+describeFdb("FDB Integration: Triples", (it) => {
+  // ── Triples CRUD ────────────────────────────────────────────────────────
 
   it.effect("asserts and retrieves a single triple", () =>
     Effect.gen(function* () {
-      const store = yield* TripleStore;
+      const store = yield* Triples;
 
       const triple = yield* store.assert({
         entityId: "emp:alice",
@@ -73,7 +66,7 @@ describeFdb("FDB Integration: TripleStore + Datalog", (it) => {
 
   it.effect("batch asserts multiple triples", () =>
     Effect.gen(function* () {
-      const store = yield* TripleStore;
+      const store = yield* Triples;
 
       const triples = yield* store.assertBatch([
         { entityId: "emp:batch-a", attribute: ":employee/name", value: str("Alice") },
@@ -88,7 +81,7 @@ describeFdb("FDB Integration: TripleStore + Datalog", (it) => {
 
   it.effect("queries by entity", () =>
     Effect.gen(function* () {
-      const store = yield* TripleStore;
+      const store = yield* Triples;
 
       yield* store.assertBatch([
         { entityId: "emp:qe-alice", attribute: ":employee/name", value: str("Alice") },
@@ -96,7 +89,7 @@ describeFdb("FDB Integration: TripleStore + Datalog", (it) => {
         { entityId: "emp:qe-bob", attribute: ":employee/name", value: str("Bob") },
       ]);
 
-      const aliceTriples = yield* store.getEntity("emp:qe-alice" as any);
+      const aliceTriples = yield* store.entity("emp:qe-alice" as any);
       expect(aliceTriples).toHaveLength(2);
       expect(aliceTriples.map((t) => t.attribute).sort()).toEqual([
         ":employee/age",
@@ -107,7 +100,7 @@ describeFdb("FDB Integration: TripleStore + Datalog", (it) => {
 
   it.effect("queries by pattern", () =>
     Effect.gen(function* () {
-      const store = yield* TripleStore;
+      const store = yield* Triples;
 
       yield* store.assertBatch([
         { entityId: "emp:qp-alice", attribute: ":employee/name", value: str("Alice") },
@@ -115,7 +108,7 @@ describeFdb("FDB Integration: TripleStore + Datalog", (it) => {
         { entityId: "emp:qp-alice", attribute: ":employee/age", value: num(30) },
       ]);
 
-      const names = yield* store.query({ attribute: ":employee/name" });
+      const names = yield* store.match({ attribute: ":employee/name" });
       // Should find at least the 2 we just inserted (may see more from shared subspace)
       expect(names.length).toBeGreaterThanOrEqual(2);
     }),
@@ -123,7 +116,7 @@ describeFdb("FDB Integration: TripleStore + Datalog", (it) => {
 
   it.effect("retracts a triple so it is no longer query-visible", () =>
     Effect.gen(function* () {
-      const store = yield* TripleStore;
+      const store = yield* Triples;
 
       const triple = yield* store.assert({
         entityId: "emp:retract-test",
@@ -133,7 +126,7 @@ describeFdb("FDB Integration: TripleStore + Datalog", (it) => {
 
       yield* store.retract(triple.id);
 
-      const result = yield* store.query({
+      const result = yield* store.match({
         entityId: "emp:retract-test",
         attribute: ":employee/name",
       });
@@ -143,7 +136,7 @@ describeFdb("FDB Integration: TripleStore + Datalog", (it) => {
 
   it.effect("transact applies multiple ops atomically", () =>
     Effect.gen(function* () {
-      const store = yield* TripleStore;
+      const store = yield* Triples;
 
       const result = yield* store.transact([
         {
@@ -162,7 +155,7 @@ describeFdb("FDB Integration: TripleStore + Datalog", (it) => {
 
       expect(result.triples).toHaveLength(2);
 
-      const entity = yield* store.getEntity("emp:tx-carol" as any);
+      const entity = yield* store.entity("emp:tx-carol" as any);
       expect(entity).toHaveLength(2);
     }),
   );
@@ -171,8 +164,8 @@ describeFdb("FDB Integration: TripleStore + Datalog", (it) => {
 
   it.effect("executes a simple Datalog query", () =>
     Effect.gen(function* () {
-      const store = yield* TripleStore;
-      const datalog = yield* Datalog;
+      const store = yield* Triples;
+      const datalog = yield* Triples;
 
       yield* store.assertBatch([
         { entityId: "emp:dl-alice", attribute: ":emp/name", value: str("Alice") },
@@ -192,8 +185,8 @@ describeFdb("FDB Integration: TripleStore + Datalog", (it) => {
 
   it.effect("executes a multi-pattern join query", () =>
     Effect.gen(function* () {
-      const store = yield* TripleStore;
-      const datalog = yield* Datalog;
+      const store = yield* Triples;
+      const datalog = yield* Triples;
 
       yield* store.assertBatch([
         { entityId: "emp:join-alice", attribute: ":person/name", value: str("Alice") },
@@ -218,8 +211,8 @@ describeFdb("FDB Integration: TripleStore + Datalog", (it) => {
 
   it.effect("handles reference-based joins", () =>
     Effect.gen(function* () {
-      const store = yield* TripleStore;
-      const datalog = yield* Datalog;
+      const store = yield* Triples;
+      const datalog = yield* Triples;
 
       yield* store.assertBatch([
         { entityId: "dept:ref-eng", attribute: ":dept/name", value: str("Engineering") },
@@ -248,8 +241,8 @@ describeFdb("FDB Integration: TripleStore + Datalog", (it) => {
 
   it.effect("supports predicate filters", () =>
     Effect.gen(function* () {
-      const store = yield* TripleStore;
-      const datalog = yield* Datalog;
+      const store = yield* Triples;
+      const datalog = yield* Triples;
 
       yield* store.assertBatch([
         { entityId: "emp:pred-alice", attribute: ":person/name", value: str("Alice") },

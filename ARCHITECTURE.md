@@ -3,9 +3,14 @@
 Effect Triples separates the storage-independent data model from backend implementations.
 
 - `effect-triples` owns triples, typed values, Effect service contracts, the in-memory ordered-KV
-  hexastore, Datalog and SPARQL schemas and engines, snapshots, and subscriptions.
-- `effect-triples-sql` implements the storage contracts with Effect SQL and contains migrations
-  plus SQL query execution shared by SQLite and PostgreSQL.
+  hexastore, Datalog and SPARQL schemas and engines, snapshots, and subscriptions. It also owns
+  the merged **`Triples`** service (writes + triple reads + Datalog reads in one tag) and both of
+  its implementations: `TriplesLive` (over `StorageAdapter` + the `QueryExecutor` SPI) and
+  `KvTriplesLive` (a single hexastore handle over any `KvBackend`). The Datalog-over-SQL wiring
+  now lives in core (`TriplesLive` + the `QueryExecutor` SPI), not in the SQL package.
+- `effect-triples-sql` is now migrations, `SqlQueryExecutor` (the SQL implementation of the
+  `QueryExecutor` SPI), and the `Sparql` layer — the query execution shared by SQLite and
+  PostgreSQL.
 - Backend packages construct the storage adapters and runtime layers for their platforms.
 - `effect-triples-testkit` is the public home for reusable backend conformance helpers.
 - `test/integration` owns tests that intentionally compose multiple publishable packages.

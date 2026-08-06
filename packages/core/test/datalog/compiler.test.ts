@@ -12,7 +12,6 @@ import {
   classifyClauses,
 } from "../../src/datalog/compiler.js";
 import type { DatalogQuery, Clause } from "../../src/datalog/types.js";
-import type { DatalogQueryWithRules } from "../../src/datalog/compiler.js";
 
 describe("Datalog SQL Compiler", () => {
   describe("basic pattern compilation", () => {
@@ -805,7 +804,7 @@ describe("Datalog SQL Compiler", () => {
 describe("Datalog SQL Compiler with Recursive Rules", () => {
   describe("compileWithRules - basic functionality", () => {
     it("should fall back to compile() when no rules provided", () => {
-      const query: DatalogQueryWithRules = {
+      const query: DatalogQuery = {
         find: ["?name"],
         where: [["?person", ":name", "?name"]],
       };
@@ -818,7 +817,7 @@ describe("Datalog SQL Compiler with Recursive Rules", () => {
     });
 
     it("should fall back to compile() when rules array is empty", () => {
-      const query: DatalogQueryWithRules = {
+      const query: DatalogQuery = {
         find: ["?name"],
         where: [["?person", ":name", "?name"]],
         rules: [],
@@ -832,7 +831,7 @@ describe("Datalog SQL Compiler with Recursive Rules", () => {
 
   describe("compileWithRules - CTE generation", () => {
     it("should generate WITH RECURSIVE for non-recursive rule", () => {
-      const query: DatalogQueryWithRules = {
+      const query: DatalogQuery = {
         find: ["?ancestor"],
         where: [["ancestor", "alice", "?ancestor"]],
         rules: [{ name: "ancestor", body: [["?x", ":parent", "?y"]] }],
@@ -845,7 +844,7 @@ describe("Datalog SQL Compiler with Recursive Rules", () => {
     });
 
     it("should generate CTE with base case for simple rule", () => {
-      const query: DatalogQueryWithRules = {
+      const query: DatalogQuery = {
         find: ["?ancestor"],
         where: [["ancestor", "alice", "?ancestor"]],
         rules: [{ name: "ancestor", body: [["?x", ":parent", "?y"]] }],
@@ -861,7 +860,7 @@ describe("Datalog SQL Compiler with Recursive Rules", () => {
     });
 
     it("should handle recursive rule with base case and recursive case", () => {
-      const query: DatalogQueryWithRules = {
+      const query: DatalogQuery = {
         find: ["?ancestor"],
         where: [["ancestor", "alice", "?ancestor"]],
         rules: [
@@ -887,7 +886,7 @@ describe("Datalog SQL Compiler with Recursive Rules", () => {
     });
 
     it("should include depth limit in recursive CTE", () => {
-      const query: DatalogQueryWithRules = {
+      const query: DatalogQuery = {
         find: ["?ancestor"],
         where: [["ancestor", "alice", "?ancestor"]],
         rules: [
@@ -911,7 +910,7 @@ describe("Datalog SQL Compiler with Recursive Rules", () => {
     });
 
     it("should use default maxDepth of 100", () => {
-      const query: DatalogQueryWithRules = {
+      const query: DatalogQuery = {
         find: ["?ancestor"],
         where: [["ancestor", "alice", "?ancestor"]],
         rules: [
@@ -934,7 +933,7 @@ describe("Datalog SQL Compiler with Recursive Rules", () => {
 
   describe("compileWithRules - rule application in WHERE", () => {
     it("should join rule result in main query", () => {
-      const query: DatalogQueryWithRules = {
+      const query: DatalogQuery = {
         find: ["?ancestor"],
         where: [["ancestor", "alice", "?ancestor"]],
         rules: [{ name: "ancestor", body: [["?x", ":parent", "?y"]] }],
@@ -950,7 +949,7 @@ describe("Datalog SQL Compiler with Recursive Rules", () => {
     });
 
     it("should support rule application with constant argument", () => {
-      const query: DatalogQueryWithRules = {
+      const query: DatalogQuery = {
         find: ["?ancestor"],
         where: [["ancestor", "alice", "?ancestor"]],
         rules: [{ name: "ancestor", body: [["?x", ":parent", "?y"]] }],
@@ -964,7 +963,7 @@ describe("Datalog SQL Compiler with Recursive Rules", () => {
     });
 
     it("should support mixed patterns and rule applications", () => {
-      const query: DatalogQueryWithRules = {
+      const query: DatalogQuery = {
         find: ["?name", "?ancestor"],
         where: [
           ["?person", ":name", "?name"],
@@ -983,7 +982,7 @@ describe("Datalog SQL Compiler with Recursive Rules", () => {
 
   describe("compileWithRules - error handling", () => {
     it("should throw when rule has no base case", () => {
-      const query: DatalogQueryWithRules = {
+      const query: DatalogQuery = {
         find: ["?ancestor"],
         where: [["ancestor", "alice", "?ancestor"]],
         rules: [
@@ -1002,7 +1001,7 @@ describe("Datalog SQL Compiler with Recursive Rules", () => {
     });
 
     it("should throw when rule body is empty", () => {
-      const query: DatalogQueryWithRules = {
+      const query: DatalogQuery = {
         find: ["?ancestor"],
         where: [["ancestor", "alice", "?ancestor"]],
         rules: [{ name: "ancestor", body: [] }],
@@ -1014,7 +1013,7 @@ describe("Datalog SQL Compiler with Recursive Rules", () => {
 
   describe("compileWithRules - multiple rules", () => {
     it("should handle multiple different rules", () => {
-      const query: DatalogQueryWithRules = {
+      const query: DatalogQuery = {
         find: ["?person"],
         where: [
           ["parent", "alice", "?person"],
@@ -1167,7 +1166,7 @@ describe("Datalog SQL Compiler with Recursive Rules", () => {
     });
 
     it("should mark recursive queries in compileWithRules", () => {
-      const query: DatalogQueryWithRules = {
+      const query: DatalogQuery = {
         find: ["?ancestor"],
         where: [["ancestor", "alice", "?ancestor"]],
         rules: [

@@ -21,7 +21,7 @@ export interface QueryDebugInfo {
 /**
  * SparqlService interface
  *
- * Provides a high-level API for executing SPARQL queries against the TripleStore.
+ * Provides a high-level API for executing SPARQL queries against Triples.
  */
 export interface SparqlService {
   /**

@@ -3,7 +3,7 @@
  *
  * Manages database lifecycle with each database backed by a storage backend.
  * Delegates metadata operations to DatabaseRegistry.
- * Handles connection pooling and store/datalog service management.
+ * Handles connection pooling and Triples service management.
  */
 
 import { Effect, Layer, HashMap, Ref, pipe, Scope, Exit, Context, Fiber } from "effect";
@@ -12,11 +12,9 @@ import {
   type DatabaseManagerService,
   type Database,
   type ClearResult,
-  TripleStore,
-  type TripleStoreService,
-  TripleStoreLive,
-  Datalog,
-  type DatalogService,
+  Triples,
+  type TriplesService,
+  TriplesLive,
   DatabaseNotFound,
   InternalError,
   CurrentDialect,
@@ -37,7 +35,6 @@ import {
   getTripleStoreRuntime,
   IdGenerator,
 } from "effect-triples";
-import { DatalogLive } from "./DatalogSqlLayer.js";
 import { SqlQueryExecutorLive } from "./SqlQueryExecutor.js";
 import { StorageBackend } from "./StorageBackend.js";
 
@@ -68,34 +65,10 @@ const mapToInternalError = <A, E, R>(
 // =============================================================================
 
 interface CachedServices {
-  store: TripleStoreService;
-  datalog: DatalogService;
+  triples: TriplesService;
   snapshotService: import("effect-triples").SnapshotServiceShape;
   scope: Scope.CloseableScope;
   lastAccessedAt: number;
-}
-
-// =============================================================================
-// Legacy API (re-exported for backwards compat)
-// =============================================================================
-
-/**
- * Wrap a TripleStoreService so that every write operation emits a ChangeEvent
- * to the provided ChangeEmitter. Emission failures are logged and swallowed
- * so they never break the underlying mutation.
- *
- * @deprecated Use `makeChangeEmissionCapability` + `composeStore` instead.
- * The `hook` parameter is ignored -- use `makeReactiveConstraintsCapability` for
- * reactive constraint evaluation.
- */
-export function wrapStoreWithEmitter(
-  store: TripleStoreService,
-  emitter: ChangeEmitterService,
-  now: () => number,
-  _hook?: unknown,
-): TripleStoreService {
-  const cap = makeChangeEmissionCapability(emitter, Effect.sync(now));
-  return cap.wrap(store);
 }
 
 // =============================================================================
@@ -163,38 +136,33 @@ export const DatabaseManagerLive = Layer.scoped(
     /**
      * Build the fully-composed layer for a database.
      *
-     * Produces: TripleStore + Datalog + SnapshotWriter + SnapshotService
+     * Produces: Triples + SnapshotWriter + SnapshotService
      */
     const buildDatabaseLayer = (database: string) => {
       const adapterLayer = backend.createAdapterLayer(database);
       const sqlLayer = backend.createDatabaseClient(database);
       const dialectLayer = Layer.succeed(CurrentDialect, backend.dialect);
 
-      const storeLayer = TripleStoreLive.pipe(
-        Layer.provide(adapterLayer),
-        Layer.provide(dialectLayer),
-        Layer.provide(runtimeLayer),
-      );
-
       const executorLayer = SqlQueryExecutorLive.pipe(
         Layer.provide(sqlLayer),
         Layer.provide(dialectLayer),
       );
 
-      const datalogLayer = DatalogLive.pipe(
-        Layer.provide(storeLayer),
+      const triplesLayer = TriplesLive.pipe(
+        Layer.provide(adapterLayer),
         Layer.provide(executorLayer),
         Layer.provide(dialectLayer),
+        Layer.provide(runtimeLayer),
       );
 
       const writerLayer = SnapshotWriterLive.pipe(
-        Layer.provide(storeLayer),
+        Layer.provide(triplesLayer),
         Layer.provide(adapterLayer),
       );
 
       const readerLayer = SnapshotServiceLive.pipe(Layer.provide(adapterLayer));
 
-      return Layer.mergeAll(storeLayer, datalogLayer, writerLayer, readerLayer);
+      return Layer.mergeAll(triplesLayer, writerLayer, readerLayer);
     };
 
     /**
@@ -204,17 +172,14 @@ export const DatabaseManagerLive = Layer.scoped(
     const createDatabaseServices = (name: string): Effect.Effect<CachedServices, InternalError> =>
       Effect.gen(function* () {
         const layer = buildDatabaseLayer(name);
-        const fullyProvidedLayer = layer as Layer.Layer<
-          TripleStore | Datalog | SnapshotWriter | SnapshotService
-        >;
+        const fullyProvidedLayer = layer as Layer.Layer<Triples | SnapshotWriter | SnapshotService>;
 
         const databaseScope = yield* Scope.make();
         const context = yield* Layer.buildWithScope(fullyProvidedLayer, databaseScope).pipe(
           mapToInternalError,
         );
 
-        const rawStore = Context.get(context, TripleStore);
-        const datalog = Context.get(context, Datalog);
+        const rawTriples = Context.get(context, Triples);
         const writer = Context.get(context, SnapshotWriter);
         const reader = Context.get(context, SnapshotService);
 
@@ -228,7 +193,7 @@ export const DatabaseManagerLive = Layer.scoped(
         for (const feature of externalFeatures) {
           if (feature.capabilityFactory) {
             const cap = yield* feature
-              .capabilityFactory(rawStore, datalog, runtimeNow)
+              .capabilityFactory(rawTriples, runtimeNow)
               .pipe(Effect.provideService(IdGenerator, ids));
             if (cap) {
               capabilities.push(cap);
@@ -236,11 +201,10 @@ export const DatabaseManagerLive = Layer.scoped(
           }
         }
 
-        const store = composeStore(rawStore, ...capabilities);
+        const triples = composeStore(rawTriples, ...capabilities);
 
         return {
-          store,
-          datalog,
+          triples,
           snapshotService: reader,
           scope: databaseScope,
           lastAccessedAt: yield* runtimeNow,
@@ -292,8 +256,8 @@ export const DatabaseManagerLive = Layer.scoped(
 
         if (cached._tag === "Some") {
           // Use the cached store to get count - query all triples with empty pattern
-          const triples = yield* cached.value.store
-            .query({})
+          const triples = yield* cached.value.triples
+            .match({})
             .pipe(Effect.catchAll(() => Effect.succeed([] as readonly unknown[])));
           return triples.length;
         }
@@ -308,8 +272,8 @@ export const DatabaseManagerLive = Layer.scoped(
         }
 
         // Get count and close scope
-        const triples = yield* services.store
-          .query({})
+        const triples = yield* services.triples
+          .match({})
           .pipe(Effect.catchAll(() => Effect.succeed([] as readonly unknown[])));
         const count = triples.length;
 
@@ -457,20 +421,12 @@ export const DatabaseManagerLive = Layer.scoped(
         };
       });
 
-    const getStore = (
+    const getTriples = (
       name: string,
-    ): Effect.Effect<TripleStoreService, DatabaseNotFound | InternalError> =>
+    ): Effect.Effect<TriplesService, DatabaseNotFound | InternalError> =>
       Effect.gen(function* () {
         const cached = yield* getOrCreateServices(name);
-        return cached.store;
-      });
-
-    const getDatalog = (
-      name: string,
-    ): Effect.Effect<DatalogService, DatabaseNotFound | InternalError> =>
-      Effect.gen(function* () {
-        const cached = yield* getOrCreateServices(name);
-        return cached.datalog;
+        return cached.triples;
       });
 
     const getSnapshotService = (
@@ -518,8 +474,7 @@ export const DatabaseManagerLive = Layer.scoped(
       deleteAll,
       list,
       get,
-      getStore,
-      getDatalog,
+      getTriples,
       getSnapshotService,
       clear,
     } satisfies DatabaseManagerService;

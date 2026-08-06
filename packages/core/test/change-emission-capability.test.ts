@@ -1,19 +1,19 @@
 /**
- * Tests for wrapStoreWithEmitter — verifies that change events emitted
+ * Tests for ChangeEmissionCapability — verifies that change events emitted
  * by retract operations contain the correct entityId (not the triple's
  * primary key).
  */
 import { describe, it, expect } from "vitest";
 import { Effect, Option } from "effect";
-import { wrapStoreWithEmitter } from "../sql/src/index.js";
 import type {
-  TripleStoreService,
+  TriplesService,
   ChangeEmitterService,
   ChangeEvent,
   Triple,
   TripleId,
   EntityId,
 } from "../src/index.js";
+import { makeChangeEmissionCapability } from "../src/index.js";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -41,22 +41,32 @@ function fakeTriple(overrides?: Partial<Triple>): Triple {
   } as Triple;
 }
 
-function stubStore(triple: Triple | null): TripleStoreService {
+function stubStore(triple: Triple | null): TriplesService {
   return {
     assert: () => Effect.succeed(triple ?? fakeTriple()),
     assertBatch: () => Effect.succeed([]),
     retract: () => Effect.void,
     retractByPattern: () => Effect.succeed(0),
     transact: () => Effect.succeed({ txId: "tx-1", triples: [], retracted: 1 }),
-    getTriple: () => Effect.succeed(triple),
-    getEntity: () => Effect.succeed([]),
-    query: () => Effect.succeed([]),
-    queryAsOf: () => Effect.succeed([]),
+    get: () => Effect.succeed(triple),
+    entity: () => Effect.succeed([]),
+    match: () => Effect.succeed([]),
+    matchAsOf: () => Effect.succeed([]),
     history: () => Effect.succeed([]),
-    queryWithBuilder: () => Effect.succeed([]),
+    entities: () => Effect.succeed([]),
+    query: () => Effect.succeed({ results: [] }),
+    queryPage: () => Effect.succeed({ results: [] }),
+    explain: () => Effect.succeed({ queryPlan: { backend: "test", steps: [] } }),
+    explainPage: () => Effect.succeed({ queryPlan: { backend: "test", steps: [] } }),
     withTransaction: (effect) => effect,
   };
 }
+
+const wrapStore = (
+  store: TriplesService,
+  emitter: ChangeEmitterService,
+  now: () => number,
+): TriplesService => makeChangeEmissionCapability(emitter, Effect.sync(now)).wrap(store);
 
 function spyEmitter(): { emitter: ChangeEmitterService; events: ChangeEvent[] } {
   const events: ChangeEvent[] = [];
@@ -75,13 +85,13 @@ function spyEmitter(): { emitter: ChangeEmitterService; events: ChangeEvent[] } 
 // Tests
 // ---------------------------------------------------------------------------
 
-describe("wrapStoreWithEmitter", () => {
+describe("ChangeEmissionCapability", () => {
   describe("retract (by ID)", () => {
     it("emits change with correct entityId and attribute from the triple", async () => {
       const triple = fakeTriple();
       const store = stubStore(triple);
       const { emitter, events } = spyEmitter();
-      const wrapped = wrapStoreWithEmitter(store, emitter, liveNow);
+      const wrapped = wrapStore(store, emitter, liveNow);
 
       await Effect.runPromise(wrapped.retract(TRIPLE_ID));
 
@@ -97,7 +107,7 @@ describe("wrapStoreWithEmitter", () => {
     it("falls back to empty strings when triple is not found", async () => {
       const store = stubStore(null);
       const { emitter, events } = spyEmitter();
-      const wrapped = wrapStoreWithEmitter(store, emitter, liveNow);
+      const wrapped = wrapStore(store, emitter, liveNow);
 
       await Effect.runPromise(wrapped.retract(TRIPLE_ID));
 
@@ -115,7 +125,7 @@ describe("wrapStoreWithEmitter", () => {
       const triple = fakeTriple();
       const store = stubStore(triple);
       const { emitter, events } = spyEmitter();
-      const wrapped = wrapStoreWithEmitter(store, emitter, liveNow);
+      const wrapped = wrapStore(store, emitter, liveNow);
 
       await Effect.runPromise(wrapped.transact([{ op: "retract", id: TRIPLE_ID as string }]));
 
@@ -132,7 +142,7 @@ describe("wrapStoreWithEmitter", () => {
     it("falls back to empty strings when triple is not found", async () => {
       const store = stubStore(null);
       const { emitter, events } = spyEmitter();
-      const wrapped = wrapStoreWithEmitter(store, emitter, liveNow);
+      const wrapped = wrapStore(store, emitter, liveNow);
 
       await Effect.runPromise(wrapped.transact([{ op: "retract", id: TRIPLE_ID as string }]));
 
@@ -147,7 +157,7 @@ describe("wrapStoreWithEmitter", () => {
       const triple = fakeTriple();
       const store = stubStore(triple);
       const { emitter, events } = spyEmitter();
-      const wrapped = wrapStoreWithEmitter(store, emitter, liveNow);
+      const wrapped = wrapStore(store, emitter, liveNow);
 
       await Effect.runPromise(
         wrapped.transact([
@@ -184,7 +194,7 @@ describe("wrapStoreWithEmitter", () => {
     it("emits change with correct entityId from input", async () => {
       const store = stubStore(fakeTriple());
       const { emitter, events } = spyEmitter();
-      const wrapped = wrapStoreWithEmitter(store, emitter, liveNow);
+      const wrapped = wrapStore(store, emitter, liveNow);
 
       await Effect.runPromise(
         wrapped.assert({
@@ -206,7 +216,7 @@ describe("wrapStoreWithEmitter", () => {
       const store = stubStore(fakeTriple());
       const { emitter, events } = spyEmitter();
       let ts = 10;
-      const wrapped = wrapStoreWithEmitter(store, emitter, () => {
+      const wrapped = wrapStore(store, emitter, () => {
         ts += 5;
         return ts;
       });
@@ -225,7 +235,7 @@ describe("wrapStoreWithEmitter", () => {
         }),
       );
       const { emitter, events } = spyEmitter();
-      const wrapped = wrapStoreWithEmitter(store, emitter, () => 999);
+      const wrapped = wrapStore(store, emitter, () => 999);
 
       await Effect.runPromise(
         wrapped.assert({

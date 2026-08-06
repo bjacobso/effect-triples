@@ -36,8 +36,8 @@
   "scripts": {
     "build": "tsdown && tsc --declaration --emitDeclarationOnly --rootDir src --outDir dist",
     "dev": "tsdown --watch",
-    "test": "vitest --run --exclude test/fdb-triplestore.test.ts",
-    "test:integration": "vitest --run test/fdb-triplestore.test.ts",
+    "test": "vitest --run --exclude test/fdb-triples.test.ts",
+    "test:integration": "vitest --run test/fdb-triples.test.ts",
     "typecheck": "tsc --noEmit",
     "clean": "rm -rf dist"
   },

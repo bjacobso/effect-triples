@@ -1,16 +1,16 @@
 import { describe, it, expect } from "vitest";
 import { Effect } from "effect";
-import { TripleStore, blob } from "effect-triples";
+import { Triples, blob } from "effect-triples";
 import type { EntityId } from "effect-triples";
 import { SqliteTestLayer } from "./fixtures/SqliteTestLayer.js";
 
 const TestLayer = SqliteTestLayer;
 
-describe("BlobValue in TripleStore", () => {
+describe("BlobValue in Triples", () => {
   it("should store and retrieve a blob value", async () => {
     await Effect.runPromise(
       Effect.gen(function* () {
-        const store = yield* TripleStore;
+        const store = yield* Triples;
 
         const triple = yield* store.assert({
           entityId: "doc-1",
@@ -27,7 +27,7 @@ describe("BlobValue in TripleStore", () => {
         });
 
         // Retrieve and verify
-        const found = yield* store.getEntity("doc-1" as EntityId);
+        const found = yield* store.entity("doc-1" as EntityId);
         expect(found.length).toBe(1);
         expect(found[0]!.value).toEqual({
           type: "blob",
@@ -43,7 +43,7 @@ describe("BlobValue in TripleStore", () => {
   it("should store blob value without filename", async () => {
     await Effect.runPromise(
       Effect.gen(function* () {
-        const store = yield* TripleStore;
+        const store = yield* Triples;
 
         const triple = yield* store.assert({
           entityId: "img-1",
@@ -59,7 +59,7 @@ describe("BlobValue in TripleStore", () => {
         });
 
         // Retrieve and verify no filename key
-        const found = yield* store.getEntity("img-1" as EntityId);
+        const found = yield* store.entity("img-1" as EntityId);
         expect(found[0]!.value).toEqual({
           type: "blob",
           value: "f".repeat(64),

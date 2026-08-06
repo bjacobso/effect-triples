@@ -1,7 +1,7 @@
 /**
- * TripleStore snapshot wrapper
+ * Triples snapshot wrapper
  *
- * Decorates a TripleStoreService to automatically materialize entity snapshots
+ * Decorates a TriplesService to automatically materialize entity snapshots
  * on every write operation. Snapshots are written synchronously within the same
  * database transaction to guarantee consistency.
  *
@@ -10,7 +10,7 @@
  */
 
 import { Effect, Either, Encoding, Option, pipe } from "effect";
-import type { TripleStoreService } from "../store/TripleStore.js";
+import type { TriplesService } from "../store/Triples.js";
 import type { SnapshotWriterShape } from "./SnapshotService.js";
 import type { SnapshotServiceShape } from "./SnapshotService.js";
 import type { Triple, EntityId } from "../Triple.js";
@@ -45,7 +45,7 @@ const parseSnapshotTripleId = (
 };
 
 const resolveTxTime = (
-  store: TripleStoreService,
+  store: TriplesService,
   txId: string,
   assertedTriples: readonly Triple[],
 ): Effect.Effect<number, WriteError> =>
@@ -55,7 +55,7 @@ const resolveTxTime = (
     }
 
     const txMetaTriples = yield* store
-      .query({ entityId: txId, attribute: TxAttributes.INSTANT })
+      .match({ entityId: txId, attribute: TxAttributes.INSTANT })
       .pipe(Effect.catchAll(() => Effect.succeed([] as readonly Triple[])));
     const txInstant = txMetaTriples.find((triple) => triple.value.type === "datetime");
     if (txInstant && txInstant.value.type === "datetime") {
@@ -70,7 +70,7 @@ const resolveTxTime = (
   });
 
 const resolveRetractionMeta = (
-  store: TripleStoreService,
+  store: TriplesService,
   entityId: EntityId,
   tripleId: Triple["id"],
 ): Effect.Effect<{ txId: string; txTime: number } | null> =>
@@ -115,7 +115,7 @@ const mapMaterializeError = (cause: unknown): WriteError =>
   });
 
 /**
- * Wrap a TripleStoreService to materialize snapshots on every write.
+ * Wrap a TriplesService to materialize snapshots on every write.
  *
  * Write operations (assert, assertBatch, retract, retractByPattern, transact)
  * are intercepted. After the write succeeds, snapshots are materialized for all
@@ -124,10 +124,10 @@ const mapMaterializeError = (cause: unknown): WriteError =>
  * `getEntity` is enhanced with a snapshot fast path when available.
  */
 export function wrapStoreWithSnapshots(
-  store: TripleStoreService,
+  store: TriplesService,
   writer: SnapshotWriterShape,
   _reader?: SnapshotServiceShape,
-): TripleStoreService {
+): TriplesService {
   /**
    * Collect unique entity IDs from a set of triples.
    */
@@ -136,11 +136,10 @@ export function wrapStoreWithSnapshots(
   ];
 
   return {
+    ...store,
     // -----------------------------------------------------------------------
     // Read operations — enhanced getEntity, rest pass through
     // -----------------------------------------------------------------------
-
-    getTriple: store.getTriple,
 
     // NOTE: The snapshot-based getEntity fast-path is intentionally disabled.
     // snapshotToTriples() produces synthetic `snap:` IDs that don't conform
@@ -148,13 +147,6 @@ export function wrapStoreWithSnapshots(
     // failures in callers that serialize Triple objects. The SnapshotService
     // should be queried directly for snapshot data; getEntity always returns
     // real triples from the underlying store.
-    getEntity: store.getEntity,
-
-    query: store.query,
-    queryAsOf: store.queryAsOf,
-    history: store.history,
-    queryWithBuilder: store.queryWithBuilder,
-
     // -----------------------------------------------------------------------
     // Write operations — materialize snapshots after each write
     // -----------------------------------------------------------------------
@@ -196,7 +188,7 @@ export function wrapStoreWithSnapshots(
 
         if (parsed) {
           const candidates = yield* store
-            .query({
+            .match({
               entityId: parsed.entityId,
               attribute: parsed.attribute,
               value: parsed.value,
@@ -224,7 +216,7 @@ export function wrapStoreWithSnapshots(
           return;
         }
 
-        const triple = yield* store.getTriple(id).pipe(Effect.catchAll(() => Effect.succeed(null)));
+        const triple = yield* store.get(id).pipe(Effect.catchAll(() => Effect.succeed(null)));
         if (!triple) {
           yield* store.retract(id);
           return;
@@ -254,7 +246,7 @@ export function wrapStoreWithSnapshots(
       Effect.gen(function* () {
         // Query matching triples before retract to know which entities are affected
         const matchingTriples = yield* store
-          .query(pattern)
+          .match(pattern)
           .pipe(Effect.catchAll(() => Effect.succeed([] as readonly Triple[])));
         const count = yield* store.retractByPattern(pattern);
         if (matchingTriples.length > 0) {
@@ -282,7 +274,7 @@ export function wrapStoreWithSnapshots(
         for (const op of operations) {
           if (op.op === "retract") {
             const triple = yield* store
-              .getTriple(op.id as any)
+              .get(op.id as any)
               .pipe(Effect.catchAll(() => Effect.succeed(null)));
             if (triple) {
               retractEntityMap.set(op.id, triple.entityId);

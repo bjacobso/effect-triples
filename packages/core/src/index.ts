@@ -94,13 +94,17 @@ export type { Context, QueryResult, SimplifiedTriple, Binding } from "./datalog/
 export { emptyContext } from "./datalog/types.js";
 
 export {
-  TripleStore,
-  type TripleStoreService,
+  Triples,
+  type TriplesService,
   type TransactionResult,
   type TransactionMeta,
   type BulkInsertOptions,
-} from "./store/TripleStore.js";
-export { TripleStoreLive, TripleStoreAdapterLive } from "./store/TripleStoreAdapterLayer.js";
+  type QueryOptions,
+  type QueryResponse,
+  type PagedQueryResponse,
+  type ExplainResult,
+} from "./store/Triples.js";
+export { TriplesLive } from "./store/TriplesLive.js";
 export {
   DatabaseManager,
   type DatabaseManagerService,
@@ -188,16 +192,12 @@ export {
 export { wrapStoreWithSnapshots } from "./snapshots/wrapStoreWithSnapshots.js";
 
 export {
-  Datalog,
-  type DatalogService,
-  type QueryPlan,
-  type QueryDebugInfo,
-  type WrappedQueryResult,
-} from "./datalog/service.js";
-export {
   QueryExecutor,
   type QueryExecutorService,
   type QueryContext,
+  type QueryPlan,
+  type QueryDebugInfo,
+  type WrappedQueryResult,
   type QueryMetrics as QueryExecutorMetrics,
 } from "./storage/QueryExecutor.js";
 
@@ -207,7 +207,6 @@ export {
   compileWithRules,
   compileWithRulesToSql,
   type CompiledQuery,
-  type DatalogQueryWithRules,
   type QueryMetrics,
 } from "./datalog/compiler.js";
 export { compileWrapped, type CompiledWrappedQuery } from "./datalog/wrapper.js";
@@ -344,5 +343,4 @@ export {
   executeWrappedQuery as executeKvWrappedQuery,
 } from "./kv/datalog/executor.js";
 
-export { KvTripleStoreLive } from "./kv/layers/KvTripleStoreLive.js";
-export { KvDatalogLive } from "./kv/layers/KvDatalogLive.js";
+export { KvTriplesLive, KvTriples } from "./kv/layers/KvTriplesLive.js";
