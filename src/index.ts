@@ -1,3 +1,4 @@
+export * as Catalog from "./Catalog";
 export * as CanonicalJson from "./CanonicalJson";
 export * as ConfigNode from "./ConfigNode";
 export * as BoolExpr from "./BoolExpr";

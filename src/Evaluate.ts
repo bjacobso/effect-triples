@@ -29,11 +29,31 @@
  */
 
 import * as BoolExpr from "./BoolExpr";
+import * as Catalog from "./Catalog";
 import * as CanonicalJson from "./CanonicalJson";
 import * as ContentId from "./ContentId";
 import * as World from "./World";
 
 export type Truth = "true" | "false" | "unknown";
+
+/**
+ * Everything an evaluation may consult: facts, the clock, and configuration.
+ *
+ * Bundled rather than passed separately because the whole point of the join is
+ * that these are three sources of the same kind of thing - an input that is
+ * observed, addressed, and can invalidate an answer.
+ */
+export interface Env {
+  readonly world: World.World;
+  readonly clock: World.Clock;
+  readonly catalog: Catalog.Catalog;
+}
+
+export const env = (
+  world: World.World,
+  clock: World.Clock,
+  catalog: Catalog.Catalog = Catalog.empty
+): Env => ({ world, clock, catalog });
 
 export interface Evaluation {
   readonly truth: Truth;
@@ -108,11 +128,12 @@ const readFact = (
     : { _tag: "Fact", entity, attribute, present: true, value };
 };
 
-export const evaluate = (
+const go = (
   expr: BoolExpr.BoolExpr,
-  world: World.World,
-  clock: World.Clock
+  env: Env,
+  calling: ReadonlySet<string>
 ): Evaluation => {
+  const { world, clock } = env;
   switch (expr._tag) {
     case "Lit":
       return node({
@@ -185,8 +206,45 @@ export const evaluate = (
       });
     }
 
+    case "Rule": {
+      const found = Catalog.lookup(env.catalog, expr.key);
+      if (!found) {
+        // Absent from the catalog, exactly like an absent fact: recorded with a
+        // null cid so publishing the rule later invalidates this answer.
+        return node({
+          truth: "unknown",
+          expr,
+          observed: [{ _tag: "Config", kind: Catalog.RULE_KIND, key: expr.key, cid: null }], // prettier-ignore
+          reason: `rule ${expr.key} is not in this configuration`,
+        });
+      }
+      const observed: World.Observed = {
+        _tag: "Config",
+        kind: Catalog.RULE_KIND,
+        key: expr.key,
+        cid: found.cid,
+      };
+      if (calling.has(expr.key)) {
+        // A rule that reaches itself has no fixed point here, and looping
+        // would hang rather than fail. `unknown` is the honest answer.
+        return node({
+          truth: "unknown",
+          expr,
+          observed: [observed],
+          reason: `rule ${expr.key} is recursive`,
+        });
+      }
+      const child = go(found.expr, env, new Set(calling).add(expr.key));
+      return node({
+        truth: child.truth,
+        expr,
+        observed: [observed],
+        children: [child],
+      });
+    }
+
     case "Not": {
-      const child = evaluate(expr.expr, world, clock);
+      const child = go(expr.expr, env, calling);
       return node({
         truth: notOf(child.truth),
         expr,
@@ -199,7 +257,7 @@ export const evaluate = (
       // Deliberately not short-circuiting: a full provenance tree is worth more
       // than skipping work, and short-circuiting would make the observed set
       // depend on evaluation order.
-      const children = expr.exprs.map((e) => evaluate(e, world, clock));
+      const children = expr.exprs.map((e) => go(e, env, calling));
       return node({
         truth: allOf(children.map((c) => c.truth)),
         expr,
@@ -209,7 +267,7 @@ export const evaluate = (
     }
 
     case "Any": {
-      const children = expr.exprs.map((e) => evaluate(e, world, clock));
+      const children = expr.exprs.map((e) => go(e, env, calling));
       return node({
         truth: anyOf(children.map((c) => c.truth)),
         expr,
@@ -219,6 +277,38 @@ export const evaluate = (
     }
   }
 };
+
+export const evaluate = (
+  expr: BoolExpr.BoolExpr,
+  world: World.World,
+  clock: World.Clock,
+  catalog: Catalog.Catalog = Catalog.empty
+): Evaluation => go(expr, env(world, clock, catalog), new Set());
+
+/**
+ * Replay a recorded dependency set against the current inputs.
+ *
+ * Lives here rather than in `World` because a dependency may now be a config
+ * node, and re-observing one means asking the catalog - the same question,
+ * asked of a different source.
+ */
+export const reobserve = (
+  observed: ReadonlyArray<World.Observed>,
+  env: Env
+): ReadonlyArray<World.Observed> =>
+  observed.map((o) => {
+    if (o._tag === "Clock") {
+      return { _tag: "Clock", granularity: o.granularity, bucket: World.bucket({ now: env.clock.now, granularity: o.granularity }) }; // prettier-ignore
+    }
+    if (o._tag === "Config") {
+      const found = Catalog.lookup(env.catalog, o.key);
+      return { _tag: "Config", kind: o.kind, key: o.key, cid: found?.cid ?? null }; // prettier-ignore
+    }
+    const value = World.read(env.world, o.entity, o.attribute);
+    return value === undefined
+      ? { _tag: "Fact", entity: o.entity, attribute: o.attribute, present: false } // prettier-ignore
+      : { _tag: "Fact", entity: o.entity, attribute: o.attribute, present: true, value }; // prettier-ignore
+  });
 
 // --- the cache --------------------------------------------------------------
 
@@ -275,18 +365,19 @@ export const cached = (
   cache: Cache,
   expr: BoolExpr.BoolExpr,
   world: World.World,
-  clock: World.Clock
+  clock: World.Clock,
+  catalog: Catalog.Catalog = Catalog.empty
 ): {
   readonly evaluation: Evaluation;
   readonly cache: Cache;
   readonly hit: boolean;
 } => {
-  // prettier-ignore
+  const scope = env(world, clock, catalog);
   const exprId = BoolExpr.id(expr);
   const shapes = cache.entries.get(exprId) ?? [];
 
   for (const shape of shapes) {
-    const now = World.reobserve(shape.probe, world, clock);
+    const now = reobserve(shape.probe, scope);
     const found = shape.byClosure.get(World.closureId(now));
     if (found) {
       return {
@@ -297,7 +388,7 @@ export const cached = (
     }
   }
 
-  const evaluation = evaluate(expr, world, clock);
+  const evaluation = go(expr, scope, new Set());
   const key = shapeKey(evaluation.observed);
   const closure = World.closureId(evaluation.observed);
 
@@ -333,3 +424,80 @@ export function* walk(evaluation: Evaluation): Generator<Evaluation> {
   yield evaluation;
   for (const child of evaluation.children) yield* walk(child);
 }
+
+// --- deploy impact ----------------------------------------------------------
+
+export interface Impact {
+  readonly considered: number;
+  /** Provably unaffected: none of the config they read moved. Never evaluated. */
+  readonly skipped: number;
+  readonly reevaluated: number;
+  readonly flipped: ReadonlyArray<{
+    readonly subject: number;
+    readonly from: Truth;
+    readonly to: Truth;
+  }>;
+}
+
+/**
+ * "If I publish this, what changes?" - answered before publishing.
+ *
+ * This is what the join is for. The closure an evaluation recorded is not only
+ * a cache key, it is an invalidation index: a subject whose answer read none of
+ * the rules that moved *cannot* flip, so it is skipped without being evaluated.
+ * Work is proportional to the blast radius of the change rather than to the
+ * size of the population, which is what makes the preview affordable to run on
+ * every publish rather than as an offline report.
+ *
+ * Note the asymmetry with facts. Config deps are resolvable up front - the two
+ * catalogs are both in hand - so the skip decision is made without touching a
+ * world. Fact deps could not be pruned this way, because knowing which facts an
+ * answer would read requires evaluating it.
+ */
+export const impact = (
+  cache: Cache,
+  expr: BoolExpr.BoolExpr,
+  subjects: ReadonlyArray<World.World>,
+  clock: World.Clock,
+  before: Catalog.Catalog,
+  after: Catalog.Catalog
+): { readonly impact: Impact; readonly cache: Cache } => {
+  const flipped: Array<{ subject: number; from: Truth; to: Truth }> = [];
+  let working = cache;
+  let skipped = 0;
+  let reevaluated = 0;
+
+  subjects.forEach((world, subject) => {
+    const previous = cached(working, expr, world, clock, before);
+    working = previous.cache;
+
+    const configDeps = previous.evaluation.observed.filter(
+      (o) => o._tag === "Config"
+    );
+    const moved = reobserve(configDeps, env(world, clock, after)).some(
+      (now, i) => now._tag === "Config" && now.cid !== (configDeps[i] as { cid: ContentId.ContentId | null }).cid // prettier-ignore
+    );
+
+    if (!moved) {
+      skipped++;
+      return;
+    }
+
+    const next = cached(working, expr, world, clock, after);
+    working = next.cache;
+    reevaluated++;
+
+    if (next.evaluation.truth !== previous.evaluation.truth) {
+      flipped.push({
+        subject,
+        from: previous.evaluation.truth,
+        to: next.evaluation.truth,
+      });
+    }
+  });
+
+  return {
+    impact: { considered: subjects.length, skipped, reevaluated, flipped },
+    cache: working,
+  };
+};

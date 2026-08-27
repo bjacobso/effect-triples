@@ -93,6 +93,18 @@ export const read = (
  */
 export type Observed =
   | {
+      /**
+       * A config node this evaluation resolved, addressed by content. `cid` is
+       * null when the catalog had no such node - absence is a dependency here
+       * for the same reason it is for facts, so publishing a missing rule
+       * invalidates the answers that noticed it was missing.
+       */
+      readonly _tag: "Config";
+      readonly kind: string;
+      readonly key: string;
+      readonly cid: ContentId.ContentId | null;
+    }
+  | {
       readonly _tag: "Fact";
       readonly entity: string;
       readonly attribute: string;
@@ -108,21 +120,25 @@ export type Observed =
 const cmp = (a: string, b: string) => (a < b ? -1 : a > b ? 1 : 0);
 
 const encodeObserved = (o: Observed): CanonicalJson.CanonicalValue =>
-  o._tag === "Fact"
-    ? {
-        _tag: "Fact",
-        entity: o.entity,
-        attribute: o.attribute,
-        present: o.present,
-        value: o.present ? o.value : undefined,
-      }
-    : { _tag: "Clock", granularity: o.granularity, bucket: o.bucket };
+  o._tag === "Config"
+    ? { _tag: "Config", kind: o.kind, key: o.key, cid: o.cid }
+    : o._tag === "Fact"
+      ? {
+          _tag: "Fact",
+          entity: o.entity,
+          attribute: o.attribute,
+          present: o.present,
+          value: o.present ? o.value : undefined,
+        }
+      : { _tag: "Clock", granularity: o.granularity, bucket: o.bucket };
 
 /** Identity of an observation, used to dedupe and to order the closure. */
 export const observedKey = (o: Observed): string =>
-  o._tag === "Fact"
-    ? `fact:${o.entity}/${o.attribute}`
-    : `clock:${o.granularity}`;
+  o._tag === "Config"
+    ? `config:${o.kind}/${o.key}`
+    : o._tag === "Fact"
+      ? `fact:${o.entity}/${o.attribute}`
+      : `clock:${o.granularity}`;
 
 /**
  * The digest of everything an evaluation depended on.
@@ -143,25 +159,3 @@ export const closureId = (
     CanonicalJson.encodeOrThrow(sorted)
   );
 };
-
-/**
- * Re-observe a previously recorded dependency set against a world and clock.
- *
- * This is what makes a dynamic-dependency cache work: you cannot know the key
- * before evaluating, but you can replay *last time's* keys cheaply and see
- * whether they still produce the same digest.
- */
-export const reobserve = (
-  observed: ReadonlyArray<Observed>,
-  world: World,
-  clock: Clock
-): ReadonlyArray<Observed> =>
-  observed.map((o) => {
-    if (o._tag === "Clock") {
-      return { _tag: "Clock", granularity: o.granularity, bucket: bucket({ now: clock.now, granularity: o.granularity }) }; // prettier-ignore
-    }
-    const value = read(world, o.entity, o.attribute);
-    return value === undefined
-      ? { _tag: "Fact", entity: o.entity, attribute: o.attribute, present: false } // prettier-ignore
-      : { _tag: "Fact", entity: o.entity, attribute: o.attribute, present: true, value }; // prettier-ignore
-  });

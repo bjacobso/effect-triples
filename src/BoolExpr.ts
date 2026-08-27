@@ -46,6 +46,19 @@ export interface Before {
   readonly attribute: string;
   readonly granularity: "instant" | "day";
 }
+/**
+ * Call another rule by key.
+ *
+ * The one node that reaches outside the world into the *config* graph. It is
+ * still bounded - the key is right there in the structure, so what a rule can
+ * reach remains statically visible and the dependency set stays honest.
+ */
+export interface Rule {
+  readonly _tag: "Rule";
+  readonly v: 1;
+  readonly key: string;
+}
+
 export interface Not {
   readonly _tag: "Not";
   readonly v: 1;
@@ -62,7 +75,7 @@ export interface Any {
   readonly exprs: ReadonlyArray<BoolExpr>;
 }
 
-export type BoolExpr = Lit | Exists | Eq | Before | Not | All | Any;
+export type BoolExpr = Lit | Exists | Eq | Before | Rule | Not | All | Any;
 
 export const lit = (value: boolean): Lit => ({ _tag: "Lit", v: 1, value });
 
@@ -84,6 +97,8 @@ export const before = (
   attribute: string,
   granularity: "instant" | "day" = "day"
 ): Before => ({ _tag: "Before", v: 1, entity, attribute, granularity });
+
+export const rule = (key: string): Rule => ({ _tag: "Rule", v: 1, key });
 
 export const not = (expr: BoolExpr): Not => ({ _tag: "Not", v: 1, expr });
 
@@ -123,10 +138,32 @@ export const mentions = (
     case "Eq":
     case "Before":
       return [{ entity: expr.entity, attribute: expr.attribute }];
+    case "Rule":
+      // A call's reads live in the callee, which this function cannot see.
+      // `mentionsRules` covers that edge; resolving it needs a catalog.
+      return [];
     case "Not":
       return mentions(expr.expr);
     case "All":
     case "Any":
       return expr.exprs.flatMap(mentions);
+  }
+};
+
+/** Rules this expression calls directly. Used to derive a rule node's refs. */
+export const mentionsRules = (expr: BoolExpr): ReadonlyArray<string> => {
+  switch (expr._tag) {
+    case "Lit":
+    case "Exists":
+    case "Eq":
+    case "Before":
+      return [];
+    case "Rule":
+      return [expr.key];
+    case "Not":
+      return mentionsRules(expr.expr);
+    case "All":
+    case "Any":
+      return expr.exprs.flatMap(mentionsRules);
   }
 };
