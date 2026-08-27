@@ -1,0 +1,25 @@
+# @repo/config-graph
+
+Content-addressed versioning for the configuration graph: forms, policies,
+automations and the entities/attributes they all depend on, versioned as one
+object rather than four unconnected version systems.
+
+Nothing in the main app imports this yet. It is a hacking surface for the
+model - `ConfigStore` is an in-memory reference implementation of the semantics
+the Postgres tables would need, so the design can be exercised before any
+migration is written.
+
+| Module          | What it does                                                       |
+| --------------- | ------------------------------------------------------------------ |
+| `CanonicalJson` | Deterministic encoding. The substrate every hash is computed over. |
+| `ContentId`     | `sha256-<hex>`, domain-separated.                                  |
+| `SchemaId`      | Content-addresses an Effect Schema via its JSON Schema projection. |
+| `ConfigNode`    | The merkle node: `cid`, `closureId`, `stamp`, `diff`.              |
+| `ConfigStore`   | Object store, revision log, snapshots, and git-style refs.         |
+
+`src/ConfigGraph.e2e.test.ts` walks a realistic account config through five
+releases and is the intended entry point for reading this.
+
+```sh
+pnpm --filter @repo/config-graph test
+```
