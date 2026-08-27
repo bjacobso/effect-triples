@@ -15,7 +15,15 @@ migration is written.
 | `ContentId`     | `sha256-<hex>`, domain-separated.                                  |
 | `SchemaId`      | Content-addresses an Effect Schema via its JSON Schema projection. |
 | `ConfigNode`    | The merkle node: `cid`, `closureId`, `stamp`, `diff`.              |
+| `SchemaCompat`  | Whether instances of one shape stay valid under another.           |
 | `ConfigStore`   | Object store, revision log, snapshots, and git-style refs.         |
+
+An instance is not bound to the schema that wrote it. `StoredObject.validUnder`
+records every shape a body is known to satisfy, extended for free whenever
+`SchemaCompat.subsumes` proves a new shape accepts an old one, so deploying a
+projection that merely adds an optional field mints no revisions at all.
+`ConfigStore.recheck` asks the deploy-gate question: would every stored body of
+this kind still parse under a proposed schema?
 
 `src/ConfigGraph.e2e.test.ts` walks a realistic account config through five
 releases and is the intended entry point for reading this.
