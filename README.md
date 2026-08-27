@@ -9,22 +9,38 @@ model - `ConfigStore` is an in-memory reference implementation of the semantics
 the Postgres tables would need, so the design can be exercised before any
 migration is written.
 
-| Module          | What it does                                                       |
-| --------------- | ------------------------------------------------------------------ |
-| `CanonicalJson` | Deterministic encoding. The substrate every hash is computed over. |
-| `ContentId`     | `sha256-<hex>`, domain-separated.                                  |
-| `SchemaId`      | Content-addresses an Effect Schema via its JSON Schema projection. |
-| `ConfigNode`    | The merkle node: `cid`, `closureId`, `stamp`, `diff`.              |
-| `Entity`        | Declarative projectors: kinds, keys, `children` vs `ref` fields.   |
-| `SchemaCompat`  | Whether instances of one shape stay valid under another.           |
-| `ConfigStore`   | Object store, revision log, snapshots, and git-style refs.         |
+| Module            | What it does                                                       |
+| ----------------- | ------------------------------------------------------------------ |
+| `CanonicalJson`   | Deterministic encoding. The substrate every hash is computed over. |
+| `ContentId`       | `sha256-<hex>`, domain-separated.                                  |
+| `SchemaId`        | Content-addresses an Effect Schema via its JSON Schema projection. |
+| `ConfigNode`      | The merkle node: `cid`, `closureId`, `stamp`, `diff`.              |
+| `TypeExpr`        | Types as data: a closed algebra with its own content id.           |
+| `TypeSubsumption` | Whether values of one type stay valid under another. Total.        |
+| `TypeSchema`      | Compiles a `TypeExpr` down to an Effect Schema.                    |
+| `Entity`          | Declarative projectors: kinds, keys, `children` vs `ref` fields.   |
+| `ConfigStore`     | Object store, revision log, snapshots, and git-style refs.         |
+| `World`           | Facts, plus the clock as an explicit declared input.               |
+| `BoolExpr`        | A bounded three-valued predicate language.                         |
+| `Catalog`         | Rules as config nodes - the join between the two halves.           |
+| `Evaluate`        | Evaluation, provenance, the closure-keyed cache, deploy impact.    |
 
-An instance is not bound to the schema that wrote it. `StoredObject.validUnder`
+An instance is not bound to the type that wrote it. `StoredObject.validUnder`
 records every shape a body is known to satisfy, extended for free whenever
-`SchemaCompat.subsumes` proves a new shape accepts an old one, so deploying a
-projection that merely adds an optional field mints no revisions at all.
+`TypeSubsumption.subsumes` proves a new shape accepts an old one, so deploying
+a projection that merely adds an optional field mints no revisions at all.
 `ConfigStore.recheck` asks the deploy-gate question: would every stored body of
-this kind still parse under a proposed schema?
+this kind still parse under a proposed type?
+
+Evaluation is addressed on both sides. A rule is an ordinary `ConfigNode`, so a
+decision records the facts it read, the clock bucket it read them at, and the
+content id of every rule it resolved - one closure, one cache, one invalidation
+path. `Evaluate.impact` uses that closure as an index to answer "if I publish
+this, who flips?" without evaluating subjects that cannot.
+
+```sh
+pnpm --filter @repo/config-graph bench:typecheck   # the compile budget gate
+```
 
 Projectors are declared as entities rather than written by hand. Kinds are
 declared up front as tokens, so relations can be circular (a form scopes an

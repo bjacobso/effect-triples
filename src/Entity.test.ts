@@ -1,5 +1,7 @@
 import { describe, expect, it } from "@effect/vitest";
-import { Effect, Schema } from "effect";
+import { Effect } from "effect";
+
+import * as T from "./TypeExpr";
 
 import * as ConfigNode from "./ConfigNode";
 import * as Entity from "./Entity";
@@ -8,28 +10,38 @@ const AttributeKind = Entity.kind("attribute");
 const FieldKind = Entity.kind("form.field");
 const PageKind = Entity.kind("form.page");
 
-const FieldAttrs = Schema.Struct({
-  path: Schema.String,
-  label: Schema.String,
-  required: Schema.optionalWith(Schema.Boolean, { default: () => true }),
+interface FieldInput {
+  readonly path: string;
+  readonly label: string;
+  readonly required?: boolean;
+  readonly helpText?: string;
+}
+const FieldAttrs = T.struct({
+  path: T.required(T.text),
+  label: T.required(T.text),
+  required: T.optional(T.boolean, true),
 });
 
-const PageAttrs = Schema.Struct({
-  slug: Schema.String,
-  title: Schema.String,
+interface PageInput {
+  readonly slug: string;
+  readonly title: string;
+}
+const PageAttrs = T.struct({
+  slug: T.required(T.text),
+  title: T.required(T.text),
 });
 
 const Field = Entity.make({
   kind: FieldKind,
   attrs: FieldAttrs,
-  key: (a) => a.path,
+  key: (a: FieldInput) => a.path,
   refs: { uses_attribute: Entity.ref(AttributeKind) },
 });
 
 const Page = Entity.make({
   kind: PageKind,
   attrs: PageAttrs,
-  key: (a) => a.slug,
+  key: (a: PageInput) => a.slug,
   children: { field: Entity.children(FieldKind) },
 });
 
@@ -46,7 +58,7 @@ describe("Entity", () => {
       const viaMakeTyped = yield* ConfigNode.makeTyped({
         kind: "form.field",
         key: "employee.ssn",
-        schema: FieldAttrs,
+        type: FieldAttrs,
         attrs: { path: "employee.ssn", label: "SSN" },
         refs: [
           {
@@ -58,7 +70,7 @@ describe("Entity", () => {
       });
 
       expect(viaEntity.cid).toEqual(viaMakeTyped.cid);
-      expect(viaEntity.schema?.cid).toEqual(viaMakeTyped.schema?.cid);
+      expect(viaEntity.type).toEqual(viaMakeTyped.type);
     })
   );
 
@@ -99,12 +111,12 @@ describe("Entity", () => {
   it.effect("keeps the id still when only the schema widens", () =>
     Effect.gen(function* () {
       // Running the same entity under a new shape is what a projector deploy
-      // is; `withSchema` says so without cloning the entity.
-      const Widened = Schema.Struct({
+      // is; `withType` says so without cloning the entity.
+      const Widened = T.struct({
         ...FieldAttrs.fields,
-        helpText: Schema.optional(Schema.String),
+        helpText: T.optional(T.text),
       });
-      const FieldV2 = Entity.withSchema(Field, Widened);
+      const FieldV2 = Entity.withType(Field, Widened);
 
       const before = yield* Field.node({
         attrs: { path: "employee.ssn", label: "SSN" },
@@ -114,7 +126,7 @@ describe("Entity", () => {
       });
 
       expect(after.cid).toEqual(before.cid);
-      expect(after.schema?.cid).not.toEqual(before.schema?.cid);
+      expect(after.type).not.toEqual(before.type);
       expect(FieldV2.kind.name).toEqual("form.field");
     })
   );
@@ -164,7 +176,7 @@ describe("Entity type safety", () => {
 
     const buildWithWrongAttrs = () =>
       // @ts-expect-error `title` is not part of the field shape
-      Field.node({ attrs: { path: "p", title: "SSN" } });
+      Field.node({ attrs: { path: "p", label: "SSN", title: "x" } });
 
     expect([
       buildWithWrongKeyKind,

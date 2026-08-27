@@ -23,7 +23,7 @@ const DIR = join(import.meta.dirname, ".generated");
 const sizes = process.argv.slice(2).map(Number).filter(Boolean);
 const SIZES = sizes.length > 0 ? sizes : [300];
 
-const attrs = (i) => `const Attrs${i} = Schema.Struct({
+const schemaAttrs = (i) => `const Attrs${i} = Schema.Struct({
   slug: Schema.String, name: Schema.String,
   status: Schema.Literal("draft", "published", "deprecated"),
   count: Schema.Number, flag: Schema.optional(Schema.Boolean),
@@ -31,39 +31,65 @@ const attrs = (i) => `const Attrs${i} = Schema.Struct({
   nested: Schema.Struct({ a: Schema.String, b: Schema.Number }),
 });`;
 
+// The same shape as a TypeExpr: a plain value, no type-level parameters.
+const typeAttrs = (i) => `const Attrs${i} = T.struct({
+  slug: T.required(T.text), name: T.required(T.text),
+  status: T.required(T.enumOf(["draft", "published", "deprecated"])),
+  count: T.required(T.number), flag: T.optional(T.boolean),
+  tags: T.required(T.list(T.text)),
+  nested: T.required(T.struct({ a: T.required(T.text), b: T.required(T.number) })),
+});`;
+
+const INPUT = `interface Input {
+  readonly slug: string; readonly name: string;
+  readonly status: "draft" | "published" | "deprecated";
+  readonly count: number; readonly flag?: boolean;
+  readonly tags: ReadonlyArray<string>;
+  readonly nested: { readonly a: string; readonly b: number };
+}`;
+
 const entity = (i, n, schema) => `export const Entity${i} = Entity.make({
-  kind: Kind${i}, attrs: ${schema}, key: (a) => a.slug,
+  kind: Kind${i}, attrs: ${schema}, key: (a: Input) => a.slug,
   children: { child: Entity.children(Kind${(i + 1) % n}) },
   refs: { uses: Entity.ref(AttrKind), links: Entity.ref(Kind${(i + 2) % n}) },
 });`;
 
 const fixtures = {
-  // Effect Schema inference alone.
+  // Effect Schema inference alone. Retained as the historical comparison:
+  // this is what `Entity` paid per declaration before it took a `TypeExpr`.
   "schema-only": (n) =>
     [
       `import { Schema } from "effect";`,
-      ...Array.from({ length: n }, (_, i) => `export ${attrs(i)}`),
+      ...Array.from({ length: n }, (_, i) => `export ${schemaAttrs(i)}`),
     ].join("\n"),
-  // Entity.make generics alone: every entity shares one schema type, so
-  // TypeScript instantiates the generic once. This is also the shape the API
-  // would have if `attrs` were a plain `TypeExpr` value instead of a Schema.
+  // TypeExpr values alone, no Entity.
+  "type-only": (n) =>
+    [
+      `import * as T from "../../src/TypeExpr";`,
+      ...Array.from({ length: n }, (_, i) => `export ${typeAttrs(i)}`),
+    ].join("\n"),
+  // Entity.make with one shared type.
   "entity-only": (n) =>
     [
-      `import { Schema } from "effect";`,
       `import * as Entity from "../../src/Entity";`,
+      `import * as T from "../../src/TypeExpr";`,
+      INPUT,
       `const AttrKind = Entity.kind("attribute");`,
-      `const Shared = Schema.Struct({ slug: Schema.String });`,
+      `const Shared = T.struct({ slug: T.required(T.text) });`,
       ...Array.from(
         { length: n },
         (_, i) => `const Kind${i} = Entity.kind("entity${i}");`
       ),
       ...Array.from({ length: n }, (_, i) => entity(i, n, "Shared")),
     ].join("\n"),
-  // What authoring actually looks like today.
+  // What authoring looks like: a distinct TypeExpr per entity. Since a
+  // TypeExpr is a plain value, this should now sit close to `entity-only`
+  // rather than multiplying against it.
   combined: (n) =>
     [
-      `import { Schema } from "effect";`,
       `import * as Entity from "../../src/Entity";`,
+      `import * as T from "../../src/TypeExpr";`,
+      INPUT,
       `const AttrKind = Entity.kind("attribute");`,
       ...Array.from(
         { length: n },
@@ -71,7 +97,7 @@ const fixtures = {
       ),
       ...Array.from(
         { length: n },
-        (_, i) => `${attrs(i)}\n${entity(i, n, `Attrs${i}`)}`
+        (_, i) => `${typeAttrs(i)}\n${entity(i, n, `Attrs${i}`)}`
       ),
     ].join("\n"),
 };
@@ -117,7 +143,8 @@ try {
         `  ${name.padEnd(22)} +${marginal[name].toFixed(0).padStart(5)} ms`
       );
     }
-    const parts = marginal["schema-only"] + marginal["entity-only"];
+    // The two things `combined` is actually made of.
+    const parts = marginal["type-only"] + marginal["entity-only"];
     console.log(
       `  ${"sum of parts".padEnd(22)} +${parts.toFixed(0).padStart(5)} ms`
     );

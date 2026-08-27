@@ -33,15 +33,16 @@
  * `ENVELOPE_VERSION` is mixed into every hash. It versions the body layout
  * below - the `kind` / `key` / `attrs` / `children` / `refs` frame itself - not
  * the shape of any particular projection, and it should move roughly never.
- * The shape of a projection is versioned automatically by its `SchemaId`; see
+ * The shape of a projection is versioned automatically by its `TypeExpr` id;
  * `makeTyped` and `stamp` for why the two are kept apart.
  */
 
-import { Data, Effect, ParseResult, Schema } from "effect";
+import { Data, Effect, ParseResult } from "effect";
 
 import * as CanonicalJson from "./CanonicalJson";
 import * as ContentId from "./ContentId";
-import * as SchemaId from "./SchemaId";
+import * as TypeExpr from "./TypeExpr";
+import * as TypeSchema from "./TypeSchema";
 
 export const ENVELOPE_VERSION = 1;
 
@@ -69,10 +70,10 @@ export interface ConfigNode {
   readonly refs: ReadonlyArray<ConfigRef>;
   readonly cid: ContentId.ContentId;
   /**
-   * The shape `attrs` was validated and normalised through, when the node came
+   * The type `attrs` was validated and normalised through, when the node came
    * from `makeTyped`. Deliberately NOT part of `cid` - see `stamp`.
    */
-  readonly schema?: SchemaId.SchemaDescriptor;
+  readonly type?: TypeExpr.TypeExpr;
 }
 
 export class DuplicateChildKeyError extends Data.TaggedError(
@@ -181,16 +182,16 @@ export const make = (input: {
 /**
  * `make`, with `attrs` validated and normalised through an Effect Schema.
  *
- * This is the intended way to build every projection. The schema does three
+ * This is the intended way to build every projection. The type does three
  * jobs at once: it rejects a projector that drifts from the shape it claims to
  * emit, it normalises the data so irrelevant differences cannot move the hash
- * (see `SchemaId.normalizeThrough`), and it stamps the node with the content id
- * of the shape itself, so the store can log which schema wrote which object.
+ * (see `TypeSchema.normalize`), and it records the type itself, so the store
+ * can log which shape wrote which object.
  */
-export const makeTyped = <A, I>(input: {
+export const makeTyped = (input: {
   readonly kind: string;
   readonly key: string;
-  readonly schema: Schema.Schema<A, I>;
+  readonly type: TypeExpr.TypeExpr;
   readonly attrs: unknown;
   readonly children?: ReadonlyArray<ConfigChild>;
   readonly refs?: ReadonlyArray<ConfigRef>;
@@ -198,14 +199,15 @@ export const makeTyped = <A, I>(input: {
   ConfigNode,
   | DuplicateChildKeyError
   | CanonicalJson.CanonicalEncodingError
-  | SchemaId.SchemaNotRepresentableError
   | ParseResult.ParseError
 > =>
   Effect.gen(function* () {
-    const descriptor = yield* SchemaId.of(input.schema);
-    const attrs = yield* SchemaId.normalizeThrough(input.schema, input.attrs);
-    const node = yield* make({ ...input, attrs });
-    return { ...node, schema: descriptor };
+    const attrs = yield* TypeSchema.normalize(input.type, input.attrs);
+    const node = yield* make({
+      ...input,
+      attrs: attrs as CanonicalJson.CanonicalValue,
+    });
+    return { ...node, type: input.type };
   });
 
 /**
@@ -233,23 +235,23 @@ export const stamp = (
     const encoded = yield* CanonicalJson.encode({
       v: ENVELOPE_VERSION,
       cid: node.cid,
-      schemas: schemaCids(node),
+      schemas: typeIds(node),
     });
     return ContentId.hash(STAMP_DOMAIN, encoded);
   });
 
 /**
- * Every distinct projection schema used anywhere in the subtree, sorted.
+ * Every distinct projection type used anywhere in the subtree, sorted.
  *
  * Stored alongside a revision so "a projector changed" is answerable on its own
  * rather than only as a stamp that differs for some unstated reason.
  */
-export const schemaCids = (
+export const typeIds = (
   node: ConfigNode
 ): ReadonlyArray<ContentId.ContentId> => {
   const found = new Set<ContentId.ContentId>();
   for (const { node: nested } of walk(node)) {
-    if (nested.schema) found.add(nested.schema.cid);
+    if (nested.type) found.add(TypeExpr.id(nested.type));
   }
   return [...found].sort(cmp);
 };

@@ -364,3 +364,84 @@ describe("deploy impact preview", () => {
     })
   );
 });
+
+describe("the cache never lies, under random mutation", () => {
+  it.effect("always agrees with a fresh evaluation", () =>
+    Effect.gen(function* () {
+      // The strongest check available, because there is a perfect oracle:
+      // whatever the cache returns must equal what evaluating from scratch
+      // returns, for any sequence of edits. Every invalidation bug - a missed
+      // fact, an unrecorded absence, a stale clock bucket, a config change that
+      // did not propagate - shows up here as a disagreement.
+      const expr = B.all([
+        B.rule("eligible"),
+        B.any([B.exists("ee", "waiver"), B.before("ee", "start_date")]),
+      ]);
+
+      const catalogs = [
+        yield* catalogOf({
+          eligible: B.rule("is-caregiver"),
+          "is-caregiver": B.eq("ee", "role", "caregiver"),
+        }),
+        yield* catalogOf({
+          eligible: B.rule("is-caregiver"),
+          "is-caregiver": B.eq("ee", "role", "office"),
+        }),
+        // A generation where the sub-rule is gone entirely.
+        yield* catalogOf({ eligible: B.rule("is-caregiver") }),
+      ].map((c) => c.catalog);
+
+      // Deterministic: a property test that shuffles differently each run
+      // cannot be debugged from its failure message.
+      let seed = 0x5eed;
+      const next = () => (seed = (seed * 1103515245 + 12345) & 0x7fffffff);
+      const pick = <A>(xs: ReadonlyArray<A>) => xs[next() % xs.length];
+
+      let cache = Evaluate.emptyCache();
+      let world = World.make({});
+      let now = MARCH_3;
+      let hits = 0;
+
+      for (let step = 0; step < 400; step++) {
+        switch (next() % 5) {
+          case 0:
+            world = World.withFact(world, "ee", "role", pick(["caregiver", "office", "warehouse"])); // prettier-ignore
+            break;
+          case 1:
+            world = World.withoutFact(world, "ee", "role");
+            break;
+          case 2:
+            world =
+              next() % 2
+                ? World.withFact(world, "ee", "waiver", "yes")
+                : World.withoutFact(world, "ee", "waiver");
+            break;
+          case 3:
+            world = World.withFact(world, "ee", "start_date", MARCH_3 - (next() % 10) * DAY); // prettier-ignore
+            break;
+          default:
+            // Unread facts and clock drift both belong in the mix: one must
+            // never invalidate, the other must invalidate only across a day.
+            world = World.withFact(world, "ee", "unread", next() % 100);
+            now += (next() % 4) * (DAY / 2);
+        }
+
+        const catalog = pick(catalogs);
+        const tick: World.Clock = { now, granularity: "day" };
+
+        const viaCache = Evaluate.cached(cache, expr, world, tick, catalog);
+        cache = viaCache.cache;
+        if (viaCache.hit) hits++;
+
+        const fresh = Evaluate.evaluate(expr, world, tick, catalog);
+        expect(viaCache.evaluation.truth, `step ${step}`).toEqual(fresh.truth);
+        expect(viaCache.evaluation.cid, `step ${step}`).toEqual(fresh.cid);
+      }
+
+      // A test that never hit the cache would pass vacuously.
+      expect(hits).toBeGreaterThan(50);
+      // ...and the shapes must stay bounded, or the cache is just a log.
+      expect(Evaluate.shapeCount(cache, expr)).toBeLessThanOrEqual(8);
+    })
+  );
+});

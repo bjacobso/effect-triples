@@ -9,8 +9,8 @@
  *
  * It was extracted from the scenario test, where it made up 327 of 750 lines.
  * That ratio was the tell: three different authors were sharing one file. The
- * framework author (`CanonicalJson`, `ContentId`, `ConfigNode`, `SchemaId`,
- * `SchemaCompat`) cares about determinism and soundness. The vocabulary author
+ * framework author (`CanonicalJson`, `ContentId`, `ConfigNode`, `TypeExpr`,
+ * `TypeSubsumption`) cares about determinism and soundness. The vocabulary author
  * (`Entity`, `ConfigStore`) cares about whether kinds, refs and revisions
  * compose. The domain modeller - this file - cares about none of that, and
  * their tests should read like product questions.
@@ -21,7 +21,7 @@
  * releases, versioned as one graph, with its history verified at each step.
  *
  * No database and no browser - "end to end" here means every layer of this
- * package at once: Effect Schemas define the shapes, projectors turn them into
+ * package at once: `TypeExpr` values define the shapes, projectors turn them into
  * merkle nodes, the store records revisions and snapshots, and refs deploy and
  * roll back. It is meant to be read top to bottom as the argument for the
  * design, so each release is named for the question it answers.
@@ -36,70 +36,70 @@
  *                                          └───────┴── automation i9-reverify
  */
 
-import { Effect, Schema } from "effect";
+import { Effect } from "effect";
 
 import * as ConfigStore from "../ConfigStore";
 import * as Entity from "../Entity";
+import * as T from "../TypeExpr";
 
 // ---------------------------------------------------------------------------
 // The graph of schemas. One per node kind; this is the whole type system the
 // config is allowed to express, and each shape content-addresses itself.
 // ---------------------------------------------------------------------------
 
-export const AttributeAttrs = Schema.Struct({
-  entityType: Schema.Literal("employee", "employer"),
-  path: Schema.String,
-  label: Schema.String,
-  scalarType: Schema.Literal("text", "date", "enum", "number"),
-  enumOptions: Schema.optionalWith(Schema.Array(Schema.String), {
-    default: () => [],
-  }),
-  sensitive: Schema.optionalWith(Schema.Boolean, { default: () => false }),
+export const AttributeAttrs = T.struct({
+  entityType: T.required(T.enumOf(["employee", "employer"])),
+  path: T.required(T.text),
+  label: T.required(T.text),
+  scalarType: T.required(T.enumOf(["text", "date", "enum", "number"])),
+  enumOptions: T.optional(T.list(T.text)),
+  sensitive: T.optional(T.boolean, false),
 });
 
-export const FieldAttrs = Schema.Struct({
-  path: Schema.String,
-  type: Schema.Literal("text", "date", "select", "ssn"),
-  label: Schema.String,
-  required: Schema.optionalWith(Schema.Boolean, { default: () => true }),
+export const FieldAttrs = T.struct({
+  path: T.required(T.text),
+  type: T.required(T.enumOf(["text", "date", "select", "ssn"])),
+  label: T.required(T.text),
+  required: T.optional(T.boolean, true),
 });
 
 /** Release 4 widens this shape without touching any data. */
-export const FieldAttrsV2 = Schema.Struct({
-  ...FieldAttrs.fields,
-  helpText: Schema.optional(Schema.String),
+export const FieldAttrsV2 = T.struct({
+  path: T.required(T.text),
+  type: T.required(T.enumOf(["text", "date", "select", "ssn"])),
+  label: T.required(T.text),
+  required: T.optional(T.boolean, true),
+  helpText: T.optional(T.text),
 });
 
-export const PageAttrs = Schema.Struct({
-  // The semantic key lives in the data rather than arriving as a separate
-  // argument, which is what declaring `key` on the entity forces.
-  slug: Schema.String,
-  title: Schema.String,
-  assignee: Schema.Literal("employee", "employer"),
+export const PageAttrs = T.struct({
+  slug: T.required(T.text),
+  title: T.required(T.text),
+  assignee: T.required(T.enumOf(["employee", "employer"])),
 });
 
-export const FormAttrs = Schema.Struct({
-  slug: Schema.String,
-  name: Schema.String,
-  description: Schema.optional(Schema.String),
+export const FormAttrs = T.struct({
+  slug: T.required(T.text),
+  name: T.required(T.text),
+  description: T.optional(T.text),
 });
 
-export const PolicyAttrs = Schema.Struct({
-  slug: Schema.String,
-  name: Schema.String,
-  status: Schema.Literal("enabled", "disabled"),
+export const PolicyAttrs = T.struct({
+  slug: T.required(T.text),
+  name: T.required(T.text),
+  status: T.required(T.enumOf(["enabled", "disabled"])),
 });
 
-export const AutomationAttrs = Schema.Struct({
-  slug: Schema.String,
-  name: Schema.String,
-  triggerEntity: Schema.Literal("task", "placement", "employee"),
+export const AutomationAttrs = T.struct({
+  slug: T.required(T.text),
+  name: T.required(T.text),
+  triggerEntity: T.required(T.enumOf(["task", "placement", "employee"])),
 });
 
-export const ActionAttrs = Schema.Struct({
-  slug: Schema.String,
-  name: Schema.String,
-  actionType: Schema.Literal("create_task", "send_email"),
+export const ActionAttrs = T.struct({
+  slug: T.required(T.text),
+  name: T.required(T.text),
+  actionType: T.required(T.enumOf(["create_task", "send_email"])),
 });
 
 // ---------------------------------------------------------------------------
@@ -108,7 +108,52 @@ export const ActionAttrs = Schema.Struct({
 // merely depends on. Targets are thunks because the graph genuinely cycles.
 // ---------------------------------------------------------------------------
 
-export const AttributeKind = Entity.kind("attribute");
+// The static shapes authors write. `TypeExpr` above is the runtime truth and
+// validates on the way in; these are the compiler's view of the same thing.
+// Declaring them beats inferring from a Schema: measured at 300 declarations,
+// inference through `Schema.Schema<A, I>` cost 5x what an explicit type does.
+export interface AttributeInput {
+  readonly entityType: "employee" | "employer";
+  readonly path: string;
+  readonly label: string;
+  readonly scalarType: "text" | "date" | "enum" | "number";
+  readonly enumOptions?: ReadonlyArray<string>;
+  readonly sensitive?: boolean;
+}
+export interface FieldInput {
+  readonly path: string;
+  readonly type: "text" | "date" | "select" | "ssn";
+  readonly label: string;
+  readonly required?: boolean;
+  readonly helpText?: string;
+}
+export interface PageInput {
+  readonly slug: string;
+  readonly title: string;
+  readonly assignee: "employee" | "employer";
+}
+export interface FormInput {
+  readonly slug: string;
+  readonly name: string;
+  readonly description?: string;
+}
+export interface PolicyInput {
+  readonly slug: string;
+  readonly name: string;
+  readonly status: "enabled" | "disabled";
+}
+export interface AutomationInput {
+  readonly slug: string;
+  readonly name: string;
+  readonly triggerEntity: "task" | "placement" | "employee";
+}
+export interface ActionInput {
+  readonly slug: string;
+  readonly name: string;
+  readonly actionType: "create_task" | "send_email";
+}
+
+const AttributeKind = Entity.kind("attribute");
 export const FormKind = Entity.kind("form");
 export const PageKind = Entity.kind("form.page");
 export const FieldKind = Entity.kind("form.field");
@@ -119,27 +164,27 @@ export const ActionKind = Entity.kind("automation.action");
 export const Attribute = Entity.make({
   kind: AttributeKind,
   attrs: AttributeAttrs,
-  key: (a) => `${a.entityType}.${a.path}`,
+  key: (a: AttributeInput) => `${a.entityType}.${a.path}`,
 });
 
 export const FormField = Entity.make({
   kind: FieldKind,
   attrs: FieldAttrs,
-  key: (a) => a.path,
+  key: (a: FieldInput) => a.path,
   refs: { uses_attribute: Entity.ref(AttributeKind) },
 });
 
 export const Page = Entity.make({
   kind: PageKind,
   attrs: PageAttrs,
-  key: (a) => a.slug,
+  key: (a: PageInput) => a.slug,
   children: { field: Entity.children(FieldKind) },
 });
 
 export const Form = Entity.make({
   kind: FormKind,
   attrs: FormAttrs,
-  key: (a) => a.slug,
+  key: (a: FormInput) => a.slug,
   children: { page: Entity.children(PageKind) },
   refs: { scopes: Entity.ref(AutomationKind) },
 });
@@ -147,21 +192,21 @@ export const Form = Entity.make({
 export const Policy = Entity.make({
   kind: PolicyKind,
   attrs: PolicyAttrs,
-  key: (a) => a.slug,
+  key: (a: PolicyInput) => a.slug,
   refs: { distributes: Entity.ref(FormKind) },
 });
 
 export const Action = Entity.make({
   kind: ActionKind,
   attrs: ActionAttrs,
-  key: (a) => a.slug,
+  key: (a: ActionInput) => a.slug,
   refs: { creates_task: Entity.ref(FormKind) },
 });
 
 export const Automation = Entity.make({
   kind: AutomationKind,
   attrs: AutomationAttrs,
-  key: (a) => a.slug,
+  key: (a: AutomationInput) => a.slug,
   children: { action: Entity.children(ActionKind) },
   refs: { uses_attribute: Entity.ref(AttributeKind) },
 });
@@ -173,7 +218,7 @@ export const Automation = Entity.make({
 export interface AccountConfig {
   readonly ssnLabel: string;
   readonly workStates: ReadonlyArray<string>;
-  readonly fieldSchema: Schema.Schema.AnyNoContext;
+  readonly fieldSchema: T.TypeExpr;
 }
 
 export const BASELINE: AccountConfig = {
@@ -186,7 +231,7 @@ export const buildAccount = (config: AccountConfig) =>
   Effect.gen(function* () {
     // A widened field shape is the same entity read under a new schema, not a
     // different entity.
-    const FieldOf = Entity.withSchema(FormField, config.fieldSchema);
+    const FieldOf = Entity.withType(FormField, config.fieldSchema);
 
     const attributes = yield* Effect.all([
       Attribute.node({

@@ -22,8 +22,8 @@ import { Effect } from "effect";
 
 import * as ConfigNode from "./ConfigNode";
 import * as ConfigStore from "./ConfigStore";
-import * as SchemaCompat from "./SchemaCompat";
-import * as SchemaId from "./SchemaId";
+import * as T from "./TypeExpr";
+import * as TypeSubsumption from "./TypeSubsumption";
 import {
   Attribute,
   BASELINE,
@@ -148,8 +148,8 @@ describe("config graph end to end", () => {
       ).toBe(false);
 
       // -- Release 4: the code changes, the config does not ------------------
-      const v1Schema = yield* SchemaId.of(FieldAttrs);
-      const v2Schema = yield* SchemaId.of(FieldAttrsV2);
+      const v1Type = T.id(FieldAttrs);
+      const v2Type = T.id(FieldAttrsV2);
 
       const r4 = yield* release(store, "2026.4", {
         ...BASELINE,
@@ -166,7 +166,9 @@ describe("config graph end to end", () => {
       // single body - so this release is a genuine no-op. No revision is minted,
       // no object is reported as changed, and the snapshot lands on the id the
       // previous release already had.
-      expect(SchemaCompat.subsumes(v1Schema, v2Schema)._tag).toEqual("Widens");
+      expect(TypeSubsumption.subsumes(FieldAttrs, FieldAttrsV2)._tag).toEqual(
+        "Widens"
+      );
       expect(r3to4).toEqual([]);
       expect(r4.created).toEqual([]);
       expect(r4.snapshot.rootCid).toEqual(r3.snapshot.rootCid);
@@ -178,7 +180,7 @@ describe("config graph end to end", () => {
         ({ node }) => node.kind === "form.field" && node.key === "employee.ssn"
       )!.node;
       expect(ConfigStore.validityOf(store, ssnField.cid)).toEqual(
-        [v1Schema.cid, v2Schema.cid].sort()
+        [v1Type, v2Type].sort()
       );
       // The body release 3 wrote is the body release 4 read - the optional
       // property is absent, so it encodes away and the id never moved.
@@ -190,11 +192,12 @@ describe("config graph end to end", () => {
 
       // Both shapes are in the append-only log, so an object written under the
       // old one can still be read back through it.
-      expect(store.schemas.has(v1Schema.cid)).toBe(true);
-      expect(store.schemas.has(v2Schema.cid)).toBe(true);
-      expect(store.schemas.get(v1Schema.cid)?.jsonSchema).toMatchObject({
-        properties: { label: { type: "string" } },
-      });
+      expect(store.schemas.has(v1Type)).toBe(true);
+      expect(store.schemas.has(v2Type)).toBe(true);
+      // The log holds the type itself, not a serializer's rendering of it, so
+      // an object written under the old shape can be read back through the
+      // exact value that wrote it.
+      expect(store.schemas.get(v1Type)).toEqual(FieldAttrs);
 
       // -- Release 5: reverting reproduces the original bytes ----------------
       const r5 = yield* release(store, "2026.5", {

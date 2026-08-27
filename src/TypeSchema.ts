@@ -18,7 +18,7 @@
  * compiler; it is what "types are runtime data" means.
  */
 
-import { Schema } from "effect";
+import { Effect, ParseResult, Schema } from "effect";
 
 import * as TypeExpr from "./TypeExpr";
 
@@ -94,7 +94,16 @@ const go = (expr: TypeExpr.TypeExpr): Schema.Schema<any, any> => {
         Object.fromEntries(
           Object.entries(expr.fields).map(([name, field]) => [
             name,
-            field.optional ? Schema.optional(go(field.type)) : go(field.type),
+            field.optional
+              ? field.fallback === undefined
+                ? Schema.optional(go(field.type))
+                : // Applied on decode and emitted on encode, so an omitted
+                  // field and an explicitly-defaulted one produce identical
+                  // bytes and therefore an identical content id.
+                  Schema.optionalWith(go(field.type), {
+                    default: () => field.fallback,
+                  })
+              : go(field.type),
           ])
         )
         // Structs are closed, and `TypeSubsumption` decides verdicts on that
@@ -132,3 +141,21 @@ export const compile = (
 /** Does this value satisfy the type? The instance-level check, when needed. */
 export const is = (expr: TypeExpr.TypeExpr, value: unknown): boolean =>
   Schema.is(compile(expr))(value);
+
+/**
+ * Validate a value and return its normalised (encoded) form.
+ *
+ * Decode then re-encode, so the type's own fallbacks are applied and anything
+ * the type considers irrelevant is discarded. Hashing this rather than the raw
+ * input is what makes two configs differing only in ways the type ignores come
+ * out byte-identical.
+ */
+export const normalize = (
+  expr: TypeExpr.TypeExpr,
+  input: unknown
+): Effect.Effect<unknown, ParseResult.ParseError> => {
+  const schema = compile(expr);
+  return Schema.decodeUnknown(schema)(input).pipe(
+    Effect.flatMap((decoded) => Schema.encode(schema)(decoded))
+  );
+};

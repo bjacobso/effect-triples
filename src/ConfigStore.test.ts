@@ -10,7 +10,9 @@
  */
 
 import { describe, expect, it } from "@effect/vitest";
-import { Effect, Schema } from "effect";
+import { Effect } from "effect";
+
+import * as T from "./TypeExpr";
 
 import * as ConfigStore from "./ConfigStore";
 import {
@@ -88,14 +90,14 @@ describe("schema validity across versions", () => {
 
       // The question worth asking in CI, before the narrowing merges. Today
       // the equivalent failure is found when a customer's form will not load.
-      const RequiresHelpText = Schema.Struct({
+      const RequiresHelpText = T.struct({
         ...FieldAttrs.fields,
-        helpText: Schema.String,
+        helpText: T.required(T.text),
       });
 
-      const breaking = yield* ConfigStore.recheck(store, {
+      const breaking = ConfigStore.recheck(store, {
         kind: FieldKind.name,
-        schema: RequiresHelpText,
+        type: RequiresHelpText,
       });
 
       expect(breaking.compatible).toEqual([]);
@@ -113,15 +115,15 @@ describe("schema validity across versions", () => {
     Effect.gen(function* () {
       const store = yield* buildFiveReleases;
 
-      const Widened = Schema.Struct({
+      const Widened = T.struct({
         ...FieldAttrs.fields,
-        helpText: Schema.optional(Schema.String),
-        placeholder: Schema.optional(Schema.String),
+        helpText: T.optional(T.text),
+        placeholder: T.optional(T.text),
       });
 
-      const result = yield* ConfigStore.recheck(store, {
+      const result = ConfigStore.recheck(store, {
         kind: FieldKind.name,
-        schema: Widened,
+        type: Widened,
       });
 
       // Every body cleared structurally: one verdict per known schema settles
@@ -136,17 +138,19 @@ describe("schema validity across versions", () => {
     Effect.gen(function* () {
       const store = yield* buildFiveReleases;
 
-      // Constraining a string is outside the fragment `subsumes` models, so it
-      // returns Unknown rather than guessing - and the real bodies settle it.
-      // Every stored label is non-empty, so they all pass on revalidation.
-      const Constrained = Schema.Struct({
+      // Subsumption is total, so this is decided - as a NARROWING, because
+      // some string of the old type is too short. That verdict is about the
+      // type, not about the data: every label actually stored is non-empty, so
+      // the third tier decodes them and clears them. Proving a change unsafe
+      // in general and finding it safe in practice are different questions.
+      const Constrained = T.struct({
         ...FieldAttrs.fields,
-        label: Schema.String.pipe(Schema.minLength(1)),
+        label: T.required(T.constrained(T.text, [T.minLength(1)])),
       });
 
-      const result = yield* ConfigStore.recheck(store, {
+      const result = ConfigStore.recheck(store, {
         kind: FieldKind.name,
-        schema: Constrained,
+        type: Constrained,
       });
 
       expect(result.compatible).toEqual([]);
@@ -155,13 +159,13 @@ describe("schema validity across versions", () => {
 
       // And a constraint no stored label satisfies is caught the same way,
       // which subsumption alone could never have told us.
-      const TooLong = Schema.Struct({
+      const TooLong = T.struct({
         ...FieldAttrs.fields,
-        label: Schema.String.pipe(Schema.minLength(500)),
+        label: T.required(T.constrained(T.text, [T.minLength(500)])),
       });
-      const strict = yield* ConfigStore.recheck(store, {
+      const strict = ConfigStore.recheck(store, {
         kind: FieldKind.name,
-        schema: TooLong,
+        type: TooLong,
       });
       expect(strict.revalidated).toEqual([]);
       expect(strict.violations.length).toBeGreaterThan(0);

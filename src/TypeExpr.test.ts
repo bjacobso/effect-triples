@@ -406,3 +406,90 @@ describe("TypeSchema closedness", () => {
     expect(TypeSchema.is(narrow, { a: "x", b: 1 })).toBe(false);
   });
 });
+
+describe("subsumption obeys the laws a lattice has to obey", () => {
+  // A spanning set with enough structure to catch a wrong verdict, kept small
+  // enough that the cubic transitivity check stays fast.
+  const universe: ReadonlyArray<TypeExpr.TypeExpr> = [
+    T.any,
+    T.text,
+    T.number,
+    T.integer,
+    T.boolean,
+    T.enumOf(["a"]),
+    T.enumOf(["a", "b"]),
+    T.enumOf(["a", "b", "c"]),
+    T.list(T.integer),
+    T.list(T.number),
+    T.union([T.text, T.number]),
+    T.union([T.text, T.integer]),
+    T.struct({ a: T.required(T.text) }),
+    T.struct({ a: T.optional(T.text) }),
+    T.struct({ a: T.required(T.integer) }),
+    T.struct({ a: T.required(T.text), b: T.optional(T.number) }),
+    T.constrained(T.text, [T.minLength(2)]),
+    T.constrained(T.text, [T.minLength(5)]),
+    T.constrained(T.number, [T.min(0), T.max(10)]),
+    T.constrained(T.number, [T.min(0), T.max(100)]),
+  ];
+
+  const ok = (a: TypeExpr.TypeExpr, b: TypeExpr.TypeExpr) =>
+    TypeSubsumption.isCompatible(TypeSubsumption.subsumes(a, b));
+
+  it("is reflexive", () => {
+    for (const t of universe) expect(verdict(t, t)).toEqual("Identical");
+  });
+
+  it("is transitive", () => {
+    // The law that actually catches bugs. If A widens into B and B into C but
+    // A does not widen into C, then some verdict in that chain is a lie, and
+    // the deploy gate would pass a change that breaks stored config.
+    const broken: string[] = [];
+    for (const a of universe) {
+      for (const b of universe) {
+        if (!ok(a, b)) continue;
+        for (const c of universe) {
+          if (!ok(b, c)) continue;
+          if (!ok(a, c)) {
+            broken.push(`${T.canonical(a)} -> ${T.canonical(b)} -> ${T.canonical(c)}`); // prettier-ignore
+          }
+        }
+      }
+    }
+    expect(broken).toEqual([]);
+  });
+
+  it("is antisymmetric up to canonical form", () => {
+    // Mutual subsumption means the same accepted value set. The types may
+    // still differ in ways that do not affect validation - a fallback, for
+    // instance - so the check is on acceptance, not on identity.
+    for (const a of universe) {
+      for (const b of universe) {
+        if (a === b || !ok(a, b) || !ok(b, a)) continue;
+        for (const value of ["a", 1, true, [], {}, { a: "x" }]) {
+          expect(
+            TypeSchema.is(a, value),
+            `${T.canonical(a)} vs ${T.canonical(b)} on ${JSON.stringify(value)}`
+          ).toEqual(TypeSchema.is(b, value));
+        }
+      }
+    }
+  });
+
+  it("keeps Widens sound under composition", () => {
+    // Transitivity is a claim about verdicts; this is the same claim about
+    // values, checked against the compiler rather than against itself.
+    for (const a of universe) {
+      for (const c of universe) {
+        if (!ok(a, c)) continue;
+        for (const value of ["a", "abcdef", 0, 7, true, ["a"], { a: "x" }]) {
+          if (!TypeSchema.is(a, value)) continue;
+          expect(
+            TypeSchema.is(c, value),
+            `${T.canonical(a)} -> ${T.canonical(c)} rejects ${JSON.stringify(value)}`
+          ).toBe(true);
+        }
+      }
+    }
+  });
+});

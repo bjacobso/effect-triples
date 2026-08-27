@@ -51,6 +51,9 @@ const TYPE_DOMAIN = "config-graph/type";
  * - the distinction the app already draws for stored dates of birth, and one
  * you cannot recover later if both collapse to a single `datetime`.
  */
+/** A literal usable as a struct field's fallback. */
+export type Value = string | number | boolean;
+
 export type PrimName =
   | "text"
   | "number"
@@ -86,6 +89,16 @@ export interface List {
 export interface StructField {
   readonly type: TypeExpr;
   readonly optional: boolean;
+  /**
+   * Filled in when the field is absent, before hashing.
+   *
+   * Normalisation, not validation: a fallback changes what bytes a value
+   * canonicalises to, so it participates in identity, but it does not change
+   * which values are accepted and therefore does not affect subsumption. That
+   * split is what lets a config spelling a default out explicitly and one
+   * omitting it share a content id.
+   */
+  readonly fallback?: Value;
 }
 export interface Struct {
   readonly _tag: "Struct";
@@ -154,10 +167,10 @@ export const required = (type: TypeExpr): StructField => ({
   type,
   optional: false,
 });
-export const optional = (type: TypeExpr): StructField => ({
-  type,
-  optional: true,
-});
+export const optional = (type: TypeExpr, fallback?: Value): StructField =>
+  fallback === undefined
+    ? { type, optional: true }
+    : { type, optional: true, fallback };
 
 const cmp = (a: string, b: string) => (a < b ? -1 : a > b ? 1 : 0);
 
@@ -261,6 +274,9 @@ export const TypeExprSchema: Schema.Schema<TypeExpr> = Schema.suspend(
           value: Schema.Struct({
             type: TypeExprSchema,
             optional: Schema.Boolean,
+            fallback: Schema.optional(
+              Schema.Union(Schema.String, Schema.Number, Schema.Boolean)
+            ),
           }),
         }),
       }),

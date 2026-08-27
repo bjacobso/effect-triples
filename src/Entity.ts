@@ -43,11 +43,11 @@
  * upstream, in whatever reads the database to call these projectors.
  */
 
-import { Effect, ParseResult, Schema } from "effect";
+import { Effect, ParseResult } from "effect";
 
 import * as CanonicalJson from "./CanonicalJson";
 import * as ConfigNode from "./ConfigNode";
-import * as SchemaId from "./SchemaId";
+import * as TypeExpr from "./TypeExpr";
 
 declare const KindBrand: unique symbol;
 
@@ -122,13 +122,12 @@ export interface NodeInput<I, C extends ChildFields, R extends RefFields> {
 
 export interface Entity<
   K extends string,
-  A,
   I,
   C extends ChildFields,
   R extends RefFields,
 > {
   readonly kind: Kind<K>;
-  readonly attrs: Schema.Schema<A, I>;
+  readonly attrs: TypeExpr.TypeExpr;
   readonly childFields: C;
   readonly refFields: R;
 
@@ -147,28 +146,26 @@ export interface Entity<
     EntityNode<K>,
     | ConfigNode.DuplicateChildKeyError
     | CanonicalJson.CanonicalEncodingError
-    | SchemaId.SchemaNotRepresentableError
     | ParseResult.ParseError
   >;
 }
 
 export const make = <
   K extends string,
-  A,
   I,
   const C extends ChildFields = {},
   const R extends RefFields = {},
 >(definition: {
   readonly kind: Kind<K>;
-  readonly attrs: Schema.Schema<A, I>;
+  readonly attrs: TypeExpr.TypeExpr;
   readonly key: (attrs: I) => string;
   readonly children?: C;
   readonly refs?: R;
-}): Entity<K, A, I, C, R> => {
+}): Entity<K, I, C, R> => {
   const childFields = (definition.children ?? {}) as C;
   const refFields = (definition.refs ?? {}) as R;
 
-  const entity: Entity<K, A, I, C, R> = {
+  const entity: Entity<K, I, C, R> = {
     kind: definition.kind,
     attrs: definition.attrs,
     childFields,
@@ -198,7 +195,7 @@ export const make = <
         const node = yield* ConfigNode.makeTyped({
           kind: definition.kind.name,
           key: definition.key(input.attrs),
-          schema: definition.attrs,
+          type: definition.attrs,
           attrs: input.attrs,
           children: nested,
           refs: edges,
@@ -212,30 +209,26 @@ export const make = <
 };
 
 /**
- * Build a node with a different attrs schema than the entity declares.
+ * Build nodes with a different attrs type than the entity declares.
  *
  * Deploying a widened projection means running the same entity under a new
- * shape, which is the case `SchemaCompat` exists to make cheap. Rather than
- * duplicating an entity per schema generation, override the shape for one
- * build and let the store decide whether that is news.
+ * shape, which is the case `TypeSubsumption` exists to make cheap. Rather than
+ * duplicating an entity per type generation, override the shape for one build
+ * and let the store decide whether that is news.
  */
-export const withSchema = <
+export const withType = <
   K extends string,
-  A,
   I,
   C extends ChildFields,
   R extends RefFields,
-  A2,
-  I2 extends I,
 >(
-  // prettier-ignore
-  entity: Entity<K, A, I, C, R>,
-  attrs: Schema.Schema<A2, I2>
-): Entity<K, A2, I2, C, R> =>
+  entity: Entity<K, I, C, R>,
+  attrs: TypeExpr.TypeExpr
+): Entity<K, I, C, R> =>
   make({
     kind: entity.kind,
     attrs,
-    key: (value: I2) => entity.keyOf(value),
+    key: (value: I) => entity.keyOf(value),
     children: entity.childFields,
     refs: entity.refFields,
   });

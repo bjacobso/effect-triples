@@ -37,13 +37,14 @@
  * version of the projector code happened to read them.
  */
 
-import { Data, Effect, Schema } from "effect";
+import { Data, Effect } from "effect";
 
 import * as CanonicalJson from "./CanonicalJson";
 import * as ConfigNode from "./ConfigNode";
 import * as ContentId from "./ContentId";
-import * as SchemaCompat from "./SchemaCompat";
-import * as SchemaId from "./SchemaId";
+import * as TypeExpr from "./TypeExpr";
+import * as TypeSchema from "./TypeSchema";
+import * as TypeSubsumption from "./TypeSubsumption";
 
 export interface StoredObject {
   readonly cid: ContentId.ContentId;
@@ -99,7 +100,7 @@ export interface Snapshot {
 export interface ConfigStore {
   readonly objects: ReadonlyMap<ContentId.ContentId, StoredObject>;
   /** Append-only log of every projection shape ever used. */
-  readonly schemas: ReadonlyMap<ContentId.ContentId, SchemaId.SchemaDescriptor>;
+  readonly schemas: ReadonlyMap<ContentId.ContentId, TypeExpr.TypeExpr>;
   readonly revisions: ReadonlyArray<Revision>;
   readonly snapshots: ReadonlyArray<Snapshot>;
   /** Ref name (`live`, `test`) to snapshot id. */
@@ -308,29 +309,29 @@ export const commit = (
           validUnder: [],
         };
 
-        if (node.schema) {
-          if (!schemas.has(node.schema.cid)) {
-            schemas.set(node.schema.cid, node.schema);
-          }
+        if (node.type) {
+          const typeId = TypeExpr.id(node.type);
+          if (!schemas.has(typeId)) schemas.set(typeId, node.type);
 
-          if (!stored.validUnder.includes(node.schema.cid)) {
-            // `makeTyped` validated this body against this schema on the way
-            // in, so it is valid by construction whatever the old shapes said.
-            // The question is only whether that is *news*.
+          if (!stored.validUnder.includes(typeId)) {
+            // `makeTyped` validated this body against this type on the way in,
+            // so it is valid by construction whatever the old shapes said. The
+            // question is only whether that is *news*.
             const known = stored.validUnder
               .map((cid) => schemas.get(cid))
-              .filter((d): d is SchemaId.SchemaDescriptor => d !== undefined);
+              .filter((t): t is TypeExpr.TypeExpr => t !== undefined);
             const provenCompatible = known.some((from) =>
-              SchemaCompat.isCompatible(
-                SchemaCompat.subsumes(from, node.schema!)
+              TypeSubsumption.isCompatible(
+                TypeSubsumption.subsumes(from, node.type!)
               )
             );
-            if (known.length > 0 && !provenCompatible)
+            if (known.length > 0 && !provenCompatible) {
               schemasCompatible = false;
+            }
 
             objects.set(node.cid, {
               ...stored,
-              validUnder: [...stored.validUnder, node.schema.cid].sort(cmp),
+              validUnder: [...stored.validUnder, typeId].sort(cmp),
             });
             continue;
           }
@@ -345,7 +346,7 @@ export const commit = (
         deps.map((dep) => ({ ...dep, cid: bySlot.get(slotOf(dep))!.cid }))
       );
       const stamp = yield* ConfigNode.stamp(object);
-      const schemaCids = ConfigNode.schemaCids(object);
+      const schemaCids = ConfigNode.typeIds(object);
 
       // A revision records what the configuration *means*, so a new projector
       // shape that provably accepts the bytes already stored is not a new
@@ -536,67 +537,66 @@ export interface RecheckResult {
  * customer's form fails to load, because nothing records which shapes the
  * stored configuration was ever known to satisfy.
  *
+ * Synchronous, which it was not before: with `TypeSubsumption` total there is
+ * no schema-projection step that can fail, so the only remaining work is
+ * comparison and, for the last tier, decoding.
+ *
  * It answers in three tiers, cheapest first. A body already listing the
  * candidate in `validUnder` costs nothing. A body whose known schema is proven
  * to subsume the candidate costs one structural comparison, amortised across
  * every body sharing that schema. Only what is left gets decoded, which is why
- * `SchemaCompat.subsumes` being sound matters more than it being complete.
+ * `TypeSubsumption` being total is what keeps that last tier rare.
  */
-export const recheck = <A, I>(
+export const recheck = (
   store: ConfigStore,
   input: {
     readonly kind: string;
-    readonly schema: Schema.Schema<A, I>;
+    readonly type: TypeExpr.TypeExpr;
   }
-): Effect.Effect<
-  RecheckResult,
-  SchemaId.SchemaNotRepresentableError | CanonicalJson.CanonicalEncodingError
-> =>
-  Effect.gen(function* () {
-    const candidate = yield* SchemaId.of(input.schema);
+): RecheckResult => {
+  const candidateId = TypeExpr.id(input.type);
 
-    const compatible: ContentId.ContentId[] = [];
-    const revalidated: ContentId.ContentId[] = [];
-    const violations: Array<{ cid: ContentId.ContentId; key: string }> = [];
+  const compatible: ContentId.ContentId[] = [];
+  const revalidated: ContentId.ContentId[] = [];
+  const violations: Array<{ cid: ContentId.ContentId; key: string }> = [];
 
-    // One verdict per known schema, not per body.
-    const verdicts = new Map<ContentId.ContentId, boolean>();
-    const subsumesCandidate = (from: ContentId.ContentId): boolean => {
-      const cached = verdicts.get(from);
-      if (cached !== undefined) return cached;
-      const descriptor = store.schemas.get(from);
-      const proven =
-        descriptor !== undefined &&
-        SchemaCompat.isCompatible(SchemaCompat.subsumes(descriptor, candidate));
-      verdicts.set(from, proven);
-      return proven;
-    };
+  // One verdict per known type, not per body.
+  const verdicts = new Map<ContentId.ContentId, boolean>();
+  const subsumesCandidate = (from: ContentId.ContentId): boolean => {
+    const cached = verdicts.get(from);
+    if (cached !== undefined) return cached;
+    const known = store.schemas.get(from);
+    const proven =
+      known !== undefined &&
+      TypeSubsumption.isCompatible(TypeSubsumption.subsumes(known, input.type));
+    verdicts.set(from, proven);
+    return proven;
+  };
 
-    for (const stored of store.objects.values()) {
-      if (stored.kind !== input.kind) continue;
+  for (const stored of store.objects.values()) {
+    if (stored.kind !== input.kind) continue;
 
-      if (
-        stored.validUnder.includes(candidate.cid) ||
-        stored.validUnder.some(subsumesCandidate)
-      ) {
-        compatible.push(stored.cid);
-        continue;
-      }
-
-      const body = stored.body as { readonly attrs?: unknown; readonly key?: unknown }; // prettier-ignore
-      const accepted = yield* SchemaCompat.accepts(input.schema, body.attrs);
-      if (accepted) {
-        revalidated.push(stored.cid);
-      } else {
-        violations.push({
-          cid: stored.cid,
-          key: typeof body.key === "string" ? body.key : "<unknown>",
-        });
-      }
+    if (
+      stored.validUnder.includes(candidateId) ||
+      stored.validUnder.some(subsumesCandidate)
+    ) {
+      compatible.push(stored.cid);
+      continue;
     }
 
-    return { compatible, revalidated, violations };
-  });
+    const body = stored.body as { readonly attrs?: unknown; readonly key?: unknown }; // prettier-ignore
+    if (TypeSchema.is(input.type, body.attrs)) {
+      revalidated.push(stored.cid);
+    } else {
+      violations.push({
+        cid: stored.cid,
+        key: typeof body.key === "string" ? body.key : "<unknown>",
+      });
+    }
+  }
+
+  return { compatible, revalidated, violations };
+};
 
 /** Schemas this exact body is known to satisfy. */
 export const validityOf = (

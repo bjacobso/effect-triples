@@ -6,8 +6,6 @@ export * as ConfigStore from "./ConfigStore";
 export * as Evaluate from "./Evaluate";
 export * as ContentId from "./ContentId";
 export * as Entity from "./Entity";
-export * as SchemaCompat from "./SchemaCompat";
-export * as SchemaId from "./SchemaId";
 export * as TypeExpr from "./TypeExpr";
 export * as TypeSchema from "./TypeSchema";
 export * as TypeSubsumption from "./TypeSubsumption";

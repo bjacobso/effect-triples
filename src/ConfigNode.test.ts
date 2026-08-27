@@ -7,7 +7,9 @@
  */
 
 import { describe, expect, it } from "@effect/vitest";
-import { Effect, Schema } from "effect";
+import { Effect } from "effect";
+
+import * as T from "./TypeExpr";
 
 import * as CanonicalJson from "./CanonicalJson";
 import * as ConfigNode from "./ConfigNode";
@@ -325,9 +327,9 @@ describe("ConfigNode.diff", () => {
 });
 
 describe("ConfigNode.makeTyped", () => {
-  const FieldAttrs = Schema.Struct({
-    label: Schema.String,
-    required: Schema.optionalWith(Schema.Boolean, { default: () => true }),
+  const FieldAttrs = T.struct({
+    label: T.required(T.text),
+    required: T.optional(T.boolean, true),
   });
 
   it.effect("normalises through the schema so equivalent configs collide", () =>
@@ -336,13 +338,13 @@ describe("ConfigNode.makeTyped", () => {
       const explicit = yield* ConfigNode.makeTyped({
         kind: "leaf",
         key: "alpha",
-        schema: FieldAttrs,
+        type: FieldAttrs,
         attrs: { label: "A", required: true },
       });
       const implicit = yield* ConfigNode.makeTyped({
         kind: "leaf",
         key: "alpha",
-        schema: FieldAttrs,
+        type: FieldAttrs,
         attrs: { label: "A" },
       });
 
@@ -356,7 +358,7 @@ describe("ConfigNode.makeTyped", () => {
       const error = yield* ConfigNode.makeTyped({
         kind: "leaf",
         key: "alpha",
-        schema: FieldAttrs,
+        type: FieldAttrs,
         attrs: { label: 42 },
       }).pipe(Effect.flip);
 
@@ -370,28 +372,31 @@ describe("ConfigNode.makeTyped", () => {
       // data id must hold still - otherwise every form in the account would
       // render as "changed" on the deploy screen - while the stamp records
       // that a different projector wrote it.
-      const Widened = Schema.Struct({
-        ...FieldAttrs.fields,
-        helpText: Schema.optional(Schema.String),
+      const Widened = T.struct({
+        label: T.required(T.text),
+        required: T.optional(T.boolean, true),
+        helpText: T.optional(T.text),
       });
 
       const before = yield* ConfigNode.makeTyped({
         kind: "leaf",
         key: "alpha",
-        schema: FieldAttrs,
+        type: FieldAttrs,
         attrs: { label: "A" },
       });
       const after = yield* ConfigNode.makeTyped({
         kind: "leaf",
         key: "alpha",
-        schema: Widened,
+        type: Widened,
         attrs: { label: "A" },
       });
 
       expect(after.cid).toEqual(before.cid);
       expect(ConfigNode.diff(before, after)).toEqual([]);
 
-      expect(after.schema?.cid).not.toEqual(before.schema?.cid);
+      expect(after.type && T.id(after.type)).not.toEqual(
+        before.type && T.id(before.type)
+      );
       expect(yield* ConfigNode.stamp(after)).not.toEqual(
         yield* ConfigNode.stamp(before)
       );
@@ -403,7 +408,7 @@ describe("ConfigNode.makeTyped", () => {
       const typed = yield* ConfigNode.makeTyped({
         kind: "leaf",
         key: "k",
-        schema: FieldAttrs,
+        type: FieldAttrs,
         attrs: { label: "A", required: true },
       });
       const untyped = yield* ConfigNode.make({
