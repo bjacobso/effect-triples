@@ -23,6 +23,7 @@ import { Effect, Schema } from "effect";
 
 import * as ConfigNode from "./ConfigNode";
 import * as ConfigStore from "./ConfigStore";
+import * as Entity from "./Entity";
 import * as SchemaCompat from "./SchemaCompat";
 import * as SchemaId from "./SchemaId";
 
@@ -56,136 +57,100 @@ const FieldAttrsV2 = Schema.Struct({
 });
 
 const PageAttrs = Schema.Struct({
+  // The semantic key lives in the data rather than arriving as a separate
+  // argument, which is what declaring `key` on the entity forces.
+  slug: Schema.String,
   title: Schema.String,
   assignee: Schema.Literal("employee", "employer"),
 });
 
 const FormAttrs = Schema.Struct({
+  slug: Schema.String,
   name: Schema.String,
   description: Schema.optional(Schema.String),
 });
 
 const PolicyAttrs = Schema.Struct({
+  slug: Schema.String,
   name: Schema.String,
   status: Schema.Literal("enabled", "disabled"),
 });
 
 const AutomationAttrs = Schema.Struct({
+  slug: Schema.String,
   name: Schema.String,
   triggerEntity: Schema.Literal("task", "placement", "employee"),
 });
 
 const ActionAttrs = Schema.Struct({
+  slug: Schema.String,
   name: Schema.String,
   actionType: Schema.Literal("create_task", "send_email"),
 });
 
 // ---------------------------------------------------------------------------
-// Projectors. In the real system these read Prisma rows; here they take plain
-// objects, because what matters is the key function and the refs, not the I/O.
-// Note every key is semantic - `employee.ssn`, not a row id.
+// The entities. Each declares its kind once, derives its own key, and names its
+// relations - `children` for what nests and hashes into it, `ref` for what it
+// merely depends on. Targets are thunks because the graph genuinely cycles.
 // ---------------------------------------------------------------------------
 
-type Attr = Schema.Schema.Encoded<typeof AttributeAttrs>;
+const AttributeKind = Entity.kind("attribute");
+const FormKind = Entity.kind("form");
+const PageKind = Entity.kind("form.page");
+const FieldKind = Entity.kind("form.field");
+const PolicyKind = Entity.kind("policy");
+const AutomationKind = Entity.kind("automation");
+const ActionKind = Entity.kind("automation.action");
 
-const attribute = (attrs: Attr) =>
-  ConfigNode.makeTyped({
-    kind: "attribute",
-    key: `${attrs.entityType}.${attrs.path}`,
-    schema: AttributeAttrs,
-    attrs,
-  });
+const Attribute = Entity.make({
+  kind: AttributeKind,
+  attrs: AttributeAttrs,
+  key: (a) => `${a.entityType}.${a.path}`,
+});
 
-const usesAttribute = (key: string) =>
-  ({ rel: "uses_attribute", kind: "attribute", key }) as const;
+const FormField = Entity.make({
+  kind: FieldKind,
+  attrs: FieldAttrs,
+  key: (a) => a.path,
+  refs: { uses_attribute: Entity.ref(AttributeKind) },
+});
 
-const field = (
-  attrs: Schema.Schema.Encoded<typeof FieldAttrs> & { helpText?: string },
-  options: {
-    readonly reads: ReadonlyArray<string>;
-    readonly schema?: Schema.Schema.AnyNoContext;
-  }
-) =>
-  ConfigNode.makeTyped({
-    kind: "form.field",
-    key: attrs.path,
-    schema: options.schema ?? FieldAttrs,
-    attrs,
-    refs: options.reads.map(usesAttribute),
-  });
+const Page = Entity.make({
+  kind: PageKind,
+  attrs: PageAttrs,
+  key: (a) => a.slug,
+  children: { field: Entity.children(FieldKind) },
+});
 
-const page = (
-  key: string,
-  attrs: Schema.Schema.Encoded<typeof PageAttrs>,
-  fields: ReadonlyArray<ConfigNode.ConfigNode>
-) =>
-  ConfigNode.makeTyped({
-    kind: "form.page",
-    key,
-    schema: PageAttrs,
-    attrs,
-    children: fields.map((node) => ({ rel: "field", node })),
-  });
+const Form = Entity.make({
+  kind: FormKind,
+  attrs: FormAttrs,
+  key: (a) => a.slug,
+  children: { page: Entity.children(PageKind) },
+  refs: { scopes: Entity.ref(AutomationKind) },
+});
 
-const form = (
-  key: string,
-  attrs: Schema.Schema.Encoded<typeof FormAttrs>,
-  pages: ReadonlyArray<ConfigNode.ConfigNode>,
-  refs: ReadonlyArray<ConfigNode.ConfigRef> = []
-) =>
-  ConfigNode.makeTyped({
-    kind: "form",
-    key,
-    schema: FormAttrs,
-    attrs,
-    children: pages.map((node) => ({ rel: "page", node })),
-    refs,
-  });
+const Policy = Entity.make({
+  kind: PolicyKind,
+  attrs: PolicyAttrs,
+  key: (a) => a.slug,
+  refs: { distributes: Entity.ref(FormKind) },
+});
 
-const policy = (
-  key: string,
-  attrs: Schema.Schema.Encoded<typeof PolicyAttrs>,
-  forms: ReadonlyArray<string>
-) =>
-  ConfigNode.makeTyped({
-    kind: "policy",
-    key,
-    schema: PolicyAttrs,
-    attrs,
-    refs: forms.map((formKey) => ({
-      rel: "distributes",
-      kind: "form",
-      key: formKey,
-    })),
-  });
+const Action = Entity.make({
+  kind: ActionKind,
+  attrs: ActionAttrs,
+  key: (a) => a.slug,
+  refs: { creates_task: Entity.ref(FormKind) },
+});
 
-const automation = (
-  key: string,
-  attrs: Schema.Schema.Encoded<typeof AutomationAttrs>,
-  actions: ReadonlyArray<ConfigNode.ConfigNode>,
-  refs: ReadonlyArray<ConfigNode.ConfigRef>
-) =>
-  ConfigNode.makeTyped({
-    kind: "automation",
-    key,
-    schema: AutomationAttrs,
-    attrs,
-    children: actions.map((node) => ({ rel: "action", node })),
-    refs,
-  });
-
-const action = (
-  key: string,
-  attrs: Schema.Schema.Encoded<typeof ActionAttrs>,
-  refs: ReadonlyArray<ConfigNode.ConfigRef>
-) =>
-  ConfigNode.makeTyped({
-    kind: "automation.action",
-    key,
-    schema: ActionAttrs,
-    attrs,
-    refs,
-  });
+const Automation = Entity.make({
+  kind: AutomationKind,
+  attrs: AutomationAttrs,
+  key: (a) => a.slug,
+  children: { action: Entity.children(ActionKind) },
+  refs: { uses_attribute: Entity.ref(AttributeKind) },
+});
 
 // ---------------------------------------------------------------------------
 // The account's configuration, parameterised by the things releases change.
@@ -205,90 +170,139 @@ const BASELINE: AccountConfig = {
 
 const buildAccount = (config: AccountConfig) =>
   Effect.gen(function* () {
+    // A widened field shape is the same entity read under a new schema, not a
+    // different entity.
+    const FieldOf = Entity.withSchema(FormField, config.fieldSchema);
+
     const attributes = yield* Effect.all([
-      attribute({
-        entityType: "employee",
-        path: "ssn",
-        label: "Social Security Number",
-        scalarType: "text",
-        sensitive: true,
+      Attribute.node({
+        attrs: {
+          entityType: "employee",
+          path: "ssn",
+          label: "Social Security Number",
+          scalarType: "text",
+          sensitive: true,
+        },
       }),
-      attribute({
-        entityType: "employee",
-        path: "start_date",
-        label: "Start date",
-        scalarType: "date",
+      Attribute.node({
+        attrs: {
+          entityType: "employee",
+          path: "start_date",
+          label: "Start date",
+          scalarType: "date",
+        },
       }),
-      attribute({
-        entityType: "employee",
-        path: "work_state",
-        label: "Work state",
-        scalarType: "enum",
-        enumOptions: config.workStates,
+      Attribute.node({
+        attrs: {
+          entityType: "employee",
+          path: "work_state",
+          label: "Work state",
+          scalarType: "enum",
+          enumOptions: config.workStates,
+        },
       }),
     ]);
 
-    const i9 = yield* form(
-      "i9",
-      { name: "Form I-9", description: "Employment eligibility verification" },
-      [
-        yield* page("identity", { title: "Identity", assignee: "employee" }, [
-          yield* field(
-            {
-              path: "employee.ssn",
-              type: "ssn",
-              label: config.ssnLabel,
-              required: true,
+    // Ref keys are branded, so `Attribute.key(...)` is the only way to name an
+    // attribute here - a form key would not compile.
+    const i9 = yield* Form.node({
+      attrs: {
+        slug: "i9",
+        name: "Form I-9",
+        description: "Employment eligibility verification",
+      },
+      children: {
+        page: [
+          yield* Page.node({
+            attrs: {
+              slug: "identity",
+              title: "Identity",
+              assignee: "employee",
             },
-            { reads: ["employee.ssn"], schema: config.fieldSchema }
-          ),
-        ]),
-        yield* page(
-          "employment",
-          { title: "Employment", assignee: "employee" },
-          [
-            yield* field(
-              {
-                path: "employee.start_date",
-                type: "date",
-                label: "Start date",
-              },
-              { reads: ["employee.start_date"], schema: config.fieldSchema }
-            ),
-            yield* field(
-              {
-                path: "employee.work_state",
-                type: "select",
-                label: "Work state",
-              },
-              { reads: ["employee.work_state"], schema: config.fieldSchema }
-            ),
-          ]
-        ),
-      ],
-      // The form scopes its own re-verification automation. Combined with the
-      // action below this is a genuine cycle in the graph.
-      [{ rel: "scopes", kind: "automation", key: "i9-reverify" }]
-    );
+            children: {
+              field: [
+                yield* FieldOf.node({
+                  attrs: {
+                    path: "employee.ssn",
+                    type: "ssn",
+                    label: config.ssnLabel,
+                    required: true,
+                  },
+                  refs: {
+                    uses_attribute: [Attribute.key("employee.ssn")],
+                  },
+                }),
+              ],
+            },
+          }),
+          yield* Page.node({
+            attrs: {
+              slug: "employment",
+              title: "Employment",
+              assignee: "employee",
+            },
+            children: {
+              field: [
+                yield* FieldOf.node({
+                  attrs: {
+                    path: "employee.start_date",
+                    type: "date",
+                    label: "Start date",
+                  },
+                  refs: {
+                    uses_attribute: [Attribute.key("employee.start_date")],
+                  },
+                }),
+                yield* FieldOf.node({
+                  attrs: {
+                    path: "employee.work_state",
+                    type: "select",
+                    label: "Work state",
+                  },
+                  refs: {
+                    uses_attribute: [Attribute.key("employee.work_state")],
+                  },
+                }),
+              ],
+            },
+          }),
+        ],
+      },
+      // The form scopes its own re-verification automation, whose action
+      // creates a task from this same form. The thunk targets in the entity
+      // declarations are what let that cycle be written down.
+      refs: { scopes: [Automation.key("i9-reverify")] },
+    });
 
-    const newHire = yield* policy(
-      "new-hire",
-      { name: "New hire onboarding", status: "enabled" },
-      ["i9"]
-    );
+    const newHire = yield* Policy.node({
+      attrs: {
+        slug: "new-hire",
+        name: "New hire onboarding",
+        status: "enabled",
+      },
+      refs: { distributes: [Form.key("i9")] },
+    });
 
-    const reverify = yield* automation(
-      "i9-reverify",
-      { name: "I-9 reverification", triggerEntity: "placement" },
-      [
-        yield* action(
-          "create-i9",
-          { name: "Create I-9", actionType: "create_task" },
-          [{ rel: "creates_task", kind: "form", key: "i9" }]
-        ),
-      ],
-      [usesAttribute("employee.start_date")]
-    );
+    const reverify = yield* Automation.node({
+      attrs: {
+        slug: "i9-reverify",
+        name: "I-9 reverification",
+        triggerEntity: "placement",
+      },
+      children: {
+        action: [
+          yield* Action.node({
+            attrs: {
+              slug: "create-i9",
+              name: "Create I-9",
+              actionType: "create_task",
+            },
+            refs: { creates_task: [Form.key("i9")] },
+          }),
+        ],
+      },
+      refs: { uses_attribute: [Attribute.key("employee.start_date")] },
+    });
 
     return [...attributes, i9, newHire, reverify];
   });
@@ -577,12 +591,14 @@ describe("config graph end to end", () => {
       expect(store.objects.size).toBeLessThan(
         5 * [...ConfigNode.walk(r1.snapshot.root)].length
       );
-      const ssn = yield* attribute({
-        entityType: "employee",
-        path: "ssn",
-        label: "Social Security Number",
-        scalarType: "text",
-        sensitive: true,
+      const ssn = yield* Attribute.node({
+        attrs: {
+          entityType: "employee",
+          path: "ssn",
+          label: "Social Security Number",
+          scalarType: "text",
+          sensitive: true,
+        },
       });
       expect(store.objects.get(ssn.cid)?.kind).toEqual("attribute");
     })
@@ -658,7 +674,7 @@ describe("schema validity across versions", () => {
       });
 
       const breaking = yield* ConfigStore.recheck(store, {
-        kind: "form.field",
+        kind: FieldKind.name,
         schema: RequiresHelpText,
       });
 
@@ -684,7 +700,7 @@ describe("schema validity across versions", () => {
       });
 
       const result = yield* ConfigStore.recheck(store, {
-        kind: "form.field",
+        kind: FieldKind.name,
         schema: Widened,
       });
 
@@ -709,7 +725,7 @@ describe("schema validity across versions", () => {
       });
 
       const result = yield* ConfigStore.recheck(store, {
-        kind: "form.field",
+        kind: FieldKind.name,
         schema: Constrained,
       });
 
@@ -724,7 +740,7 @@ describe("schema validity across versions", () => {
         label: Schema.String.pipe(Schema.minLength(500)),
       });
       const strict = yield* ConfigStore.recheck(store, {
-        kind: "form.field",
+        kind: FieldKind.name,
         schema: TooLong,
       });
       expect(strict.revalidated).toEqual([]);

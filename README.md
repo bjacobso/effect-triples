@@ -15,6 +15,7 @@ migration is written.
 | `ContentId`     | `sha256-<hex>`, domain-separated.                                  |
 | `SchemaId`      | Content-addresses an Effect Schema via its JSON Schema projection. |
 | `ConfigNode`    | The merkle node: `cid`, `closureId`, `stamp`, `diff`.              |
+| `Entity`        | Declarative projectors: kinds, keys, `children` vs `ref` fields.   |
 | `SchemaCompat`  | Whether instances of one shape stay valid under another.           |
 | `ConfigStore`   | Object store, revision log, snapshots, and git-style refs.         |
 
@@ -24,6 +25,24 @@ records every shape a body is known to satisfy, extended for free whenever
 projection that merely adds an optional field mints no revisions at all.
 `ConfigStore.recheck` asks the deploy-gate question: would every stored body of
 this kind still parse under a proposed schema?
+
+Projectors are declared as entities rather than written by hand. Kinds are
+declared up front as tokens, so relations can be circular (a form scopes an
+automation whose action creates a task from that form) and keys are branded per
+kind, so an attribute key and a form key are not interchangeable. `Entity` is
+sugar over `ConfigNode.makeTyped` and provably produces identical ids.
+
+```ts
+const FormKind = Entity.kind("form");
+const AttributeKind = Entity.kind("attribute");
+
+const FormField = Entity.make({
+  kind: Entity.kind("form.field"),
+  attrs: FieldAttrs,
+  key: (a) => a.path,
+  refs: { uses_attribute: Entity.ref(AttributeKind) },
+});
+```
 
 `src/ConfigGraph.e2e.test.ts` walks a realistic account config through five
 releases and is the intended entry point for reading this.
