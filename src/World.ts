@@ -11,6 +11,19 @@
  *
  * Two things here are load-bearing and easy to get wrong.
  *
+ * **Values are observed by digest, never in the clear.** An evaluation that
+ * read an SSN records that `employee/ssn` was present with digest `sha256-...`,
+ * not the number. Comparison still works, because a digest changes exactly when
+ * the value does, so the cache is unaffected. What changes is that a persisted
+ * decision - the very record you most want to hand an auditor - stops being a
+ * second copy of the data it was made from.
+ *
+ * This is not encryption, and it should not be sold as such. A digest over a
+ * three-option enum is trivially reversed by trying all three; it is only
+ * meaningful over a value with real entropy. What it buys unconditionally is
+ * that the record holds no plaintext, and that anyone with a candidate value
+ * can *prove* it was the one used without the record ever containing it.
+ *
  * **Absence is a dependency.** "This employee has no work authorization on
  * file" is a conclusion drawn from a fact that is not there. If absence is not
  * recorded, adding the missing fact leaves a stale cached answer that says the
@@ -109,7 +122,8 @@ export type Observed =
       readonly entity: string;
       readonly attribute: string;
       readonly present: boolean;
-      readonly value?: Value;
+      /** Digest of the value, not the value. See the note above. */
+      readonly digest?: ContentId.ContentId;
     }
   | {
       readonly _tag: "Clock";
@@ -128,7 +142,7 @@ const encodeObserved = (o: Observed): CanonicalJson.CanonicalValue =>
           entity: o.entity,
           attribute: o.attribute,
           present: o.present,
-          value: o.present ? o.value : undefined,
+          digest: o.present ? o.digest : undefined,
         }
       : { _tag: "Clock", granularity: o.granularity, bucket: o.bucket };
 
@@ -159,3 +173,38 @@ export const closureId = (
     CanonicalJson.encodeOrThrow(sorted)
   );
 };
+
+const VALUE_DOMAIN = "config-graph/fact-value";
+
+/**
+ * The digest of a fact's value.
+ *
+ * Domain-separated from node and type ids so a value's digest can never be
+ * mistaken for, or forged from, an id in another space.
+ */
+export const valueDigest = (value: Value): ContentId.ContentId =>
+  ContentId.hash(VALUE_DOMAIN, CanonicalJson.encodeOrThrow(value));
+
+/** Observe a fact without retaining its value. */
+export const observe = (
+  world: World,
+  entity: string,
+  attribute: string
+): Observed => {
+  const value = read(world, entity, attribute);
+  return value === undefined
+    ? { _tag: "Fact", entity, attribute, present: false }
+    : { _tag: "Fact", entity, attribute, present: true, digest: valueDigest(value) }; // prettier-ignore
+};
+
+/**
+ * Does a candidate value match what an observation recorded?
+ *
+ * The verification direction. Someone holding a decision and a proposed value
+ * can confirm the decision was made from that value; nobody holding only the
+ * decision can recover it.
+ */
+export const matches = (observed: Observed, value: Value): boolean =>
+  observed._tag === "Fact" &&
+  observed.present &&
+  observed.digest === valueDigest(value);

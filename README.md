@@ -38,6 +38,14 @@ content id of every rule it resolved - one closure, one cache, one invalidation
 path. `Evaluate.impact` uses that closure as an index to answer "if I publish
 this, who flips?" without evaluating subjects that cannot.
 
+A decision is also a proof. Its id covers the answer, the rule version that
+produced it, the digest of every input, and its children's ids, so
+`Evaluate.verify` recomputes the whole tree from its own contents - no
+database, no catalog, no trust in whoever handed it over. Values are observed
+by digest rather than in the clear, so the record an auditor receives is not a
+second copy of the data it was made from; `World.matches` lets someone holding
+a candidate value prove it was the one used.
+
 ```sh
 pnpm --filter @repo/config-graph bench:typecheck   # the compile budget gate
 ```

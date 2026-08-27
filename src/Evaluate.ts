@@ -28,6 +28,8 @@
  * days is cached for a day rather than being either wrong or useless.
  */
 
+import { Schema } from "effect";
+
 import * as BoolExpr from "./BoolExpr";
 import * as Catalog from "./Catalog";
 import * as CanonicalJson from "./CanonicalJson";
@@ -117,16 +119,25 @@ const allOf = (ts: ReadonlyArray<Truth>): Truth =>
 const anyOf = (ts: ReadonlyArray<Truth>): Truth =>
   ts.includes("true") ? "true" : ts.includes("unknown") ? "unknown" : "false";
 
+/**
+ * Read a fact for comparison and record it for provenance.
+ *
+ * Deliberately two values. The evaluator needs the actual value to decide the
+ * predicate; the record needs only a digest. Splitting them here is what keeps
+ * plaintext out of everything downstream.
+ */
 const readFact = (
   world: World.World,
   entity: string,
   attribute: string
-): World.Observed => {
-  const value = World.read(world, entity, attribute);
-  return value === undefined
-    ? { _tag: "Fact", entity, attribute, present: false }
-    : { _tag: "Fact", entity, attribute, present: true, value };
-};
+): {
+  readonly value: World.Value | undefined;
+  readonly observed: World.Observed;
+} => ({
+  // prettier-ignore
+  value: World.read(world, entity, attribute),
+  observed: World.observe(world, entity, attribute),
+});
 
 const go = (
   expr: BoolExpr.BoolExpr,
@@ -145,28 +156,28 @@ const go = (
     case "Exists": {
       const fact = readFact(world, expr.entity, expr.attribute);
       return node({
-        truth: fact._tag === "Fact" && fact.present ? "true" : "false",
+        truth: fact.value === undefined ? "false" : "true",
         expr,
-        observed: [fact],
+        observed: [fact.observed],
       });
     }
 
     case "Eq": {
       const fact = readFact(world, expr.entity, expr.attribute);
-      if (fact._tag !== "Fact" || !fact.present) {
+      if (fact.value === undefined) {
         // Absent, not unequal. Reporting `false` would let `not(eq(...))`
         // report compliance for an employee we know nothing about.
         return node({
           truth: "unknown",
           expr,
-          observed: [fact],
+          observed: [fact.observed],
           reason: `${expr.entity}/${expr.attribute} is absent`,
         });
       }
       return node({
         truth: fact.value === expr.value ? "true" : "false",
         expr,
-        observed: [fact],
+        observed: [fact.observed],
       });
     }
 
@@ -177,11 +188,11 @@ const go = (
         granularity: expr.granularity,
         bucket: World.bucket({ now: clock.now, granularity: expr.granularity }),
       };
-      if (fact._tag !== "Fact" || !fact.present) {
+      if (fact.value === undefined) {
         return node({
           truth: "unknown",
           expr,
-          observed: [fact, tick],
+          observed: [fact.observed, tick],
           reason: `${expr.entity}/${expr.attribute} is absent`,
         });
       }
@@ -189,7 +200,7 @@ const go = (
         return node({
           truth: "unknown",
           expr,
-          observed: [fact, tick],
+          observed: [fact.observed, tick],
           reason: `${expr.entity}/${expr.attribute} is not an instant`,
         });
       }
@@ -202,7 +213,7 @@ const go = (
       return node({
         truth: factBucket < tick.bucket ? "true" : "false",
         expr,
-        observed: [fact, tick],
+        observed: [fact.observed, tick],
       });
     }
 
@@ -304,10 +315,7 @@ export const reobserve = (
       const found = Catalog.lookup(env.catalog, o.key);
       return { _tag: "Config", kind: o.kind, key: o.key, cid: found?.cid ?? null }; // prettier-ignore
     }
-    const value = World.read(env.world, o.entity, o.attribute);
-    return value === undefined
-      ? { _tag: "Fact", entity: o.entity, attribute: o.attribute, present: false } // prettier-ignore
-      : { _tag: "Fact", entity: o.entity, attribute: o.attribute, present: true, value }; // prettier-ignore
+    return World.observe(env.world, o.entity, o.attribute);
   });
 
 // --- the cache --------------------------------------------------------------
@@ -501,3 +509,107 @@ export const impact = (
     cache: working,
   };
 };
+
+// --- proof ------------------------------------------------------------------
+
+/**
+ * A decision, in the form it leaves the process in.
+ *
+ * Plain data with no values in it - the observations carry digests - so a tree
+ * can be handed to an auditor, stored, or sent over a wire without becoming a
+ * second copy of the facts it was made from.
+ */
+export const EvaluationSchema: Schema.Schema<Evaluation> = Schema.suspend(
+  (): Schema.Schema<Evaluation> =>
+    Schema.Struct({
+      truth: Schema.Literal("true", "false", "unknown"),
+      cid: ContentId.ContentIdSchema,
+      expr: ContentId.ContentIdSchema,
+      observed: Schema.Array(
+        Schema.Union(
+          Schema.Struct({
+            _tag: Schema.Literal("Config"),
+            kind: Schema.String,
+            key: Schema.String,
+            cid: Schema.NullOr(ContentId.ContentIdSchema),
+          }),
+          Schema.Struct({
+            _tag: Schema.Literal("Fact"),
+            entity: Schema.String,
+            attribute: Schema.String,
+            present: Schema.Boolean,
+            digest: Schema.optional(ContentId.ContentIdSchema),
+          }),
+          Schema.Struct({
+            _tag: Schema.Literal("Clock"),
+            granularity: Schema.Literal("instant", "day"),
+            bucket: Schema.Number,
+          })
+        )
+      ),
+      children: Schema.Array(EvaluationSchema),
+      reason: Schema.optional(Schema.String),
+    }) as unknown as Schema.Schema<Evaluation>
+);
+
+export interface Tampered {
+  readonly path: string;
+  readonly claimed: ContentId.ContentId;
+  readonly actual: ContentId.ContentId;
+}
+
+/**
+ * Recompute every id in a decision from its own contents.
+ *
+ * This is the auditor's check, and it needs nothing but the tree: no database,
+ * no catalog, no trust in whoever handed it over. Each node's id is derived
+ * from its answer, the expression that produced it, the digest of everything it
+ * observed, and its children's ids - so altering any of those, at any depth,
+ * breaks the root. A decision that verifies is a decision nobody edited after
+ * the fact.
+ *
+ * What it deliberately does not check is whether the answer *follows* from the
+ * inputs; that is `replay`, and it needs the rule.
+ */
+export const verify = (
+  evaluation: Evaluation,
+  path = "root"
+): ReadonlyArray<Tampered> => {
+  const found = evaluation.children.flatMap((child, i) =>
+    verify(child, `${path}.${i}`)
+  );
+
+  const actual = ContentId.hash(
+    "config-graph/evaluation",
+    CanonicalJson.encodeOrThrow({
+      v: 1,
+      expr: evaluation.expr,
+      truth: evaluation.truth,
+      closure: World.closureId(evaluation.observed),
+      children: evaluation.children.map((c) => c.cid),
+    })
+  );
+
+  return actual === evaluation.cid
+    ? found
+    : [...found, { path, claimed: evaluation.cid, actual }];
+};
+
+/**
+ * Re-derive a decision from the rule and the inputs it recorded.
+ *
+ * The stronger claim: not merely that the record is internally consistent, but
+ * that evaluating this expression against a world matching the recorded
+ * observations reproduces exactly this answer. Because the record holds digests
+ * rather than values, the caller supplies the world - which is the point. An
+ * auditor with the data can reproduce the decision; an auditor without it can
+ * still verify the decision was not tampered with.
+ */
+export const replay = (
+  expr: BoolExpr.BoolExpr,
+  evaluation: Evaluation,
+  world: World.World,
+  clock: World.Clock,
+  catalog: Catalog.Catalog = Catalog.empty
+): boolean =>
+  go(expr, env(world, clock, catalog), new Set()).cid === evaluation.cid;
