@@ -74,3 +74,10 @@ releases and is the intended entry point for reading this.
 ```sh
 pnpm --filter @repo/config-graph test
 ```
+
+`Reactor` closes the loop in the other direction. Registrations are indexed by
+what their answers observed, so a submitted value, a republished rule and the
+day turning are all one lookup - and a decision that depended on a fact being
+_absent_ is found when that fact appears, which an index over existing rows
+could not do. Recomputing and flipping are reported separately, because a rule
+edit can invalidate a thousand decisions and change none of them.
