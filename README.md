@@ -81,3 +81,22 @@ day turning are all one lookup - and a decision that depended on a fact being
 _absent_ is found when that fact appears, which an index over existing rows
 could not do. Recomputing and flipping are reported separately, because a rule
 edit can invalidate a thousand decisions and change none of them.
+
+## The explorer
+
+A single page that runs the whole thing in a browser - the release, the
+lifecycle step by step, the provenance tree with a working verify/tamper
+button, and a publish with impact preview. Nothing is recorded: every id on the
+page is computed live, which is only possible because `ContentId` uses a
+hand-written SHA-256 rather than `node:crypto`. The page is the proof that the
+kernel is genuinely browser-safe.
+
+```sh
+pnpm --filter @repo/config-graph explorer
+open packages/config-graph/explorer/index.html
+```
+
+The build step also runs `explorer/smoke.mjs`, which executes the page against
+a minimal DOM shim and walks the same path a person would. It catches the class
+of bug the test suite cannot see - a missing element id, a handler that throws -
+because those only appear when the module runs against a document.

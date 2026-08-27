@@ -18,7 +18,8 @@
     "clean": "rm -rf dist",
     "test": "vitest --run",
     "bench:typecheck": "node bench/typecheck-budget.mjs",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit && tsc -p tsconfig.explorer.json",
+    "explorer": "tsdown --config tsdown.explorer.config.ts && node explorer/smoke.mjs"
   },
   "dependencies": {
     "effect": "catalog:"
