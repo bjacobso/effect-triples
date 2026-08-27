@@ -23,6 +23,7 @@ import { Effect, Schema } from "effect";
 
 import * as ConfigNode from "./ConfigNode";
 import * as ConfigStore from "./ConfigStore";
+import * as SchemaCompat from "./SchemaCompat";
 import * as SchemaId from "./SchemaId";
 
 // ---------------------------------------------------------------------------
@@ -383,7 +384,7 @@ describe("config graph end to end", () => {
         nodeDiff
           .filter((change) => change.kind === "form.field")
           .map((change) => change.path)
-      ).toEqual(["2026.2/form:i9/page:identity/field:employee.ssn"]);
+      ).toEqual(["config/form:i9/page:identity/field:employee.ssn"]);
       // The untouched page is not walked at all.
       expect(
         nodeDiff.some((change) => change.path.includes("page:employment"))
@@ -419,12 +420,15 @@ describe("config graph end to end", () => {
         r3NodeDiff
           .filter((change) => change.kind === "attribute")
           .map((change) => change.path)
-      ).toEqual(["2026.3/attribute:employee.work_state"]);
+      ).toEqual(["config/attribute:employee.work_state"]);
       expect(
         r3NodeDiff.some((change) => change.path.includes("form:i9/"))
       ).toBe(false);
 
       // -- Release 4: the code changes, the config does not ------------------
+      const v1Schema = yield* SchemaId.of(FieldAttrs);
+      const v2Schema = yield* SchemaId.of(FieldAttrsV2);
+
       const r4 = yield* release(store, "2026.4", {
         ...BASELINE,
         ssnLabel: "Social Security Number",
@@ -435,28 +439,38 @@ describe("config graph end to end", () => {
 
       const r3to4 = ConfigStore.changesBetween(store, r3.snapshot, r4.snapshot);
 
-      // A widened field schema. Every `cid` in the graph holds, so the merkle
-      // diff over the objects is silent...
-      const projected = changeFor(r3to4, "form", "i9");
-      expect(projected?._tag).toEqual("ObjectChanged");
-      if (projected?._tag !== "ObjectChanged") throw new Error("unreachable");
-      expect(projected.dataChanged).toBe(false);
-      expect(projected.closureChanged).toBe(false);
-      // ...but the schema set moved, so the object is still distinguishable and
-      // the snapshot is still reproducible. Note the widened schema is on the
-      // *fields*, not the form, so this only works because a stamp covers the
-      // whole subtree rather than the root node alone.
-      expect(projected.schemaChanged).toBe(true);
-      expect(projected.from.stamp).not.toEqual(projected.to.stamp);
-      expect(r4.snapshot.rootCid).not.toEqual(r3.snapshot.rootCid);
+      // A widened field schema. Every instance already stored still satisfies
+      // it, and that is provable from the shapes alone without decoding a
+      // single body - so this release is a genuine no-op. No revision is minted,
+      // no object is reported as changed, and the snapshot lands on the id the
+      // previous release already had.
+      expect(SchemaCompat.subsumes(v1Schema, v2Schema)._tag).toEqual("Widens");
+      expect(r3to4).toEqual([]);
+      expect(r4.created).toEqual([]);
+      expect(r4.snapshot.rootCid).toEqual(r3.snapshot.rootCid);
+      expect(r4.snapshot.id).not.toEqual(r3.snapshot.id);
 
-      // Both shapes are now in the append-only schema log, so an object written
-      // under the old one can still be read back through it.
-      const v1Schema = yield* SchemaId.of(FieldAttrs);
-      const v2Schema = yield* SchemaId.of(FieldAttrsV2);
+      // What did change is what the store knows: each field body is now
+      // recorded as satisfying both shapes, not just the one that wrote it.
+      const ssnField = [...ConfigNode.walk(r4.snapshot.root)].find(
+        ({ node }) => node.kind === "form.field" && node.key === "employee.ssn"
+      )!.node;
+      expect(ConfigStore.validityOf(store, ssnField.cid)).toEqual(
+        [v1Schema.cid, v2Schema.cid].sort()
+      );
+      // The body release 3 wrote is the body release 4 read - the optional
+      // property is absent, so it encodes away and the id never moved.
+      expect(
+        [...ConfigNode.walk(r3.snapshot.root)].some(
+          ({ node }) => node.cid === ssnField.cid
+        )
+      ).toBe(true);
+
+      // Both shapes are in the append-only log, so an object written under the
+      // old one can still be read back through it.
       expect(store.schemas.has(v1Schema.cid)).toBe(true);
       expect(store.schemas.has(v2Schema.cid)).toBe(true);
-      expect(store.schemas.get(v1Schema.cid)).toMatchObject({
+      expect(store.schemas.get(v1Schema.cid)?.jsonSchema).toMatchObject({
         properties: { label: { type: "string" } },
       });
 
@@ -478,9 +492,8 @@ describe("config graph end to end", () => {
       // 2026.1?" without diffing anything.
       expect(r1Form?.kind).toEqual("form");
       expect(r5Form.cid).toEqual(r1Form?.cid);
-      // Same data, different projector and a since-widened attribute, so the
-      // stamp and closure both say so.
-      expect(r5Form.stamp).not.toEqual(r1Form?.stamp);
+      // Same form bytes, but an attribute it reads has since gained an option,
+      // so the closure still distinguishes them.
       expect(r5Form.closureCid).not.toEqual(r1Form?.closureCid);
 
       // -- The history reads as a chain --------------------------------------
@@ -495,9 +508,9 @@ describe("config graph end to end", () => {
         expect(history[i].parentId).toEqual(history[i + 1].id);
       }
       expect(history[history.length - 1].parentId).toBeNull();
-      // One revision per release, each for a different reason: created,
-      // edited, dependency retyped, reprojected, reverted.
-      expect(history).toHaveLength(5);
+      // Four revisions across five releases. 2026.4 mints none: it changed the
+      // projector, not the configuration, and the widening was provable.
+      expect(history).toHaveLength(4);
       expect(
         history
           .slice()
@@ -524,13 +537,7 @@ describe("config graph end to end", () => {
                   .filter(Boolean)
                   .join("+")
           )
-      ).toEqual([
-        "created",
-        "data+closure",
-        "closure",
-        "schema",
-        "data+closure",
-      ]);
+      ).toEqual(["created", "data+closure", "closure", "data+closure+schema"]);
 
       // Snapshots chain the same way.
       expect(r5.snapshot.parentId).toEqual(r4.snapshot.id);
@@ -621,6 +628,107 @@ describe("config graph end to end", () => {
       expect(second.created.map((rev) => rev.closureCid).sort()).toEqual(
         first.created.map((rev) => rev.closureCid).sort()
       );
+    })
+  );
+});
+
+describe("schema validity across versions", () => {
+  const buildFiveReleases = Effect.gen(function* () {
+    let store = ConfigStore.empty();
+    for (const [label, config] of [
+      ["2026.1", BASELINE],
+      ["2026.2", { ...BASELINE, ssnLabel: "Social Security Number" }],
+      ["2026.3", { ...BASELINE, workStates: ["CA", "NY", "TX", "WA"] }],
+      ["2026.4", { ...BASELINE, fieldSchema: FieldAttrsV2 }],
+    ] as ReadonlyArray<[string, AccountConfig]>) {
+      store = (yield* release(store, label, config)).store;
+    }
+    return store;
+  });
+
+  it.effect("answers whether deployed config survives a proposed schema", () =>
+    Effect.gen(function* () {
+      const store = yield* buildFiveReleases;
+
+      // The question worth asking in CI, before the narrowing merges. Today
+      // the equivalent failure is found when a customer's form will not load.
+      const RequiresHelpText = Schema.Struct({
+        ...FieldAttrs.fields,
+        helpText: Schema.String,
+      });
+
+      const breaking = yield* ConfigStore.recheck(store, {
+        kind: "form.field",
+        schema: RequiresHelpText,
+      });
+
+      expect(breaking.compatible).toEqual([]);
+      expect(breaking.revalidated).toEqual([]);
+      expect(breaking.violations.map((v) => v.key).sort()).toEqual([
+        "employee.ssn",
+        "employee.ssn",
+        "employee.start_date",
+        "employee.work_state",
+      ]);
+    })
+  );
+
+  it.effect("clears a widening without decoding a single instance", () =>
+    Effect.gen(function* () {
+      const store = yield* buildFiveReleases;
+
+      const Widened = Schema.Struct({
+        ...FieldAttrs.fields,
+        helpText: Schema.optional(Schema.String),
+        placeholder: Schema.optional(Schema.String),
+      });
+
+      const result = yield* ConfigStore.recheck(store, {
+        kind: "form.field",
+        schema: Widened,
+      });
+
+      // Every body cleared structurally: one verdict per known schema settles
+      // all of them, so nothing landed in `revalidated`.
+      expect(result.violations).toEqual([]);
+      expect(result.revalidated).toEqual([]);
+      expect(result.compatible.length).toBeGreaterThan(0);
+    })
+  );
+
+  it.effect("falls back to the instance when subsumption cannot decide", () =>
+    Effect.gen(function* () {
+      const store = yield* buildFiveReleases;
+
+      // Constraining a string is outside the fragment `subsumes` models, so it
+      // returns Unknown rather than guessing - and the real bodies settle it.
+      // Every stored label is non-empty, so they all pass on revalidation.
+      const Constrained = Schema.Struct({
+        ...FieldAttrs.fields,
+        label: Schema.String.pipe(Schema.minLength(1)),
+      });
+
+      const result = yield* ConfigStore.recheck(store, {
+        kind: "form.field",
+        schema: Constrained,
+      });
+
+      expect(result.compatible).toEqual([]);
+      expect(result.violations).toEqual([]);
+      expect(result.revalidated.length).toBeGreaterThan(0);
+
+      // And a constraint no stored label satisfies is caught the same way,
+      // which subsumption alone could never have told us.
+      const TooLong = Schema.Struct({
+        ...FieldAttrs.fields,
+        label: Schema.String.pipe(Schema.minLength(500)),
+      });
+      const strict = yield* ConfigStore.recheck(store, {
+        kind: "form.field",
+        schema: TooLong,
+      });
+      expect(strict.revalidated).toEqual([]);
+      expect(strict.violations.length).toBeGreaterThan(0);
     })
   );
 });

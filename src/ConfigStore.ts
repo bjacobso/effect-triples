@@ -28,23 +28,38 @@
  * attribute still referenced by a live automation, which today surfaces as a
  * runtime error against a real employee.
  *
- * **A snapshot is itself a `ConfigNode`.** Its children are the objects and its
- * attrs carry their stamps, so `ConfigNode.diff` works on two snapshots
- * unchanged, and the merkle shape means comparing two large snapshots costs
- * work proportional to what actually differs.
+ * **A snapshot is itself a `ConfigNode`.** Its children are the objects, so
+ * `ConfigNode.diff` works on two snapshots unchanged and the merkle shape means
+ * comparing two large snapshots costs work proportional to what differs. Its
+ * key is a constant and its label lives outside the hash, so a snapshot's id is
+ * the identity of the configuration and nothing else: two releases that ship
+ * identical config share a root id whatever they were named, and whichever
+ * version of the projector code happened to read them.
  */
 
-import { Data, Effect } from "effect";
+import { Data, Effect, Schema } from "effect";
 
 import * as CanonicalJson from "./CanonicalJson";
 import * as ConfigNode from "./ConfigNode";
 import * as ContentId from "./ContentId";
+import * as SchemaCompat from "./SchemaCompat";
+import * as SchemaId from "./SchemaId";
 
 export interface StoredObject {
   readonly cid: ContentId.ContentId;
   readonly kind: string;
   /** Exactly the value that was hashed. */
   readonly body: CanonicalJson.CanonicalValue;
+  /**
+   * Every schema this exact body is known to satisfy, not just the one that
+   * wrote it. Grows monotonically: when a new shape is deployed and proven to
+   * subsume one already in this set, the body is revalidated for free.
+   *
+   * Content addressing makes this cheap in the way that matters. Two hundred
+   * forms sharing an identical field body share one entry, so the set is
+   * maintained per distinct configuration rather than per occurrence of it.
+   */
+  readonly validUnder: ReadonlyArray<ContentId.ContentId>;
 }
 
 export interface ObjectKey {
@@ -84,10 +99,7 @@ export interface Snapshot {
 export interface ConfigStore {
   readonly objects: ReadonlyMap<ContentId.ContentId, StoredObject>;
   /** Append-only log of every projection shape ever used. */
-  readonly schemas: ReadonlyMap<
-    ContentId.ContentId,
-    CanonicalJson.CanonicalValue
-  >;
+  readonly schemas: ReadonlyMap<ContentId.ContentId, SchemaId.SchemaDescriptor>;
   readonly revisions: ReadonlyArray<Revision>;
   readonly snapshots: ReadonlyArray<Snapshot>;
   /** Ref name (`live`, `test`) to snapshot id. */
@@ -116,6 +128,8 @@ export class UnknownSnapshotError extends Data.TaggedError(
 }> {}
 
 const SNAPSHOT_KIND = "snapshot";
+/** Constant: the release label must not leak into the configuration's id. */
+const SNAPSHOT_ROOT_KEY = "config";
 
 const slotOf = (object: ObjectKey) => `${object.kind} ${object.key}`;
 
@@ -276,23 +290,53 @@ export const commit = (
     const created: Revision[] = [];
     let seq = store.seq;
 
-    const stamps: Array<{ kind: string; key: string; stamp: string }> = [];
     const revisionIds: string[] = [];
 
     for (const object of ordered) {
+      // Whether the projector shapes this release introduced are ones the
+      // existing bodies already satisfy. Starts true and only falls.
+      let schemasCompatible = true;
+
       // Content-address every node in the subtree. Identical subtrees across
       // objects, modes or accounts collapse onto one entry.
       for (const { node } of ConfigNode.walk(object)) {
-        if (!objects.has(node.cid)) {
-          objects.set(node.cid, {
-            cid: node.cid,
-            kind: node.kind,
-            body: ConfigNode.body(node),
-          });
+        const existing = objects.get(node.cid);
+        const stored: StoredObject = existing ?? {
+          cid: node.cid,
+          kind: node.kind,
+          body: ConfigNode.body(node),
+          validUnder: [],
+        };
+
+        if (node.schema) {
+          if (!schemas.has(node.schema.cid)) {
+            schemas.set(node.schema.cid, node.schema);
+          }
+
+          if (!stored.validUnder.includes(node.schema.cid)) {
+            // `makeTyped` validated this body against this schema on the way
+            // in, so it is valid by construction whatever the old shapes said.
+            // The question is only whether that is *news*.
+            const known = stored.validUnder
+              .map((cid) => schemas.get(cid))
+              .filter((d): d is SchemaId.SchemaDescriptor => d !== undefined);
+            const provenCompatible = known.some((from) =>
+              SchemaCompat.isCompatible(
+                SchemaCompat.subsumes(from, node.schema!)
+              )
+            );
+            if (known.length > 0 && !provenCompatible)
+              schemasCompatible = false;
+
+            objects.set(node.cid, {
+              ...stored,
+              validUnder: [...stored.validUnder, node.schema.cid].sort(cmp),
+            });
+            continue;
+          }
         }
-        if (node.schema && !schemas.has(node.schema.cid)) {
-          schemas.set(node.schema.cid, node.schema.jsonSchema);
-        }
+
+        if (!existing) objects.set(node.cid, stored);
       }
 
       const deps = yield* transitiveDeps(object, bySlot);
@@ -303,13 +347,16 @@ export const commit = (
       const stamp = yield* ConfigNode.stamp(object);
       const schemaCids = ConfigNode.schemaCids(object);
 
-      // `stamp` already folds in `cid` and the subtree's schemas, so it and the
-      // closure together decide whether this revision still describes reality.
+      // A revision records what the configuration *means*, so a new projector
+      // shape that provably accepts the bytes already stored is not a new
+      // revision - it is another schema the same instance satisfies. Only an
+      // unproven or narrowing shape reopens the question.
       const tip = tipOf({ ...store, revisions }, object);
       const unchanged =
         tip !== undefined &&
-        tip.stamp === stamp &&
-        tip.closureCid === closureCid;
+        tip.cid === object.cid &&
+        tip.closureCid === closureCid &&
+        (tip.stamp === stamp || schemasCompatible);
 
       if (unchanged) {
         revisionIds.push(tip.id);
@@ -331,17 +378,14 @@ export const commit = (
         created.push(revision);
         revisionIds.push(revision.id);
       }
-
-      stamps.push({ kind: object.kind, key: object.key, stamp });
     }
 
-    // The snapshot is a node like any other: children give it a cheap merkle
-    // diff, attrs pin the stamps so a projector change is visible even when no
-    // data moved.
+    // A node like any other, so diffing two releases is the ordinary merkle
+    // walk. Deliberately carries no attrs: a release that only reprojects
+    // unchanged config must land on the id the previous one already had.
     const root = yield* ConfigNode.make({
       kind: SNAPSHOT_KIND,
-      key: input.label,
-      attrs: { stamps },
+      key: SNAPSHOT_ROOT_KEY,
       children: ordered.map((node) => ({ rel: node.kind, node })),
     });
 
@@ -351,6 +395,7 @@ export const commit = (
       cid: root.cid,
       kind: root.kind,
       body: ConfigNode.body(root),
+      validUnder: [],
     });
 
     seq += 1;
@@ -470,3 +515,92 @@ export const changesBetween = (
 
   return changes.sort((a, b) => cmp(a.kind, b.kind) || cmp(a.key, b.key));
 };
+
+export interface RecheckResult {
+  /** Bodies already known valid, or proven valid by subsumption alone. */
+  readonly compatible: ReadonlyArray<ContentId.ContentId>;
+  /** Bodies that needed validating and passed. */
+  readonly revalidated: ReadonlyArray<ContentId.ContentId>;
+  /** Bodies the candidate schema rejects. Each is config that would break. */
+  readonly violations: ReadonlyArray<{
+    readonly cid: ContentId.ContentId;
+    readonly key: string;
+  }>;
+}
+
+/**
+ * Would every stored body of `kind` still parse under a candidate schema?
+ *
+ * This is the question worth asking in CI, before the code that narrows a
+ * projection merges. Today the equivalent failure is discovered when a
+ * customer's form fails to load, because nothing records which shapes the
+ * stored configuration was ever known to satisfy.
+ *
+ * It answers in three tiers, cheapest first. A body already listing the
+ * candidate in `validUnder` costs nothing. A body whose known schema is proven
+ * to subsume the candidate costs one structural comparison, amortised across
+ * every body sharing that schema. Only what is left gets decoded, which is why
+ * `SchemaCompat.subsumes` being sound matters more than it being complete.
+ */
+export const recheck = <A, I>(
+  store: ConfigStore,
+  input: {
+    readonly kind: string;
+    readonly schema: Schema.Schema<A, I>;
+  }
+): Effect.Effect<
+  RecheckResult,
+  SchemaId.SchemaNotRepresentableError | CanonicalJson.CanonicalEncodingError
+> =>
+  Effect.gen(function* () {
+    const candidate = yield* SchemaId.of(input.schema);
+
+    const compatible: ContentId.ContentId[] = [];
+    const revalidated: ContentId.ContentId[] = [];
+    const violations: Array<{ cid: ContentId.ContentId; key: string }> = [];
+
+    // One verdict per known schema, not per body.
+    const verdicts = new Map<ContentId.ContentId, boolean>();
+    const subsumesCandidate = (from: ContentId.ContentId): boolean => {
+      const cached = verdicts.get(from);
+      if (cached !== undefined) return cached;
+      const descriptor = store.schemas.get(from);
+      const proven =
+        descriptor !== undefined &&
+        SchemaCompat.isCompatible(SchemaCompat.subsumes(descriptor, candidate));
+      verdicts.set(from, proven);
+      return proven;
+    };
+
+    for (const stored of store.objects.values()) {
+      if (stored.kind !== input.kind) continue;
+
+      if (
+        stored.validUnder.includes(candidate.cid) ||
+        stored.validUnder.some(subsumesCandidate)
+      ) {
+        compatible.push(stored.cid);
+        continue;
+      }
+
+      const body = stored.body as { readonly attrs?: unknown; readonly key?: unknown }; // prettier-ignore
+      const accepted = yield* SchemaCompat.accepts(input.schema, body.attrs);
+      if (accepted) {
+        revalidated.push(stored.cid);
+      } else {
+        violations.push({
+          cid: stored.cid,
+          key: typeof body.key === "string" ? body.key : "<unknown>",
+        });
+      }
+    }
+
+    return { compatible, revalidated, violations };
+  });
+
+/** Schemas this exact body is known to satisfy. */
+export const validityOf = (
+  store: ConfigStore,
+  cid: ContentId.ContentId
+): ReadonlyArray<ContentId.ContentId> =>
+  store.objects.get(cid)?.validUnder ?? [];
