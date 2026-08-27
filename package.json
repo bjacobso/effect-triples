@@ -17,6 +17,7 @@
     "lint": "oxlint",
     "clean": "rm -rf dist",
     "test": "vitest --run",
+    "bench:typecheck": "node bench/typecheck-budget.mjs",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {

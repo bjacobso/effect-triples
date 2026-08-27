@@ -11,10 +11,17 @@
  * digest of a node body and the digest of an arbitrary string blob live in the
  * same space, and a value crafted to look like an encoded node could be passed
  * off as one.
+ *
+ * The hash itself is `Sha256`, not `node:crypto`, so this module works in the
+ * browser. The configuration kernel has to decode and validate the same
+ * declarations on the server, in the authoring UI, in the CLI and in tests, and
+ * a Node-only identity function would force a second implementation of the one
+ * thing that must never have two.
  */
 
-import { createHash } from "node:crypto";
 import { Schema } from "effect";
+
+import * as Sha256 from "./Sha256";
 
 export const ContentIdSchema = Schema.String.pipe(
   Schema.pattern(/^sha256-[0-9a-f]{64}$/, {
@@ -31,10 +38,7 @@ export type ContentId = typeof ContentIdSchema.Type;
  * prefixed so no two domains can produce the same pre-image.
  */
 export const hash = (domain: string, payload: string): ContentId => {
-  const digest = createHash("sha256")
-    .update(`${domain.length}:${domain}:`, "utf8")
-    .update(payload, "utf8")
-    .digest("hex");
+  const digest = Sha256.hex(`${domain.length}:${domain}:${payload}`);
   return `sha256-${digest}` as ContentId;
 };
 
