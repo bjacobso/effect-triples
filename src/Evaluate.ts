@@ -49,13 +49,16 @@ export interface Env {
   readonly world: World.World;
   readonly clock: World.Clock;
   readonly catalog: Catalog.Catalog;
+  /** Who `World.SUBJECT` refers to, when a rule is about "this one". */
+  readonly subject?: string;
 }
 
 export const env = (
   world: World.World,
   clock: World.Clock,
-  catalog: Catalog.Catalog = Catalog.empty
-): Env => ({ world, clock, catalog });
+  catalog: Catalog.Catalog = Catalog.empty,
+  subject?: string
+): Env => ({ world, clock, catalog, subject });
 
 export interface Evaluation {
   readonly truth: Truth;
@@ -139,12 +142,30 @@ const readFact = (
   observed: World.observe(world, entity, attribute),
 });
 
+/**
+ * Which entity a read names. Unresolved `$subject` is a missing input, not a
+ * crash - the same three-valued treatment an absent fact gets.
+ */
+const resolve = (entity: string, env: Env): string | undefined =>
+  entity === World.SUBJECT ? env.subject : entity;
+
 const go = (
   expr: BoolExpr.BoolExpr,
   env: Env,
   calling: ReadonlySet<string>
 ): Evaluation => {
   const { world, clock } = env;
+  if (
+    (expr._tag === "Exists" || expr._tag === "Eq" || expr._tag === "Before") &&
+    resolve(expr.entity, env) === undefined
+  ) {
+    return node({
+      truth: "unknown",
+      expr,
+      observed: [],
+      reason: "evaluated without a subject",
+    });
+  }
   switch (expr._tag) {
     case "Lit":
       return node({
@@ -154,7 +175,7 @@ const go = (
       });
 
     case "Exists": {
-      const fact = readFact(world, expr.entity, expr.attribute);
+      const fact = readFact(world, resolve(expr.entity, env)!, expr.attribute);
       return node({
         truth: fact.value === undefined ? "false" : "true",
         expr,
@@ -163,7 +184,7 @@ const go = (
     }
 
     case "Eq": {
-      const fact = readFact(world, expr.entity, expr.attribute);
+      const fact = readFact(world, resolve(expr.entity, env)!, expr.attribute);
       if (fact.value === undefined) {
         // Absent, not unequal. Reporting `false` would let `not(eq(...))`
         // report compliance for an employee we know nothing about.
@@ -171,7 +192,7 @@ const go = (
           truth: "unknown",
           expr,
           observed: [fact.observed],
-          reason: `${expr.entity}/${expr.attribute} is absent`,
+          reason: `${resolve(expr.entity, env)}/${expr.attribute} is absent`,
         });
       }
       return node({
@@ -182,7 +203,7 @@ const go = (
     }
 
     case "Before": {
-      const fact = readFact(world, expr.entity, expr.attribute);
+      const fact = readFact(world, resolve(expr.entity, env)!, expr.attribute);
       const tick: World.Observed = {
         _tag: "Clock",
         granularity: expr.granularity,
@@ -193,7 +214,7 @@ const go = (
           truth: "unknown",
           expr,
           observed: [fact.observed, tick],
-          reason: `${expr.entity}/${expr.attribute} is absent`,
+          reason: `${resolve(expr.entity, env)}/${expr.attribute} is absent`,
         });
       }
       if (typeof fact.value !== "number") {
@@ -201,7 +222,7 @@ const go = (
           truth: "unknown",
           expr,
           observed: [fact.observed, tick],
-          reason: `${expr.entity}/${expr.attribute} is not an instant`,
+          reason: `${resolve(expr.entity, env)}/${expr.attribute} is not an instant`,
         });
       }
       // Compare in the declared granularity, so a day-grained question is not
@@ -293,8 +314,9 @@ export const evaluate = (
   expr: BoolExpr.BoolExpr,
   world: World.World,
   clock: World.Clock,
-  catalog: Catalog.Catalog = Catalog.empty
-): Evaluation => go(expr, env(world, clock, catalog), new Set());
+  catalog: Catalog.Catalog = Catalog.empty,
+  subject?: string
+): Evaluation => go(expr, env(world, clock, catalog, subject), new Set());
 
 /**
  * Replay a recorded dependency set against the current inputs.
@@ -374,13 +396,14 @@ export const cached = (
   expr: BoolExpr.BoolExpr,
   world: World.World,
   clock: World.Clock,
-  catalog: Catalog.Catalog = Catalog.empty
+  catalog: Catalog.Catalog = Catalog.empty,
+  subject?: string
 ): {
   readonly evaluation: Evaluation;
   readonly cache: Cache;
   readonly hit: boolean;
 } => {
-  const scope = env(world, clock, catalog);
+  const scope = env(world, clock, catalog, subject);
   const exprId = BoolExpr.id(expr);
   const shapes = cache.entries.get(exprId) ?? [];
 
@@ -610,6 +633,8 @@ export const replay = (
   evaluation: Evaluation,
   world: World.World,
   clock: World.Clock,
-  catalog: Catalog.Catalog = Catalog.empty
+  catalog: Catalog.Catalog = Catalog.empty,
+  subject?: string
 ): boolean =>
-  go(expr, env(world, clock, catalog), new Set()).cid === evaluation.cid;
+  go(expr, env(world, clock, catalog, subject), new Set()).cid ===
+  evaluation.cid;

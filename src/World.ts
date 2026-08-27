@@ -65,6 +65,22 @@ const DAY_MS = 86_400_000;
 export const bucket = (clock: Clock): number =>
   clock.granularity === "day" ? Math.floor(clock.now / DAY_MS) : clock.now;
 
+/**
+ * The entity a rule means when it says "this one".
+ *
+ * A compliance rule is about *an* employee, not about `ee_1`. Baking a
+ * particular id into the expression would mint a separate rule per person -
+ * a thousand config objects saying the same thing, each versioned and diffed
+ * on its own, and no way to ask "did the I-9 rule change".
+ *
+ * So reads may name this sentinel and evaluation substitutes the subject.
+ * Crucially the substitution happens at evaluation, not at construction: the
+ * rule's content id stays subject-free, so it is ONE object in the graph, while
+ * each decision's id differs because its observations name the real entity.
+ * One rule, many proofs.
+ */
+export const SUBJECT = "$subject";
+
 export const factKey = (entity: string, attribute: string): string =>
   `${entity}/${attribute}`;
 

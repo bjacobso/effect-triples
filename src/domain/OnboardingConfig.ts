@@ -39,6 +39,9 @@
 import { Effect } from "effect";
 
 import * as ConfigStore from "../ConfigStore";
+import * as B from "../BoolExpr";
+import * as World from "../World";
+import * as Catalog from "../Catalog";
 import * as Entity from "../Entity";
 import * as T from "../TypeExpr";
 
@@ -219,13 +222,76 @@ export interface AccountConfig {
   readonly ssnLabel: string;
   readonly workStates: ReadonlyArray<string>;
   readonly fieldSchema: T.TypeExpr;
+  /**
+   * Whether an I-9 is required of everyone or only of caregivers. The one
+   * knob a compliance edit actually turns, and the reason the rules live in
+   * the snapshot rather than in code.
+   */
+  readonly i9AppliesTo: "caregivers" | "everyone";
 }
 
 export const BASELINE: AccountConfig = {
   ssnLabel: "SSN",
   workStates: ["CA", "NY", "TX"],
   fieldSchema: FieldAttrs,
+  i9AppliesTo: "caregivers",
 };
+
+// ---------------------------------------------------------------------------
+// The compliance rules.
+//
+// These are what the forms and policies above are *for*, and they are config
+// like everything else: `Catalog.ruleNode` makes each one a `ConfigNode`, so a
+// rule is versioned, diffed, deployed and pinned by the same machinery as a
+// form. A decision made under one release therefore names the rule revision
+// that produced it, and cannot be re-explained under a later one.
+//
+// They read facts by the same `entity/attribute` keys the attribute
+// declarations above define - `employee.ssn` the attribute is `ee/ssn` the
+// fact. Nothing enforces that correspondence yet; see the note in the
+// lifecycle test.
+// ---------------------------------------------------------------------------
+
+const SELF = World.SUBJECT;
+
+export const ruleSet = (
+  config: AccountConfig
+): Readonly<Record<string, B.BoolExpr>> => ({
+  // Who the I-9 obligation lands on. The knob.
+  "i9-applies":
+    config.i9AppliesTo === "everyone"
+      ? B.exists(SELF, "role")
+      : B.eq(SELF, "role", "caregiver"),
+
+  // Section 1 is the employee's half: identity plus attestation.
+  "i9-section-1-complete": B.all([
+    B.exists(SELF, "ssn"),
+    B.exists(SELF, "work_auth"),
+  ]),
+
+  // Section 2 is the employer's, and it is late once the start date passes.
+  "i9-section-2-complete": B.exists(SELF, "i9_verified_at"),
+  "i9-overdue": B.all([
+    B.rule("i9-applies"),
+    B.not(B.rule("i9-section-2-complete")),
+    B.before(SELF, "start_date"),
+  ]),
+
+  // The obligation itself: required, and satisfied only when both halves are.
+  "i9-satisfied": B.all([
+    B.rule("i9-section-1-complete"),
+    B.rule("i9-section-2-complete"),
+  ]),
+  "i9-required": B.all([B.rule("i9-applies"), B.not(B.rule("i9-satisfied"))]),
+});
+
+/** The rules as config nodes, ready to go into a snapshot. */
+export const buildRules = (config: AccountConfig) =>
+  Effect.all(
+    Object.entries(ruleSet(config)).map(([key, expr]) =>
+      Catalog.ruleNode(key, expr)
+    )
+  );
 
 export const buildAccount = (config: AccountConfig) =>
   Effect.gen(function* () {
@@ -374,6 +440,25 @@ export const release = (
   Effect.gen(function* () {
     const objects = yield* buildAccount(config);
     return yield* ConfigStore.commit(store, { label, objects });
+  });
+
+/**
+ * A release carrying the rules as well, so one snapshot holds everything a
+ * decision can depend on. This is what makes a decision reproducible: the
+ * forms, the attributes and the rules that read them ship together.
+ */
+export const releaseWithRules = (
+  store: ConfigStore.ConfigStore,
+  label: string,
+  config: AccountConfig
+) =>
+  Effect.gen(function* () {
+    const objects = [
+      ...(yield* buildAccount(config)),
+      ...(yield* buildRules(config)),
+    ];
+    const result = yield* ConfigStore.commit(store, { label, objects });
+    return { ...result, catalog: Catalog.fromNodes(objects) };
   });
 
 export const changeFor = (

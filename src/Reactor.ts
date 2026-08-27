@@ -101,7 +101,13 @@ export const register = (
   expr: BoolExpr.BoolExpr,
   env: Evaluate.Env
 ): Reactor => {
-  const evaluation = Evaluate.evaluate(expr, env.world, env.clock, env.catalog);
+  const evaluation = Evaluate.evaluate(
+    expr,
+    env.world,
+    env.clock,
+    env.catalog,
+    env.subject
+  );
   const existing = reactor.registrations.get(key);
 
   return {
