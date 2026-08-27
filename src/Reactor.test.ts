@@ -187,10 +187,16 @@ describe("cost tracks the change, not the population", () => {
       }
       let world = World.make(facts);
 
-      let r = Reactor.empty;
-      for (let i = 0; i < 1000; i++) {
-        r = Reactor.register(r, "ee" + i, eligible("ee" + i), envOf(world, catalog)); // prettier-ignore
-      }
+      // registerAll, not register-in-a-loop: the loop copies the whole reactor
+      // per entry, which is quadratic. Measured, it did not finish at 10,000.
+      let r = Reactor.registerAll(
+        Reactor.empty,
+        Array.from({ length: 1000 }, (_, i) => ({
+          key: "ee" + i,
+          expr: eligible("ee" + i),
+          env: envOf(world, catalog),
+        }))
+      );
 
       world = World.withFact(world, "ee500", "role", "office");
       const reaction = Reactor.react(
@@ -226,10 +232,14 @@ describe("cost tracks the change, not the population", () => {
         const catalog = yield* catalogOf(rules);
         const world = World.make(facts);
 
-        let r = Reactor.empty;
-        for (let i = 0; i < n; i++) {
-          r = Reactor.register(r, "ee" + i, eligible("ee" + i), envOf(world, catalog)); // prettier-ignore
-        }
+        const r = Reactor.registerAll(
+          Reactor.empty,
+          Array.from({ length: n }, (_, i) => ({
+            key: "ee" + i,
+            expr: eligible("ee" + i),
+            env: envOf(world, catalog),
+          }))
+        );
 
         const start = performance.now();
         for (let i = 0; i < 200; i++) {

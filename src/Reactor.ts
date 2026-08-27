@@ -27,6 +27,14 @@
  * the observation rather than on the value, and it is the case a naive index
  * over existing rows would miss entirely.
  *
+ * SCALE, stated plainly: this is an in-memory reference. Every operation
+ * copies the two maps once, so a reaction costs O(population) even though it
+ * only recomputes O(affected). That is fine for thousands and wrong for
+ * hundreds of thousands. A production reactor externalises the index - one row
+ * per decision carrying its observed set - and this module's job is then to
+ * compute that set, not to hold it. The measurements in `bench/scale.mjs` are
+ * what that boundary should be drawn from.
+ *
  * There is no cache here on purpose. `Evaluate.Cache` grows one entry per
  * distinct input set and never forgets; a reactor holds exactly one evaluation
  * per registration, so memory is bounded by what the product is actually
@@ -67,31 +75,67 @@ export const clockKey = (granularity: World.Granularity): string =>
 
 // --- registry ---------------------------------------------------------------
 
+/**
+ * A reactor being edited. Both maps are already private copies; the index's
+ * Sets are still shared with the reactor we came from, so a touched bucket is
+ * replaced rather than mutated.
+ *
+ * This exists so a batch of edits copies the maps ONCE. Copying per edit made
+ * a bulk build quadratic and a reaction O(affected x population) - the first
+ * measurement at 10,000 employees did not finish.
+ */
+interface Draft {
+  registrations: Map<string, Registration>;
+  index: Map<string, ReadonlySet<string>>;
+}
+
+const draft = (reactor: Reactor): Draft => ({
+  registrations: new Map(reactor.registrations),
+  index: new Map(reactor.index),
+});
+
 const reindex = (
-  index: ReadonlyMap<string, ReadonlySet<string>>,
+  d: Draft,
   key: string,
   observed: ReadonlyArray<World.Observed>,
   previous?: ReadonlyArray<World.Observed>
-): ReadonlyMap<string, ReadonlySet<string>> => {
-  const next = new Map(index);
-
+): void => {
   // A refreshed answer may depend on different inputs than it used to - a
   // branch that short-circuited last time may not this time - so the old edges
   // have to go or the index slowly accumulates phantom dependents.
   for (const o of previous ?? []) {
     const slot = World.observedKey(o);
-    const holders = new Set(next.get(slot));
+    const holders = new Set(d.index.get(slot));
     holders.delete(key);
-    if (holders.size === 0) next.delete(slot);
-    else next.set(slot, holders);
+    if (holders.size === 0) d.index.delete(slot);
+    else d.index.set(slot, holders);
   }
 
   for (const o of observed) {
     const slot = World.observedKey(o);
-    next.set(slot, new Set(next.get(slot)).add(key));
+    d.index.set(slot, new Set(d.index.get(slot)).add(key));
   }
+};
 
-  return next;
+const registerInto = (
+  d: Draft,
+  key: string,
+  expr: BoolExpr.BoolExpr,
+  env: Evaluate.Env
+): Registration => {
+  const evaluation = Evaluate.evaluate(
+    expr,
+    env.world,
+    env.clock,
+    env.catalog,
+    env.subject
+  );
+  const existing = d.registrations.get(key);
+  const registration = { key, expr, evaluation };
+
+  d.registrations.set(key, registration);
+  reindex(d, key, evaluation.observed, existing?.evaluation.observed);
+  return registration;
 };
 
 /** Record a standing interest, evaluating it once. */
@@ -101,40 +145,39 @@ export const register = (
   expr: BoolExpr.BoolExpr,
   env: Evaluate.Env
 ): Reactor => {
-  const evaluation = Evaluate.evaluate(
-    expr,
-    env.world,
-    env.clock,
-    env.catalog,
-    env.subject
-  );
-  const existing = reactor.registrations.get(key);
+  const d = draft(reactor);
+  registerInto(d, key, expr, env);
+  return d;
+};
 
-  return {
-    registrations: new Map(reactor.registrations).set(key, {
-      key,
-      expr,
-      evaluation,
-    }),
-    index: reindex(
-      reactor.index,
-      key,
-      evaluation.observed,
-      existing?.evaluation.observed
-    ),
-  };
+/**
+ * Register many at once.
+ *
+ * Not sugar: `register` in a loop copies the whole reactor per entry, which is
+ * quadratic. Anything bulk - loading an account, backfilling after a publish -
+ * has to come through here.
+ */
+export const registerAll = (
+  reactor: Reactor,
+  entries: ReadonlyArray<{
+    readonly key: string;
+    readonly expr: BoolExpr.BoolExpr;
+    readonly env: Evaluate.Env;
+  }>
+): Reactor => {
+  const d = draft(reactor);
+  for (const e of entries) registerInto(d, e.key, e.expr, e.env);
+  return d;
 };
 
 export const unregister = (reactor: Reactor, key: string): Reactor => {
   const existing = reactor.registrations.get(key);
   if (!existing) return reactor;
 
-  const registrations = new Map(reactor.registrations);
-  registrations.delete(key);
-  return {
-    registrations,
-    index: reindex(reactor.index, key, [], existing.evaluation.observed),
-  };
+  const d = draft(reactor);
+  d.registrations.delete(key);
+  reindex(d, key, [], existing.evaluation.observed);
+  return d;
 };
 
 export const answer = (
@@ -181,16 +224,14 @@ export const refresh = (
   keys: ReadonlyArray<string>,
   env: Evaluate.Env
 ): { readonly reactor: Reactor; readonly flipped: ReadonlyArray<Flip> } => {
-  let next = reactor;
+  const d = draft(reactor);
   const flipped: Flip[] = [];
 
   for (const key of keys) {
-    const before = next.registrations.get(key);
+    const before = d.registrations.get(key);
     if (!before) continue;
 
-    next = register(next, key, before.expr, env);
-    const after = next.registrations.get(key)!;
-
+    const after = registerInto(d, key, before.expr, env);
     if (after.evaluation.truth !== before.evaluation.truth) {
       flipped.push({
         key,
@@ -200,7 +241,7 @@ export const refresh = (
     }
   }
 
-  return { reactor: next, flipped };
+  return { reactor: d, flipped };
 };
 
 /** `affected` then `refresh`: the ordinary path when something changes. */
