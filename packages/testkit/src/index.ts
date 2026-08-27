@@ -10,7 +10,7 @@
  */
 
 import { Effect } from "effect";
-import { Triples, type EntityId } from "effect-triples";
+import { ref, string, Triples, type EntityId } from "effect-triples";
 
 // ─── Lightweight fixture descriptors (unchanged) ────────────────────────────
 
@@ -91,6 +91,148 @@ export const triplesConformanceCases: readonly ConformanceCase[] = [
       });
       const names = results.map((r) => r["?name"]);
       yield* check(names.includes("Bob"), "datalog query should surface Bob");
+    }),
+  },
+  {
+    name: "datalog reverse lookup matches an explicitly typed ref constant",
+    run: Effect.gen(function* () {
+      const t = yield* Triples;
+      yield* t.assertBatch([
+        {
+          entityId: "conf:refs:typed:mid",
+          attribute: ":conf/typed-child",
+          value: ref("conf:refs:typed:leaf"),
+        },
+        {
+          entityId: "conf:refs:typed:other",
+          attribute: ":conf/typed-child",
+          value: ref("conf:refs:typed:leaf"),
+        },
+      ]);
+
+      const { results } = yield* t.query({
+        find: ["?parent"],
+        where: [["?parent", ":conf/typed-child", ref("conf:refs:typed:leaf")]],
+      });
+      const parents = results.map((row) => row["?parent"]).sort();
+      yield* check(
+        JSON.stringify(parents) ===
+          JSON.stringify(["conf:refs:typed:mid", "conf:refs:typed:other"]),
+        "typed ref reverse lookup should find every parent",
+      );
+    }),
+  },
+  {
+    name: "datalog joins a variable bound from a ref in value position",
+    run: Effect.gen(function* () {
+      const t = yield* Triples;
+      yield* t.assertBatch([
+        {
+          entityId: "conf:refs:join:mid",
+          attribute: ":conf/join-child",
+          value: ref("conf:refs:join:leaf"),
+        },
+        {
+          entityId: "conf:refs:join:other",
+          attribute: ":conf/join-child",
+          value: ref("conf:refs:join:leaf"),
+        },
+      ]);
+
+      const { results } = yield* t.query({
+        find: ["?parent"],
+        where: [
+          ["conf:refs:join:mid", ":conf/join-child", "?leaf"],
+          ["?parent", ":conf/join-child", "?leaf"],
+        ],
+      });
+      const parents = results.map((row) => row["?parent"]).sort();
+      yield* check(
+        JSON.stringify(parents) === JSON.stringify(["conf:refs:join:mid", "conf:refs:join:other"]),
+        "a ref-valued binding should join against ref-valued facts",
+      );
+    }),
+  },
+  {
+    name: "datalog supports multi-hop joins over ref edges",
+    run: Effect.gen(function* () {
+      const t = yield* Triples;
+      yield* t.assertBatch([
+        {
+          entityId: "conf:refs:hops:grand",
+          attribute: ":conf/hops-child",
+          value: ref("conf:refs:hops:parent"),
+        },
+        {
+          entityId: "conf:refs:hops:parent",
+          attribute: ":conf/hops-child",
+          value: ref("conf:refs:hops:leaf"),
+        },
+        {
+          entityId: "conf:refs:hops:sibling",
+          attribute: ":conf/hops-child",
+          value: ref("conf:refs:hops:leaf"),
+        },
+      ]);
+
+      const { results } = yield* t.query({
+        find: ["?grandparent", "?leafParent"],
+        where: [
+          ["?grandparent", ":conf/hops-child", "?parent"],
+          ["?parent", ":conf/hops-child", "?leaf"],
+          ["?leafParent", ":conf/hops-child", "?leaf"],
+        ],
+      });
+      const paths = results
+        .map((row) => `${String(row["?grandparent"])}->${String(row["?leafParent"])}`)
+        .sort();
+      yield* check(
+        JSON.stringify(paths) ===
+          JSON.stringify([
+            "conf:refs:hops:grand->conf:refs:hops:parent",
+            "conf:refs:hops:grand->conf:refs:hops:sibling",
+          ]),
+        "multi-hop ref joins should preserve every matching path",
+      );
+    }),
+  },
+  {
+    name: "datalog untyped strings match string and ref values while typed refs stay exact",
+    run: Effect.gen(function* () {
+      const t = yield* Triples;
+      yield* t.assertBatch([
+        {
+          entityId: "conf:refs:mixed:ref",
+          attribute: ":conf/mixed-value",
+          value: ref("conf:refs:mixed:target"),
+        },
+        {
+          entityId: "conf:refs:mixed:string",
+          attribute: ":conf/mixed-value",
+          value: string("conf:refs:mixed:target"),
+        },
+      ]);
+
+      const bare = yield* t.query({
+        find: ["?entity"],
+        where: [["?entity", ":conf/mixed-value", "conf:refs:mixed:target"]],
+      });
+      const typed = yield* t.query({
+        find: ["?entity"],
+        where: [["?entity", ":conf/mixed-value", ref("conf:refs:mixed:target")]],
+      });
+      const bareEntities = bare.results.map((row) => row["?entity"]).sort();
+      const typedEntities = typed.results.map((row) => row["?entity"]).sort();
+
+      yield* check(
+        JSON.stringify(bareEntities) ===
+          JSON.stringify(["conf:refs:mixed:ref", "conf:refs:mixed:string"]),
+        "an untyped string should match string and ref values with the same scalar",
+      );
+      yield* check(
+        JSON.stringify(typedEntities) === JSON.stringify(["conf:refs:mixed:ref"]),
+        "an explicitly typed ref should match only stored ref values",
+      );
     }),
   },
   {

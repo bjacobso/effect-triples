@@ -42,11 +42,13 @@ describe("Datalog SQL Compiler", () => {
 
       expect(result.sql).toContain(`t0.attribute = ?`);
       expect(result.sql).toContain(`t0.value_string = ?`);
-      expect(result.sql).toContain(`t0.value_type = ?`);
+      expect(result.sql).toContain(`t0.value_type IN (?, ?, ?)`);
       // Verify params contain the values
       expect(result.params).toContain(":name");
       expect(result.params).toContain("Alice");
       expect(result.params).toContain("string");
+      expect(result.params).toContain("ref");
+      expect(result.params).toContain("blob");
     });
 
     it("should compile query with numeric constant", () => {
@@ -58,10 +60,11 @@ describe("Datalog SQL Compiler", () => {
       const result = compile(query);
 
       expect(result.sql).toContain(`t0.value_number = ?`);
-      expect(result.sql).toContain(`t0.value_type = ?`);
+      expect(result.sql).toContain(`t0.value_type IN (?, ?)`);
       // Verify params contain the values
       expect(result.params).toContain(30);
       expect(result.params).toContain("number");
+      expect(result.params).toContain("datetime");
     });
 
     it("should compile query with boolean constant", () => {
@@ -146,6 +149,21 @@ describe("Datalog SQL Compiler", () => {
       expect(sql).toContain("t2");
       // Third table should join on the value (ref) of the second table
       expect(sql).toContain("t2.entity_id = t1.value_string");
+    });
+
+    it("should join a repeated value variable without constraining the entity", () => {
+      const query: DatalogQuery = {
+        find: ["?parent"],
+        where: [
+          ["mid", ":child", "?leaf"],
+          ["?parent", ":child", "?leaf"],
+        ],
+      };
+
+      const sql = compileToSql(query);
+
+      expect(sql).toContain("t1.value_string = t0.value_string");
+      expect(sql).not.toContain("t1.entity_id = t0.value_string");
     });
   });
 

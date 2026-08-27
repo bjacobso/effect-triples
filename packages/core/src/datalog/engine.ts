@@ -49,15 +49,29 @@ const matchPart = (
     // It's a variable
     if (patternPart in context) {
       // Already bound - check if it matches
-      const boundValue = context[patternPart];
-      return boundValue === triplePart ? context : null;
+      const boundValue = context[patternPart]!;
+      return constantsEqual(boundValue, triplePart) ? context : null;
     }
     // Not bound - bind it
-    return { ...context, [patternPart]: triplePart };
+    return { ...context, [patternPart]: scalarConstant(triplePart) };
   }
 
-  // It's a constant - check for equality
-  return patternPart === triplePart ? context : null;
+  // Explicit typed constants match exactly. Untyped constants compare against
+  // the scalar representation of a typed triple value.
+  return constantsEqual(patternPart, triplePart) ? context : null;
+};
+
+const isTyped = (value: Constant | null): value is Extract<Constant, object> =>
+  typeof value === "object" && value !== null && "type" in value;
+
+const scalarConstant = (value: Constant | null): Constant | null =>
+  isTyped(value) ? value.value : value;
+
+const constantsEqual = (pattern: Constant | null, value: Constant | null): boolean => {
+  if (isTyped(pattern)) {
+    return isTyped(value) && pattern.type === value.type && pattern.value === value.value;
+  }
+  return pattern === scalarConstant(value);
 };
 
 /**

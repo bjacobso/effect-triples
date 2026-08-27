@@ -61,6 +61,31 @@ export const constantToTripleValue = (c: Constant): TripleValue => {
   return { type: "string", value: String(c) };
 };
 
+/**
+ * Convert an untyped Datalog constant to every stored value encoding with the
+ * same scalar representation. Explicitly typed constants remain exact.
+ *
+ * Datalog bindings intentionally expose ergonomic scalar values, so a string
+ * bound from a ref cannot retain its storage tag. Scanning every compatible
+ * encoding keeps later joins symmetric with that public binding shape.
+ */
+const constantToScanValues = (c: Constant): readonly TripleValue[] => {
+  if (typeof c === "string") {
+    return [
+      { type: "string", value: c },
+      { type: "ref", value: c },
+      { type: "blob", value: c, mimeType: "", size: 0 },
+    ];
+  }
+  if (typeof c === "number") {
+    return [
+      { type: "number", value: c },
+      { type: "datetime", value: c },
+    ];
+  }
+  return [constantToTripleValue(c)];
+};
+
 // ─── Pattern → ScanPattern ─────────────────────────────────────────────────
 
 /**
@@ -108,6 +133,26 @@ export const patternToScanPattern = (pattern: PatternClause, context: Context): 
   return result;
 };
 
+/**
+ * Convert a pattern to all index scans required by Datalog's untyped-constant
+ * matching semantics. The singular helper above remains the canonical exact
+ * conversion for callers that need one scan plan.
+ */
+const patternToScanPatterns = (
+  pattern: PatternClause,
+  context: Context,
+): readonly ScanPattern[] => {
+  const base = patternToScanPattern(pattern, context);
+  const value = resolveTermForScan(pattern[2], context);
+
+  if (!value.bound) return [base];
+
+  return constantToScanValues(value.value).map((scanValue) => ({
+    ...base,
+    value: scanValue,
+  }));
+};
+
 // ─── Datom → Context binding ───────────────────────────────────────────────
 
 /**
@@ -138,9 +183,15 @@ export const bindDatom = (
   ctx = matchTerm(attrTerm, datom.attribute, ctx);
   if (ctx === null) return null;
 
-  // Bind value
-  const valueConstant = tripleValueToConstant(datom.value);
-  ctx = matchTerm(valueTerm, valueConstant, ctx);
+  // Bind value. Typed constants match the stored tag exactly; variables and
+  // untyped constants use the flattened scalar exposed in result contexts.
+  if (typeof valueTerm === "object" && valueTerm !== null && "type" in valueTerm) {
+    if (valueTerm.type !== datom.value.type || valueTerm.value !== datom.value.value) {
+      return null;
+    }
+  } else {
+    ctx = matchTerm(valueTerm, tripleValueToConstant(datom.value), ctx);
+  }
   if (ctx === null) return null;
 
   // Bind tx if pattern has 4 elements
@@ -215,13 +266,14 @@ export const executePattern = (
     const results: Context[] = [];
 
     for (const ctx of contexts) {
-      const scanPattern = patternToScanPattern(pattern, ctx);
-      const datoms = yield* store.scanCollectAsync(scanPattern);
+      for (const scanPattern of patternToScanPatterns(pattern, ctx)) {
+        const datoms = yield* store.scanCollectAsync(scanPattern);
 
-      for (let i = 0; i < datoms.length; i++) {
-        const bound = bindDatom(pattern, datoms[i]!, ctx);
-        if (bound !== null) {
-          results.push(bound);
+        for (let i = 0; i < datoms.length; i++) {
+          const bound = bindDatom(pattern, datoms[i]!, ctx);
+          if (bound !== null) {
+            results.push(bound);
+          }
         }
       }
     }
@@ -257,14 +309,15 @@ const executePatternSync = (
   const results: Context[] = [];
 
   for (const ctx of contexts) {
-    const scanPattern = patternToScanPattern(pattern, ctx);
-    const datoms = store.scanCollect(scanPattern);
-    if (datoms === null) return null; // Backend doesn't support sync
+    for (const scanPattern of patternToScanPatterns(pattern, ctx)) {
+      const datoms = store.scanCollect(scanPattern);
+      if (datoms === null) return null; // Backend doesn't support sync
 
-    for (let i = 0; i < datoms.length; i++) {
-      const bound = bindDatom(pattern, datoms[i]!, ctx);
-      if (bound !== null) {
-        results.push(bound);
+      for (let i = 0; i < datoms.length; i++) {
+        const bound = bindDatom(pattern, datoms[i]!, ctx);
+        if (bound !== null) {
+          results.push(bound);
+        }
       }
     }
   }
