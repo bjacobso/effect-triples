@@ -22,14 +22,38 @@ import {
 } from "../../store/Triples.js";
 import type { QueryDebugInfo, QueryMetrics, QueryResult } from "../../storage/QueryExecutor.js";
 import type { DatalogQuery, WrappedQuery } from "../datalog/types.js";
-import { WriteError, ReadError } from "../../errors/index.js";
-import { KvBackend } from "../kv/KvBackend.js";
+import { WriteError, ReadError, TransactionConflictError } from "../../errors/index.js";
+import { KvBackend, type KvBackendService, type KvTransaction } from "../kv/KvBackend.js";
 import { makeTestKvBackend } from "../kv/InMemoryKvBackend.js";
 import { createKvTripleStore, type Datom } from "../hexastore/KvTripleStore.js";
 import type { ScanPattern } from "../hexastore/scan.js";
 import { executeQuery, executeWrappedQuery } from "../datalog/executor.js";
 import { TripleStoreRuntime, TripleStoreRuntimeLayer } from "../../store/TripleStoreRuntime.js";
-import { TxAttributes } from "../../utils/id.js";
+import {
+  livePreconditionIds,
+  metadataInputs,
+  transactionRecordFromTriples,
+  transactionRecordsFromTriples,
+  validatePreconditions,
+} from "../../store/transactionMetadata.js";
+
+const COMMIT_POSITION_KEY = new Uint8Array([0x21]);
+const textEncoder = new TextEncoder();
+const textDecoder = new TextDecoder();
+
+const nextKvCommitPosition = (tx: KvTransaction): Effect.Effect<number, WriteError> =>
+  Effect.gen(function* () {
+    const stored = yield* tx.get(COMMIT_POSITION_KEY);
+    const current = stored === null ? 0 : Number(textDecoder.decode(stored));
+    if (!Number.isSafeInteger(current) || current < 0 || current >= Number.MAX_SAFE_INTEGER) {
+      return yield* Effect.fail(
+        new WriteError({ message: "Invalid or exhausted KV commit-position counter" }),
+      );
+    }
+    const next = current + 1;
+    yield* tx.set(COMMIT_POSITION_KEY, textEncoder.encode(String(next)));
+    return next;
+  });
 
 // ─── Datom ↔ Triple conversion ─────────────────────────────────────────────
 
@@ -232,6 +256,20 @@ const makeKvMetrics = (query: DatalogQuery): QueryMetrics => ({
   compilationTimeMs: 0,
 });
 
+/** Adapt a backend transaction to the interface consumed by KvTripleStore. */
+const transactionBackend = (tx: KvTransaction): KvBackendService => ({
+  get: tx.get,
+  set: tx.set,
+  delete: tx.delete,
+  getRange: tx.getRange,
+  transact: (effect) => effect(tx),
+  setAll: (entries) =>
+    Effect.forEach(entries, ([key, value]) => tx.set(key, value), { discard: true }),
+  getMany: (keys) =>
+    Effect.forEach(keys, (key) => tx.get(key).pipe(Effect.map((value) => [key, value] as const))),
+  clear: () => Effect.die("KvTripleStore.clear is not supported inside a transaction"),
+});
+
 // ─── Service implementation ────────────────────────────────────────────────
 
 const makeKvTriplesService = Effect.gen(function* () {
@@ -343,7 +381,10 @@ const makeKvTriplesService = Effect.gen(function* () {
       Effect.gen(function* () {
         const scanPat = patternToScan(pattern);
         const syncDatoms = hexaStore.scanCollect(scanPat);
-        const datoms = syncDatoms ?? (yield* hexaStore.scanCollectAsync(scanPat));
+        const scanned = syncDatoms ?? (yield* hexaStore.scanCollectAsync(scanPat));
+        const datoms = pattern.entityType
+          ? scanned.filter((datom) => datom.entityType === pattern.entityType)
+          : scanned;
         let count = 0;
         const now = yield* runtime.now;
         const txId = yield* runtime.nextTxId;
@@ -361,91 +402,128 @@ const makeKvTriplesService = Effect.gen(function* () {
       ),
 
     transact: (operations: readonly TransactOp[], meta?: TransactionMeta) =>
-      Effect.gen(function* () {
-        const txId = yield* runtime.nextTxId;
-        const now = yield* runtime.now;
-        const asserted: Triple[] = [];
-        let retractedCount = 0;
-
-        for (const op of operations) {
-          switch (op.op) {
-            case "assert": {
-              const datom = tripleInputToDatom(
-                {
-                  entityId: op.entityId,
-                  attribute: op.attribute,
-                  value: op.value,
-                  entityType: op.entityType,
-                  createdBy: meta?.user,
-                },
-                yield* runtime.nextTripleId,
-                txId,
-                now,
+      kvBackend
+        .transact((tx) => {
+          const transactionStore = createKvTripleStore(transactionBackend(tx));
+          return Effect.gen(function* () {
+            const invalidCondition = validatePreconditions(operations, meta);
+            if (invalidCondition) {
+              return yield* Effect.fail(
+                new WriteError({
+                  message: `Transaction precondition ${invalidCondition} must have a matching retract operation`,
+                }),
               );
-              yield* hexaStore.assert(datom);
-              asserted.push(datomToTriple(datom));
-              break;
             }
-            case "retract": {
-              const ok = yield* hexaStore.retract(op.id, now, txId);
-              if (ok) retractedCount++;
-              break;
-            }
-            case "retract-pattern": {
-              const pat = patternToScan(op.pattern as unknown as Pattern);
-              const syncPat = hexaStore.scanCollect(pat);
-              const datoms = syncPat ?? (yield* hexaStore.scanCollectAsync(pat));
-              for (const datom of datoms) {
-                const ok = yield* hexaStore.retract(datom.tripleId, now, txId);
-                if (ok) retractedCount++;
+            const txId = yield* runtime.nextTxId;
+            const now = yield* runtime.now;
+            const position = yield* nextKvCommitPosition(tx);
+            const actor = meta?.actor ?? meta?.user;
+            const preconditionIds = livePreconditionIds(meta);
+            const asserted: Triple[] = [];
+            const changes: Array<{
+              readonly op: "assert" | "retract";
+              readonly tripleId: string;
+              readonly entityId: string;
+              readonly attribute: string;
+            }> = [];
+            let retractedCount = 0;
+
+            for (const op of operations) {
+              switch (op.op) {
+                case "assert": {
+                  const datom = tripleInputToDatom(
+                    {
+                      entityId: op.entityId,
+                      attribute: op.attribute,
+                      value: op.value,
+                      entityType: op.entityType,
+                      createdBy: actor,
+                    },
+                    yield* runtime.nextTripleId,
+                    txId,
+                    now,
+                  );
+                  yield* transactionStore.assert(datom);
+                  const triple = datomToTriple(datom);
+                  asserted.push(triple);
+                  changes.push({
+                    op: "assert",
+                    tripleId: triple.id,
+                    entityId: triple.entityId,
+                    attribute: triple.attribute,
+                  });
+                  break;
+                }
+                case "retract": {
+                  const current = yield* transactionStore.getById(op.id);
+                  const ok = yield* transactionStore.retract(op.id, now, txId);
+                  if (!ok && preconditionIds.has(op.id)) {
+                    return yield* Effect.fail(
+                      new TransactionConflictError({
+                        tripleId: op.id,
+                        message: `Expected live triple ${op.id}, but another transaction changed it`,
+                      }),
+                    );
+                  }
+                  if (ok) {
+                    retractedCount++;
+                    if (current) {
+                      changes.push({
+                        op: "retract",
+                        tripleId: current.tripleId,
+                        entityId: current.entity,
+                        attribute: current.attribute,
+                      });
+                    }
+                  }
+                  break;
+                }
+                case "retract-pattern": {
+                  const pat = patternToScan(op.pattern as unknown as Pattern);
+                  const scanned = yield* transactionStore.scanCollectAsync(pat);
+                  const datoms = op.pattern.entityType
+                    ? scanned.filter((datom) => datom.entityType === op.pattern.entityType)
+                    : scanned;
+                  for (const datom of datoms) {
+                    const ok = yield* transactionStore.retract(datom.tripleId, now, txId);
+                    if (ok) {
+                      retractedCount++;
+                      changes.push({
+                        op: "retract",
+                        tripleId: datom.tripleId,
+                        entityId: datom.entity,
+                        attribute: datom.attribute,
+                      });
+                    }
+                  }
+                  break;
+                }
               }
-              break;
             }
-          }
-        }
 
-        // Provenance datoms — mirror the SQL path so the README provenance
-        // example (`:_tx/instant`, `:_tx/user`) works on KV backends too.
-        yield* hexaStore.assert(
-          tripleInputToDatom(
-            {
-              entityId: txId,
-              attribute: TxAttributes.INSTANT,
-              value: { type: "datetime", value: now },
-              entityType: "_Transaction",
-            },
-            yield* runtime.nextTripleId,
-            txId,
-            now,
-          ),
-        );
+            for (const input of metadataInputs(txId, position, now, meta, changes)) {
+              yield* transactionStore.assert(
+                tripleInputToDatom(input, yield* runtime.nextTripleId, txId, now),
+              );
+            }
 
-        if (meta?.user) {
-          yield* hexaStore.assert(
-            tripleInputToDatom(
-              {
-                entityId: txId,
-                attribute: TxAttributes.USER,
-                value: { type: "string", value: meta.user },
-                entityType: "_Transaction",
-              },
-              yield* runtime.nextTripleId,
+            return {
               txId,
-              now,
-            ),
-          );
-        }
-
-        return {
-          txId,
-          triples: asserted,
-          retracted: retractedCount,
-        } satisfies TransactionResult;
-      }).pipe(
-        Effect.catch((e) =>
-          Effect.fail(new WriteError({ message: `Transact failed: ${String(e)}`, cause: e })),
+              position,
+              instant: now,
+              triples: asserted,
+              retracted: retractedCount,
+            } satisfies TransactionResult;
+          });
+        })
+        .pipe(
+          Effect.ensuring(Effect.sync(() => hexaStore.clearCache())),
+          Effect.catch((e) =>
+            e instanceof WriteError || e instanceof TransactionConflictError
+              ? Effect.fail(e)
+              : Effect.fail(new WriteError({ message: `Transact failed: ${String(e)}`, cause: e })),
+          ),
         ),
-      ),
 
     withTransaction: <A, E>(effect: Effect.Effect<A, E>) =>
       effect.pipe(
@@ -503,6 +581,45 @@ const makeKvTriplesService = Effect.gen(function* () {
           Effect.fail(new ReadError({ message: `History failed: ${String(e)}`, cause: e })),
         ),
       ),
+
+    transaction: (txId: string) =>
+      Effect.gen(function* () {
+        const datoms = yield* hexaStore.scanCollectAsync({ entity: txId });
+        return transactionRecordFromTriples(txId, datoms.map(datomToTriple));
+      }).pipe(
+        Effect.catch((e) =>
+          Effect.fail(
+            new ReadError({ message: `Transaction read failed: ${String(e)}`, cause: e }),
+          ),
+        ),
+      ),
+
+    transactions: (request = {}) => {
+      const after = request.after ?? 0;
+      const limit = request.limit ?? 100;
+      if (!Number.isSafeInteger(after) || after < 0) {
+        return Effect.fail(
+          new ReadError({ message: "Transaction cursor must be a non-negative integer" }),
+        );
+      }
+      if (!Number.isSafeInteger(limit) || limit < 1 || limit > 1_000) {
+        return Effect.fail(
+          new ReadError({ message: "Transaction page limit must be between 1 and 1000" }),
+        );
+      }
+      return match({ entityType: "_Transaction" }).pipe(
+        Effect.map((triples) => {
+          const page = transactionRecordsFromTriples(triples)
+            .filter((record) => record.position > after)
+            .slice(0, limit);
+          const last = page.at(-1);
+          return {
+            transactions: page,
+            ...(last ? { next: last.position } : {}),
+          };
+        }),
+      );
+    },
 
     // === Datalog reads =====================================================
 

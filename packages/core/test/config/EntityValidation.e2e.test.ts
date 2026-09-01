@@ -114,6 +114,19 @@ describe("entity validation observations", () => {
       ]);
 
       const thirdRun = yield* validation.revalidate({ ref: "live" });
+      expect(thirdRun.transaction).toBeDefined();
+      expect(yield* triples.transaction(thirdRun.transaction!.txId)).toEqual(
+        expect.objectContaining({
+          actor: "triplex/entity-validation",
+          configSnapshot: thirdRun.snapshotId,
+          changes: expect.arrayContaining([
+            expect.objectContaining({
+              op: "assert",
+              attribute: EntityValidation.System.attribute.result,
+            }),
+          ]),
+        }),
+      );
       expect(
         thirdRun.results.map(({ subject, valid, state }) => ({ subject, valid, state })),
       ).toEqual([

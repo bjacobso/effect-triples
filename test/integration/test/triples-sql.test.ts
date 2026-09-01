@@ -267,10 +267,19 @@ describe("Triples", () => {
           ]);
 
           expect(tx.txId).toBe("tx:det-2");
+          expect(tx.position).toBe(1);
+
+          const txPosition = yield* store.match({
+            entityId: tx.txId,
+            attribute: TxAttributes.POSITION,
+          });
+          expect(txPosition).toHaveLength(1);
+          expect(txPosition[0]!.id).toBe("triple:det-4");
+          expect(txPosition[0]!.value).toEqual({ type: "number", value: 1 });
 
           const txMeta = yield* store.match({ entityId: tx.txId, attribute: TxAttributes.INSTANT });
           expect(txMeta).toHaveLength(1);
-          expect(txMeta[0]!.id).toBe("triple:det-4");
+          expect(txMeta[0]!.id).toBe("triple:det-5");
           expect(txMeta[0]!.value).toEqual({ type: "datetime", value: 1020 });
 
           yield* store.retract(batch[0]!.id);

@@ -326,6 +326,23 @@ describe("SPARQL SQL Compiler", () => {
       expect(sql).toContain("*");
       expect(sql).toContain(`AS "?doubleAge"`);
     });
+
+    it("rejects unknown BIND operators at runtime", () => {
+      const query = {
+        form: "select",
+        select: { variables: ["?result"] },
+        where: [
+          {
+            bind: {
+              expr: { op: ") ; DROP TABLE triples; --", left: 1, right: 2 },
+              as: "?result",
+            },
+          },
+        ],
+      } as unknown as SparqlQuery;
+
+      expect(() => compile(query)).toThrow("Unknown BIND operator");
+    });
   });
 
   describe("ORDER BY compilation", () => {

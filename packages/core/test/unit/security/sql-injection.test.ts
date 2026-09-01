@@ -151,6 +151,21 @@ describe("SQL Injection Prevention", () => {
       expect(result.sql).toContain(">= ?");
       expect(result.params).toContain(5);
     });
+
+    it("should never interpolate find constants as SQL aliases", () => {
+      const payload = `value" FROM triples; DROP TABLE triples; --`;
+      const query: DatalogQuery = {
+        find: [payload],
+        where: [["?person", ":name", "Alice"]],
+      };
+
+      const result = compile(query);
+
+      expect(result.sql).not.toContain(payload);
+      expect(result.sql).toContain("AS _constant_0");
+      expect(result.params).toContain(payload);
+      expect(result.columnMap.get("_constant_0")).toBe(payload);
+    });
   });
 
   describe("Query with Rules", () => {

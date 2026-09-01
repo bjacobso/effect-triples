@@ -10,7 +10,12 @@
 import { Context, Data, Effect, Layer, Result, Schema, SchemaIssue } from "effect";
 
 import type { DatalogQuery } from "../datalog/types.js";
-import type { DatalogError, ReadError, WriteError } from "../errors/index.js";
+import type {
+  DatalogError,
+  ReadError,
+  TransactionConflictError,
+  WriteError,
+} from "../errors/index.js";
 import { Triples } from "../store/Triples.js";
 import type { TransactionResult } from "../store/Triples.js";
 import type { Triple, TransactOp } from "../Triple.js";
@@ -142,6 +147,7 @@ export class InvalidEntitySchemaError extends Data.TaggedError("InvalidEntitySch
 export type RevalidateError =
   | ReadError
   | WriteError
+  | TransactionConflictError
   | ConfigStore.LoadError
   | UnknownValidationRefError
   | InvalidEntitySchemaError
@@ -394,6 +400,7 @@ const makeService = Effect.gen(function* () {
       );
 
       const operations: TransactOp[] = [];
+      const preconditions: Array<{ readonly _tag: "TripleLive"; readonly id: string }> = [];
       const results: ValidationResult[] = [];
       const activeHeads = new Set<string>();
       const snapshotEntity = ConfigStore.entityId.snapshot(snapshot.id);
@@ -532,6 +539,9 @@ const makeService = Effect.gen(function* () {
           activeHeads.add(head);
           const oldTargets = rowsAt(refHeads.get(head) ?? [], System.attribute.result);
           if (!oldTargets.some((row) => stringValue(row) === resultEntity)) {
+            preconditions.push(
+              ...oldTargets.map((row) => ({ _tag: "TripleLive" as const, id: row.id as string })),
+            );
             operations.push(...oldTargets.map((row) => ({ op: "retract", id: row.id }) as const));
             if (!refHeads.has(head)) {
               operations.push(
@@ -561,6 +571,12 @@ const makeService = Effect.gen(function* () {
 
       for (const [head, rows] of refHeads) {
         if (activeHeads.has(head)) continue;
+        preconditions.push(
+          ...rowsAt(rows, System.attribute.result).map((row) => ({
+            _tag: "TripleLive" as const,
+            id: row.id as string,
+          })),
+        );
         operations.push(
           ...rowsAt(rows, System.attribute.result).map(
             (row) => ({ op: "retract", id: row.id }) as const,
@@ -605,7 +621,11 @@ const makeService = Effect.gen(function* () {
       const transaction =
         operations.length === 0
           ? undefined
-          : yield* triples.transact(operations, { user: "triplex/entity-validation" });
+          : yield* triples.transact(operations, {
+              actor: "triplex/entity-validation",
+              configSnapshot: snapshot.id,
+              preconditions,
+            });
       return {
         id: runId,
         ref,

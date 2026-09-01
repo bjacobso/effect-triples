@@ -9,7 +9,12 @@
 
 import { Context, Data, Effect, Layer } from "effect";
 
-import type { DatalogError, ReadError, WriteError } from "../errors/index.js";
+import type {
+  DatalogError,
+  ReadError,
+  TransactionConflictError,
+  WriteError,
+} from "../errors/index.js";
 import { Triples } from "../store/Triples.js";
 import type { TransactionResult } from "../store/Triples.js";
 import type { Triple, TransactOp } from "../Triple.js";
@@ -70,6 +75,7 @@ export type LoadError = ReadError | CorruptConfigStoreError;
 export type CommitError =
   | LoadError
   | WriteError
+  | TransactionConflictError
   | InMemoryConfigStore.DanglingRefError
   | InMemoryConfigStore.DuplicateObjectError
   | InMemoryConfigStore.UnknownSnapshotError
@@ -96,7 +102,7 @@ export interface ConfigStoreService {
     snapshotId: string,
   ) => Effect.Effect<
     InMemoryConfigStore.ConfigSnapshot,
-    LoadError | WriteError | InMemoryConfigStore.UnknownSnapshotError
+    LoadError | WriteError | TransactionConflictError | InMemoryConfigStore.UnknownSnapshotError
   >;
   readonly resolveRef: (
     name: string,
@@ -398,24 +404,37 @@ const makeService = Effect.gen(function* () {
       );
 
       if (input.ref) {
-        operations.push(
-          ...refOps(input.ref, committed.snapshot.id, yield* currentRefTriple(input.ref)),
+        const current = yield* currentRefTriple(input.ref);
+        operations.push(...refOps(input.ref, committed.snapshot.id, current));
+        const transaction = yield* triples.transact(operations, {
+          actor: "triplex/config-store",
+          configSnapshot: committed.snapshot.id,
+          ...(current ? { preconditions: [{ _tag: "TripleLive" as const, id: current.id }] } : {}),
+        });
+        const store = yield* InMemoryConfigStore.setRef(
+          committed.store,
+          input.ref,
+          committed.snapshot.id,
         );
+        return { ...committed, store, transaction };
       }
 
-      const transaction = yield* triples.transact(operations, { user: "triplex/config-store" });
-      const store = input.ref
-        ? yield* InMemoryConfigStore.setRef(committed.store, input.ref, committed.snapshot.id)
-        : committed.store;
-      return { ...committed, store, transaction };
+      const transaction = yield* triples.transact(operations, {
+        actor: "triplex/config-store",
+        configSnapshot: committed.snapshot.id,
+      });
+      return { ...committed, store: committed.store, transaction };
     });
 
   const setRef: ConfigStoreService["setRef"] = (name, snapshotId) =>
     Effect.gen(function* () {
       const store = yield* load();
       const next = yield* InMemoryConfigStore.setRef(store, name, snapshotId);
-      yield* triples.transact(refOps(name, snapshotId, yield* currentRefTriple(name)), {
-        user: "triplex/config-store",
+      const current = yield* currentRefTriple(name);
+      yield* triples.transact(refOps(name, snapshotId, current), {
+        actor: "triplex/config-store",
+        configSnapshot: snapshotId,
+        ...(current ? { preconditions: [{ _tag: "TripleLive" as const, id: current.id }] } : {}),
       });
       return InMemoryConfigStore.resolveRef(next, name)!;
     });

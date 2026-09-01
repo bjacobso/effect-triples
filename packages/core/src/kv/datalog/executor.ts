@@ -296,123 +296,112 @@ const bfsTraverse = (
  *    b. New delta = new facts not in cumulative result
  *    c. Merge delta into cumulative result
  */
+interface RulePair {
+  readonly arg1: Constant | null;
+  readonly arg2: Constant | null;
+}
+
+const ruleHeadVariables = (rule: Rule): readonly [string, string] | null => {
+  let arg1: string | undefined;
+  let arg2: string | undefined;
+  for (const clause of rule.body) {
+    if (isRuleApplication(clause)) {
+      if (!arg1 && isVariable(clause[1])) arg1 = clause[1];
+      if (isVariable(clause[2])) arg2 = clause[2];
+    } else {
+      if (!arg1 && isVariable(clause[0])) arg1 = clause[0];
+      if (isVariable(clause[2])) arg2 = clause[2];
+    }
+  }
+  return arg1 && arg2 ? [arg1, arg2] : null;
+};
+
+const normalizedRuleConstant = (value: Constant | null): Constant | null =>
+  typeof value === "object" && value !== null && "type" in value ? value.value : value;
+
+const bindRuleTerm = (term: Term, value: Constant | null, context: Context): Context | null => {
+  const normalized = normalizedRuleConstant(value);
+  if (isVariable(term)) {
+    return term in context
+      ? normalizedRuleConstant(context[term]!) === normalized
+        ? context
+        : null
+      : { ...context, [term]: normalized };
+  }
+  return normalizedRuleConstant(term) === normalized ? context : null;
+};
+
+const applyRulePairs = (
+  contexts: readonly Context[],
+  application: RuleApplication,
+  pairs: readonly RulePair[],
+): Context[] => {
+  const [, arg1, arg2] = application;
+  const results: Context[] = [];
+  for (const context of contexts) {
+    for (const pair of pairs) {
+      const withArg1 = bindRuleTerm(arg1, pair.arg1, context);
+      if (withArg1 === null) continue;
+      const withArg2 = bindRuleTerm(arg2, pair.arg2, withArg1);
+      if (withArg2 !== null) results.push(withArg2);
+    }
+  }
+  return results;
+};
+
+const deriveRulePairs = (
+  store: KvTripleStore,
+  rules: readonly Rule[],
+  ruleName: string,
+): Effect.Effect<RulePair[]> =>
+  Effect.gen(function* () {
+    const definitions = rules.filter((rule) => rule.name === ruleName);
+    if (definitions.length === 0) return [];
+
+    const maxDepth = Math.max(...definitions.map((rule) => rule.maxDepth ?? 50));
+    const pairs: RulePair[] = [];
+    const seen = new Set<string>();
+
+    // Iteration zero derives base facts. Each later iteration may extend them
+    // through same-named recursive applications until the relation stabilizes.
+    for (let depth = 0; depth <= maxDepth; depth++) {
+      const discovered: RulePair[] = [];
+      for (const definition of definitions) {
+        const head = ruleHeadVariables(definition);
+        if (head === null) continue;
+        let current: Context[] = [emptyContext];
+        for (const clause of definition.body) {
+          current = isRuleApplication(clause)
+            ? clause[0] === ruleName
+              ? applyRulePairs(current, clause, pairs)
+              : []
+            : yield* executePattern(store, clause as PatternClause, current);
+          if (current.length === 0) break;
+        }
+        for (const context of current) {
+          const pair = { arg1: context[head[0]]!, arg2: context[head[1]]! };
+          const key = JSON.stringify([pair.arg1, pair.arg2]);
+          if (!seen.has(key)) {
+            seen.add(key);
+            discovered.push(pair);
+          }
+        }
+      }
+      if (discovered.length === 0) break;
+      pairs.push(...discovered);
+    }
+    return pairs;
+  });
+
 const executeRules = (
   store: KvTripleStore,
   rules: readonly Rule[],
   contexts: readonly Context[],
   ruleApplication: RuleApplication,
-): Effect.Effect<Context[]> => {
-  const [ruleName, arg1, arg2] = ruleApplication;
-  const rule = rules.find((r) => r.name === ruleName);
-
-  if (!rule) {
-    return Effect.succeed([...contexts]);
-  }
-
-  const maxDepth = rule.maxDepth ?? 50;
-
-  return Effect.gen(function* () {
-    // Build the initial set of facts by evaluating rule body clauses
-    // against the store
-    let cumulative: Context[] = [];
-    let delta: Context[] = [];
-
-    // Initial evaluation: run all body clauses
-    const initialResults = yield* evaluateRuleBody(store, rule, contexts, rules);
-    delta = initialResults;
-    cumulative = [...delta];
-
-    // Iterate until fixpoint
-    for (let i = 0; i < maxDepth && delta.length > 0; i++) {
-      const newResults = yield* evaluateRuleBody(store, rule, delta, rules);
-
-      // Compute new delta: facts not already in cumulative
-      const seenKeys = new Set(cumulative.map((ctx) => JSON.stringify(ctx)));
-      const newDelta: Context[] = [];
-
-      for (const ctx of newResults) {
-        const key = JSON.stringify(ctx);
-        if (!seenKeys.has(key)) {
-          seenKeys.add(key);
-          newDelta.push(ctx);
-        }
-      }
-
-      delta = newDelta;
-      cumulative.push(...delta);
-    }
-
-    // Now bind rule results to the application's arguments
-    const results: Context[] = [];
-
-    for (const outerCtx of contexts) {
-      for (const ruleCtx of cumulative) {
-        // Rule body variables don't necessarily map to the application args
-        // The rule body's first pattern's entity/value should map to arg1/arg2
-        // We use a convention: rule body uses internal variables, and the
-        // first and second terms are the "input" and "output" of the rule
-        let ctx: Context | null = { ...outerCtx };
-
-        // Bind arg1 from the rule result
-        if (isVariable(arg1)) {
-          const firstVar = Object.keys(ruleCtx)[0];
-          if (firstVar && ruleCtx[firstVar] !== undefined) {
-            if (arg1 in ctx) {
-              if (ctx[arg1] !== ruleCtx[firstVar]) ctx = null;
-            } else {
-              ctx = ctx ? { ...ctx, [arg1]: ruleCtx[firstVar]! } : null;
-            }
-          }
-        }
-
-        // Bind arg2 from the rule result
-        if (ctx !== null && isVariable(arg2)) {
-          const vars = Object.keys(ruleCtx);
-          const secondVar = vars[1];
-          if (secondVar && ruleCtx[secondVar] !== undefined) {
-            if (arg2 in ctx) {
-              if (ctx[arg2] !== ruleCtx[secondVar]) ctx = null;
-            } else {
-              ctx = ctx ? { ...ctx, [arg2]: ruleCtx[secondVar]! } : null;
-            }
-          }
-        }
-
-        if (ctx !== null) {
-          results.push(ctx);
-        }
-      }
-    }
-
-    return results;
-  });
-};
-
-/**
- * Evaluate a rule's body clauses against the store.
- */
-const evaluateRuleBody = (
-  store: KvTripleStore,
-  rule: Rule,
-  contexts: readonly Context[],
-  allRules: readonly Rule[],
-): Effect.Effect<Context[]> => {
-  return Effect.gen(function* () {
-    let current: Context[] = [...contexts];
-
-    for (const clause of rule.body) {
-      if (isPatternClause(clause)) {
-        current = yield* executePattern(store, clause as PatternClause, current);
-      } else if (isRuleApplication(clause)) {
-        current = yield* executeRules(store, allRules, current, clause as RuleApplication);
-      }
-
-      if (current.length === 0) break;
-    }
-
-    return current;
-  });
-};
+): Effect.Effect<Context[]> =>
+  deriveRulePairs(store, rules, ruleApplication[0]).pipe(
+    Effect.map((pairs) => applyRulePairs(contexts, ruleApplication, pairs)),
+  );
 
 // ─── Main clause dispatcher ────────────────────────────────────────────────
 

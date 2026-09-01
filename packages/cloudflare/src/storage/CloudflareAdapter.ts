@@ -10,7 +10,7 @@
  * - Batching inserts within transactions for atomicity
  */
 
-import { Effect, Layer } from "effect";
+import { Cause, Effect, Exit, Layer } from "effect";
 import {
   StorageAdapter,
   type StorageAdapterService,
@@ -47,6 +47,12 @@ interface SqlStorage {
     query: string,
     ...params: SqlStorageValue[]
   ): SqlStorageCursor<T>;
+}
+
+class TransactionRollback extends Error {
+  constructor(readonly effectCause: Cause.Cause<unknown>) {
+    super("Triplex transaction effect failed");
+  }
 }
 
 /**
@@ -100,18 +106,44 @@ export function makeCloudflareAdapter(ctx: DOState): StorageAdapterService {
    *
    * @param effect - The effect to execute within the transaction. MUST be synchronous.
    */
-  const withTransaction: StorageAdapterService["withTransaction"] = (effect) =>
+  const withTransaction = <A, E>(effect: Effect.Effect<A, E>): Effect.Effect<A, E | WriteError> =>
+    Effect.suspend<A, E | WriteError, never>(() => {
+      try {
+        const value = ctx.storage.transactionSync(() => {
+          const exit = Effect.runSyncExit(effect);
+          if (Exit.isFailure(exit)) throw new TransactionRollback(exit.cause);
+          return exit.value;
+        });
+        return Effect.succeed(value);
+      } catch (error) {
+        if (error instanceof TransactionRollback) {
+          return Effect.failCause(error.effectCause as Cause.Cause<E>);
+        }
+        return Effect.fail(
+          new WriteError({
+            message: `Transaction failed: ${String(error)}`,
+            cause: error,
+          }),
+        );
+      }
+    });
+
+  const nextCommitPosition: StorageAdapterService["nextCommitPosition"] = () =>
     Effect.try({
       try: () => {
-        // Use Cloudflare's native transactionSync for atomicity
-        return ctx.storage.transactionSync(() => {
-          // Run the effect synchronously within the transaction
-          return Effect.runSync(effect);
-        });
+        const rows = sqlStorage
+          .exec<{ readonly position: number }>(
+            `INSERT INTO triplex_commit_position (singleton, position)
+             VALUES (1, 1)
+             ON CONFLICT(singleton) DO UPDATE SET position = position + 1
+             RETURNING position`,
+          )
+          .toArray();
+        return Number(rows[0]!.position);
       },
       catch: (error) =>
         new WriteError({
-          message: `Transaction failed: ${String(error)}`,
+          message: `Failed to allocate commit position: ${String(error)}`,
           cause: error,
         }),
     });
@@ -248,12 +280,13 @@ export function makeCloudflareAdapter(ctx: DOState): StorageAdapterService {
   const retract: StorageAdapterService["retract"] = (id, timestamp, txId) =>
     Effect.try({
       try: () => {
-        sqlStorage.exec(
+        const cursor = sqlStorage.exec(
           `UPDATE triples SET retracted_at = ?, retract_tx_id = ? WHERE id = ? AND retracted_at IS NULL`,
           timestamp,
           txId ?? null,
           id,
         );
+        return cursor.rowsWritten > 0;
       },
       catch: (error) =>
         new WriteError({
@@ -487,6 +520,7 @@ export function makeCloudflareAdapter(ctx: DOState): StorageAdapterService {
 
   return {
     withTransaction,
+    nextCommitPosition,
     insert,
     batchInsert,
     retract,

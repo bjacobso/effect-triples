@@ -31,6 +31,17 @@ export class TransactionError extends Data.TaggedError("TransactionError")<{
   readonly cause?: unknown;
 }> {}
 
+/**
+ * A transaction's compare-and-retract condition no longer matched.
+ *
+ * This is a normal concurrency outcome, not storage corruption. Callers may
+ * reload the current facts and retry their command.
+ */
+export class TransactionConflictError extends Data.TaggedError("TransactionConflictError")<{
+  readonly tripleId: string;
+  readonly message: string;
+}> {}
+
 // Read operation errors
 export class ReadError extends Data.TaggedError("ReadError")<{
   readonly message: string;
@@ -140,7 +151,8 @@ export type WriteErrorUnion =
   | WriteError
   | DuplicateTripleError
   | InvalidTripleError
-  | TransactionError;
+  | TransactionError
+  | TransactionConflictError;
 
 export type ReadErrorUnion = ReadError | EntityNotFoundError | TripleNotFoundError;
 

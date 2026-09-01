@@ -8,6 +8,7 @@ import {
   ENTITY_BLOBS_TABLE_DDL,
   ENTITY_SNAPSHOTS_TABLE_DDL,
   SNAPSHOT_INDEX_DDLS,
+  COMMIT_POSITION_TABLE_DDL,
 } from "./schema.js";
 
 export interface Migration {
@@ -134,6 +135,11 @@ export const migrations: readonly Migration[] = [
     version: 21,
     name: "remove_legacy_fnv_snapshot_blobs",
     up: `DELETE FROM entity_blobs WHERE hash LIKE 'fnv1a:%'`,
+  },
+  {
+    version: 22,
+    name: "create_commit_position",
+    up: COMMIT_POSITION_TABLE_DDL,
   },
 ];
 

@@ -10,7 +10,7 @@
  */
 
 import { Effect } from "effect";
-import { ref, string, Triples, type EntityId } from "@bjacobso/triplex";
+import { ref, string, TransactionConflictError, Triples, type EntityId } from "@bjacobso/triplex";
 
 // ─── Lightweight fixture descriptors (unchanged) ────────────────────────────
 
@@ -72,6 +72,27 @@ export const triplesConformanceCases: readonly ConformanceCase[] = [
 
       const entity = yield* t.entity("conf:person:1" as EntityId);
       yield* check(entity.length >= 1, "entity should return the asserted triple");
+    }),
+  },
+  {
+    name: "same-value facts in one batch keep distinct identities",
+    run: Effect.gen(function* () {
+      const t = yield* Triples;
+      const input = {
+        entityId: "conf:duplicate:1",
+        attribute: ":conf/value",
+        value: string("same"),
+      } as const;
+      const asserted = yield* t.assertBatch([input, input]);
+      const matched = yield* t.match({
+        entityId: input.entityId,
+        attribute: input.attribute,
+        value: input.value,
+      });
+      yield* check(
+        asserted[0]?.id !== asserted[1]?.id && matched.length === 2,
+        "same-value facts in one transaction must not overwrite an index entry",
+      );
     }),
   },
   {
@@ -261,6 +282,123 @@ export const triplesConformanceCases: readonly ConformanceCase[] = [
       yield* check(
         attributes.has(":_tx/user"),
         "transact should write a :_tx/user provenance datom when a user is given",
+      );
+    }),
+  },
+  {
+    name: "conditional transactions are atomic and journal their changes",
+    run: Effect.gen(function* () {
+      const t = yield* Triples;
+      const current = yield* t.assert({
+        entityId: "conf:conditional:1",
+        attribute: ":status",
+        value: string("open"),
+      });
+      const committed = yield* t.transact(
+        [
+          { op: "retract", id: current.id },
+          {
+            op: "assert",
+            entityId: "conf:conditional:1",
+            attribute: ":status",
+            value: string("claimed"),
+          },
+        ],
+        {
+          actor: "conformance-tester",
+          commandId: "conf:claim:1",
+          preconditions: [{ _tag: "TripleLive", id: current.id }],
+        },
+      );
+      const conflict = yield* t
+        .transact(
+          [
+            { op: "retract", id: current.id },
+            {
+              op: "assert",
+              entityId: "conf:conditional:1",
+              attribute: ":status",
+              value: string("cancelled"),
+            },
+          ],
+          { preconditions: [{ _tag: "TripleLive", id: current.id }] },
+        )
+        .pipe(Effect.flip);
+      yield* check(
+        conflict instanceof TransactionConflictError,
+        "a stale compare-and-retract should report TransactionConflictError",
+      );
+      const statuses = yield* t.match({
+        entityId: "conf:conditional:1",
+        attribute: ":status",
+      });
+      yield* check(
+        statuses.length === 1 &&
+          statuses[0]!.value.type === "string" &&
+          statuses[0]!.value.value === "claimed",
+        "a rejected stale transaction must not commit any writes",
+      );
+      const journal = yield* t.transaction(committed.txId);
+      yield* check(
+        journal?.position === committed.position &&
+          journal.commandId === "conf:claim:1" &&
+          journal.changes.length === 2,
+        "the transaction journal should retain its causal metadata and changes",
+      );
+      const page = yield* t.transactions({ after: committed.position - 1, limit: 1 });
+      yield* check(
+        page.transactions[0]?.txId === committed.txId && page.next === committed.position,
+        "transaction journals should be resumable from an ordered commit position",
+      );
+    }),
+  },
+  {
+    name: "retractByPattern respects entityType",
+    run: Effect.gen(function* () {
+      const t = yield* Triples;
+      yield* t.assertBatch([
+        {
+          entityId: "conf:typed-retract:person",
+          attribute: ":name",
+          value: string("Person"),
+          entityType: "Person",
+        },
+        {
+          entityId: "conf:typed-retract:robot",
+          attribute: ":name",
+          value: string("Robot"),
+          entityType: "Robot",
+        },
+      ]);
+
+      const retracted = yield* t.retractByPattern({ entityType: "Person" });
+      const person = yield* t.match({ entityId: "conf:typed-retract:person" });
+      const robot = yield* t.match({ entityId: "conf:typed-retract:robot" });
+      yield* check(retracted >= 1, "entityType retraction should retract matching facts");
+      yield* check(person.length === 0, "entityType retraction should remove matching facts");
+      yield* check(robot.length === 1, "entityType retraction must preserve other entity types");
+
+      yield* t.assertBatch([
+        {
+          entityId: "conf:typed-retract:transaction-person",
+          attribute: ":name",
+          value: string("Person"),
+          entityType: "TransactionPerson",
+        },
+        {
+          entityId: "conf:typed-retract:transaction-robot",
+          attribute: ":name",
+          value: string("Robot"),
+          entityType: "TransactionRobot",
+        },
+      ]);
+      yield* t.transact([{ op: "retract-pattern", pattern: { entityType: "TransactionPerson" } }]);
+      const transactionRobot = yield* t.match({
+        entityId: "conf:typed-retract:transaction-robot",
+      });
+      yield* check(
+        transactionRobot.length === 1,
+        "transaction retract-pattern must preserve other entity types",
       );
     }),
   },

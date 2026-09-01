@@ -58,6 +58,17 @@ export const MIGRATIONS_TABLE_DDL = `
   )
 `;
 
+/**
+ * Single-row counter used to assign a total order to committed transactions.
+ * The increment occurs inside the same backend transaction as the fact writes.
+ */
+export const COMMIT_POSITION_TABLE_DDL = `
+  CREATE TABLE IF NOT EXISTS triplex_commit_position (
+    singleton INTEGER PRIMARY KEY,
+    position BIGINT NOT NULL
+  )
+`;
+
 // =============================================================================
 // Index Definitions
 // =============================================================================

@@ -15,6 +15,8 @@ import { WriteError, ReadError, MigrationError } from "../errors/index.js";
  */
 export interface StorageAdapterService {
   readonly withTransaction: <A, E>(effect: Effect.Effect<A, E>) => Effect.Effect<A, E | WriteError>;
+  /** Allocate the next ordered commit position inside the current transaction. */
+  readonly nextCommitPosition: () => Effect.Effect<number, WriteError>;
   readonly insert: (
     input: TripleInput,
     txId: string | null,
@@ -31,7 +33,7 @@ export interface StorageAdapterService {
     id: string,
     timestamp: number,
     txId?: string,
-  ) => Effect.Effect<void, WriteError>;
+  ) => Effect.Effect<boolean, WriteError>;
   readonly getById: (id: string) => Effect.Effect<TripleRow | null, ReadError>;
   readonly getByEntity: (entityId: string) => Effect.Effect<readonly TripleRow[], ReadError>;
   readonly query: (pattern: QueryPattern) => Effect.Effect<readonly TripleRow[], ReadError>;

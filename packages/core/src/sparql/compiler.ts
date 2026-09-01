@@ -940,10 +940,18 @@ const compileBindExpression = (expr: BindExpression, ctx: CompilerContext): stri
 
     if ("op" in expr) {
       const mathExpr = expr as {
-        op: "+" | "-" | "*" | "/";
+        op: unknown;
         left: BindExpression;
         right: BindExpression;
       };
+      if (
+        mathExpr.op !== "+" &&
+        mathExpr.op !== "-" &&
+        mathExpr.op !== "*" &&
+        mathExpr.op !== "/"
+      ) {
+        throw new Error(`Unknown BIND operator: ${String(mathExpr.op)}`);
+      }
       const left = compileBindExpression(mathExpr.left, ctx);
       const right = compileBindExpression(mathExpr.right, ctx);
       return `(${left} ${mathExpr.op} ${right})`;

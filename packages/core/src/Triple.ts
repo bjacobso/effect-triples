@@ -114,11 +114,23 @@ export const TransactOp = Schema.Union([
 ]);
 export type TransactOp = typeof TransactOp.Type;
 
+export const TransactionPrecondition = Schema.Struct({
+  _tag: Schema.Literal("TripleLive"),
+  id: Schema.String,
+});
+export type TransactionPrecondition = typeof TransactionPrecondition.Type;
+
 export const TransactRequest = Schema.Struct({
   operations: Schema.Array(TransactOp),
   meta: Schema.optional(
     Schema.Struct({
       user: Schema.optional(Schema.String),
+      actor: Schema.optional(Schema.String),
+      commandId: Schema.optional(Schema.String),
+      correlationId: Schema.optional(Schema.String),
+      causationId: Schema.optional(Schema.String),
+      configSnapshot: Schema.optional(Schema.String),
+      preconditions: Schema.optional(Schema.Array(TransactionPrecondition)),
     }),
   ),
 });

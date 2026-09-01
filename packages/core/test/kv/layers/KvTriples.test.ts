@@ -6,8 +6,13 @@
  */
 
 import { describe, expect, it } from "vitest";
-import { Effect } from "effect";
-import { KvTriples, Triples } from "../../../src/index.js";
+import { Effect, Layer } from "effect";
+import { KvTriples, TransactionConflictError, Triples } from "../../../src/index.js";
+import type { TripleId } from "../../../src/Branded.js";
+import { makeTestKvBackend } from "../../../src/kv/kv/InMemoryKvBackend.js";
+import { KvBackend } from "../../../src/kv/kv/KvBackend.js";
+import { KvTriplesLive } from "../../../src/kv/layers/KvTriplesLive.js";
+import { TripleStoreRuntime } from "../../../src/store/TripleStoreRuntime.js";
 
 const run = <A, E>(effect: Effect.Effect<A, E, Triples>): Promise<A> =>
   Effect.runPromise(effect.pipe(Effect.provide(KvTriples.layer)));
@@ -37,7 +42,7 @@ describe("KvTriples (merged service)", () => {
     expect(result.names).toContain("Alice");
   });
 
-  it("transact writes :_tx/instant and :_tx/user provenance datoms", async () => {
+  it("transact writes ordered provenance datoms", async () => {
     const attrs = await run(
       Effect.gen(function* () {
         const t = yield* Triples;
@@ -59,7 +64,170 @@ describe("KvTriples (merged service)", () => {
     );
 
     expect(attrs).toContain(":_tx/instant");
+    expect(attrs).toContain(":_tx/position");
     expect(attrs).toContain(":_tx/user");
+  });
+
+  it("pages transaction journals from a durable commit position", async () => {
+    const result = await run(
+      Effect.gen(function* () {
+        const t = yield* Triples;
+        const first = yield* t.transact([
+          {
+            op: "assert",
+            entityId: "event:1",
+            attribute: ":event/name",
+            value: { type: "string", value: "first" },
+          },
+        ]);
+        const second = yield* t.transact([
+          {
+            op: "assert",
+            entityId: "event:2",
+            attribute: ":event/name",
+            value: { type: "string", value: "second" },
+          },
+        ]);
+        return {
+          first,
+          second,
+          page: yield* t.transactions({ after: first.position, limit: 1 }),
+          empty: yield* t.transactions({ after: second.position }),
+        };
+      }),
+    );
+
+    expect(result.second.position).toBe(result.first.position + 1);
+    expect(result.page.transactions.map((record) => record.txId)).toEqual([result.second.txId]);
+    expect(result.page.next).toBe(result.second.position);
+    expect(result.empty).toEqual({ transactions: [] });
+  });
+
+  it("persists a causal transaction journal and rejects stale replacements", async () => {
+    const result = await run(
+      Effect.gen(function* () {
+        const t = yield* Triples;
+        const current = yield* t.assert({
+          entityId: "task:1",
+          attribute: ":task/status",
+          value: { type: "string", value: "open" },
+        });
+        const committed = yield* t.transact(
+          [
+            { op: "retract", id: current.id },
+            {
+              op: "assert",
+              entityId: "task:1",
+              attribute: ":task/status",
+              value: { type: "string", value: "claimed" },
+            },
+          ],
+          {
+            actor: "agent:worker-7",
+            commandId: "claim:task:1",
+            correlationId: "routine:42",
+            causationId: "event:41",
+            configSnapshot: "sha256:config",
+            preconditions: [{ _tag: "TripleLive", id: current.id }],
+          },
+        );
+        const conflict = yield* t
+          .transact(
+            [
+              { op: "retract", id: current.id },
+              {
+                op: "assert",
+                entityId: "task:1",
+                attribute: ":task/status",
+                value: { type: "string", value: "cancelled" },
+              },
+            ],
+            { preconditions: [{ _tag: "TripleLive", id: current.id }] },
+          )
+          .pipe(Effect.flip);
+        return {
+          currentId: current.id,
+          conflict,
+          journal: yield* t.transaction(committed.txId),
+          status: yield* t.match({ entityId: "task:1", attribute: ":task/status" }),
+        };
+      }),
+    );
+
+    expect(result.conflict).toBeInstanceOf(TransactionConflictError);
+    expect(result.status.map((triple) => triple.value)).toEqual([
+      { type: "string", value: "claimed" },
+    ]);
+    expect(result.journal).toEqual(
+      expect.objectContaining({
+        actor: "agent:worker-7",
+        commandId: "claim:task:1",
+        correlationId: "routine:42",
+        causationId: "event:41",
+        configSnapshot: "sha256:config",
+        changes: expect.arrayContaining([
+          expect.objectContaining({ op: "retract", tripleId: result.currentId }),
+          expect.objectContaining({ op: "assert", entityId: "task:1" }),
+        ]),
+      }),
+    );
+  });
+
+  it("rolls back every KV write when a transaction dies partway through", async () => {
+    let generated = 0;
+    const layer = KvTriplesLive.pipe(
+      Layer.provide(Layer.succeed(KvBackend, makeTestKvBackend())),
+      Layer.provide(
+        Layer.succeed(TripleStoreRuntime, {
+          now: Effect.succeed(1_800_000_000_000),
+          nextTxId: Effect.succeed("_tx/01AAAAAAAAAAAAAAAAAAAAAAAA"),
+          nextTripleId: Effect.sync(() => {
+            generated++;
+            if (generated === 2) throw new Error("injected id failure");
+            return `01${String(generated).padStart(24, "A")}` as TripleId;
+          }),
+        }),
+      ),
+    );
+
+    const result = await Effect.runPromise(
+      Effect.gen(function* () {
+        const t = yield* Triples;
+        yield* Effect.exit(
+          t.transact([
+            {
+              op: "assert",
+              entityId: "partial:1",
+              attribute: ":value",
+              value: { type: "string", value: "first" },
+            },
+            {
+              op: "assert",
+              entityId: "partial:2",
+              attribute: ":value",
+              value: { type: "string", value: "second" },
+            },
+          ]),
+        );
+        const committed = yield* t.transact([
+          {
+            op: "assert",
+            entityId: "complete:1",
+            attribute: ":value",
+            value: { type: "string", value: "complete" },
+          },
+        ]);
+        return {
+          committed,
+          partial: yield* t.match({ entityId: "partial:1" }),
+          complete: yield* t.match({ entityId: "complete:1" }),
+        };
+      }).pipe(Effect.provide(layer)),
+    );
+
+    expect(result.partial).toEqual([]);
+    expect(result.complete).toHaveLength(1);
+    expect(result.committed.position).toBe(1);
   });
 
   // Regression: retracts must invalidate the same hexastore cache used by
@@ -97,6 +265,8 @@ describe("KvTriples (merged service)", () => {
         yield* t.assertBatch([
           { entityId: "a", attribute: ":parent", value: { type: "ref", value: "b" } },
           { entityId: "b", attribute: ":parent", value: { type: "ref", value: "c" } },
+          { entityId: "c", attribute: ":parent", value: { type: "ref", value: "d" } },
+          { entityId: "unrelated", attribute: ":parent", value: { type: "ref", value: "other" } },
         ]);
 
         const { results } = yield* t.query({
@@ -117,8 +287,6 @@ describe("KvTriples (merged service)", () => {
       }),
     );
 
-    // a's ancestors are b and c (transitively).
-    expect(ancestors).toContain("b");
-    expect(ancestors).toContain("c");
+    expect(ancestors).toEqual(["b", "c", "d"]);
   });
 });

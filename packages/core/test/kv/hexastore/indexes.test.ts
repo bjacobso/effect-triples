@@ -53,24 +53,25 @@ describe("key construction", () => {
   const attr = tString(":employee/name");
   const value = tString("Alice");
   const txId = tString("tx:1");
+  const tripleId = tString("triple:1");
 
   it("eavtKey starts with EAVT prefix", () => {
-    const key = eavtKey(entity, attr, value, txId);
+    const key = eavtKey(entity, attr, value, txId, tripleId);
     expect(startsWith(key, EAVT_PREFIX)).toBe(true);
   });
 
   it("aevtKey starts with AEVT prefix", () => {
-    const key = aevtKey(attr, entity, value, txId);
+    const key = aevtKey(attr, entity, value, txId, tripleId);
     expect(startsWith(key, AEVT_PREFIX)).toBe(true);
   });
 
   it("avetKey starts with AVET prefix", () => {
-    const key = avetKey(attr, value, entity, txId);
+    const key = avetKey(attr, value, entity, txId, tripleId);
     expect(startsWith(key, AVET_PREFIX)).toBe(true);
   });
 
   it("vaetKey starts with VAET prefix", () => {
-    const key = vaetKey(value, attr, entity, txId);
+    const key = vaetKey(value, attr, entity, txId, tripleId);
     expect(startsWith(key, VAET_PREFIX)).toBe(true);
   });
 
@@ -79,36 +80,36 @@ describe("key construction", () => {
     expect(startsWith(key, META_PREFIX)).toBe(true);
   });
 
-  it("eavtKey contains encoded (entity, attr, value, txId)", () => {
-    const key = eavtKey(entity, attr, value, txId);
+  it("eavtKey contains encoded (entity, attr, value, txId, tripleId)", () => {
+    const key = eavtKey(entity, attr, value, txId, tripleId);
     // Skip prefix byte, decode the rest
     const parts = decodeTuple(key.slice(1));
-    expect(parts).toEqual([entity, attr, value, txId]);
+    expect(parts).toEqual([entity, attr, value, txId, tripleId]);
   });
 
   it("aevtKey contains encoded (attr, entity, value, txId)", () => {
-    const key = aevtKey(attr, entity, value, txId);
+    const key = aevtKey(attr, entity, value, txId, tripleId);
     const parts = decodeTuple(key.slice(1));
-    expect(parts).toEqual([attr, entity, value, txId]);
+    expect(parts).toEqual([attr, entity, value, txId, tripleId]);
   });
 
   it("avetKey contains encoded (attr, value, entity, txId)", () => {
-    const key = avetKey(attr, value, entity, txId);
+    const key = avetKey(attr, value, entity, txId, tripleId);
     const parts = decodeTuple(key.slice(1));
-    expect(parts).toEqual([attr, value, entity, txId]);
+    expect(parts).toEqual([attr, value, entity, txId, tripleId]);
   });
 
   it("vaetKey contains encoded (value, attr, entity, txId)", () => {
-    const key = vaetKey(value, attr, entity, txId);
+    const key = vaetKey(value, attr, entity, txId, tripleId);
     const parts = decodeTuple(key.slice(1));
-    expect(parts).toEqual([value, attr, entity, txId]);
+    expect(parts).toEqual([value, attr, entity, txId, tripleId]);
   });
 
   it("keys from different indexes sort into separate ranges", () => {
-    const eavt = eavtKey(entity, attr, value, txId);
-    const aevt = aevtKey(attr, entity, value, txId);
-    const avet = avetKey(attr, value, entity, txId);
-    const vaet = vaetKey(value, attr, entity, txId);
+    const eavt = eavtKey(entity, attr, value, txId, tripleId);
+    const aevt = aevtKey(attr, entity, value, txId, tripleId);
+    const avet = avetKey(attr, value, entity, txId, tripleId);
+    const vaet = vaetKey(value, attr, entity, txId, tripleId);
 
     // EAVT < AEVT < AVET < VAET (by prefix byte)
     expect(compare(eavt, aevt)).toBeLessThan(0);
@@ -117,8 +118,8 @@ describe("key construction", () => {
   });
 
   it("eavtKeys for same entity sort by attribute", () => {
-    const k1 = eavtKey(entity, tString(":employee/age"), tNumber(30), txId);
-    const k2 = eavtKey(entity, tString(":employee/name"), tString("Alice"), txId);
+    const k1 = eavtKey(entity, tString(":employee/age"), tNumber(30), txId, tripleId);
+    const k2 = eavtKey(entity, tString(":employee/name"), tString("Alice"), txId, tripleId);
     // ":employee/age" < ":employee/name" lexicographically
     expect(compare(k1, k2)).toBeLessThan(0);
   });
@@ -216,7 +217,13 @@ describe("prefixRange", () => {
     expect(compare(start, end)).toBeLessThan(0);
 
     // A key with more components after the prefix should be in range
-    const fullKey = eavtKey(entity, tString(":name"), tString("Alice"), tString("tx:1"));
+    const fullKey = eavtKey(
+      entity,
+      tString(":name"),
+      tString("Alice"),
+      tString("tx:1"),
+      tString("triple:1"),
+    );
     expect(compare(fullKey, start)).toBeGreaterThanOrEqual(0);
     expect(compare(fullKey, end)).toBeLessThan(0);
   });

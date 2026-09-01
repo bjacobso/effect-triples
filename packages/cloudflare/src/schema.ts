@@ -34,6 +34,13 @@ export const MIGRATIONS_TABLE_DDL = `
   )
 `;
 
+export const COMMIT_POSITION_TABLE_DDL = `
+  CREATE TABLE IF NOT EXISTS triplex_commit_position (
+    singleton INTEGER PRIMARY KEY,
+    position BIGINT NOT NULL
+  )
+`;
+
 export const INDEX_DDLS = [
   "CREATE INDEX IF NOT EXISTS idx_entity ON triples(entity_id) WHERE retracted_at IS NULL",
   "CREATE INDEX IF NOT EXISTS idx_attribute ON triples(attribute) WHERE retracted_at IS NULL",

@@ -54,7 +54,8 @@ export const eavtKey = (
   attribute: TuplePart,
   value: TuplePart,
   txId: TuplePart,
-): Uint8Array => concat(EAVT_PREFIX, encodeTuple(entity, attribute, value, txId));
+  tripleId: TuplePart,
+): Uint8Array => concat(EAVT_PREFIX, encodeTuple(entity, attribute, value, txId, tripleId));
 
 /**
  * Build an AEVT index key.
@@ -64,7 +65,8 @@ export const aevtKey = (
   entity: TuplePart,
   value: TuplePart,
   txId: TuplePart,
-): Uint8Array => concat(AEVT_PREFIX, encodeTuple(attribute, entity, value, txId));
+  tripleId: TuplePart,
+): Uint8Array => concat(AEVT_PREFIX, encodeTuple(attribute, entity, value, txId, tripleId));
 
 /**
  * Build an AVET index key.
@@ -74,7 +76,8 @@ export const avetKey = (
   value: TuplePart,
   entity: TuplePart,
   txId: TuplePart,
-): Uint8Array => concat(AVET_PREFIX, encodeTuple(attribute, value, entity, txId));
+  tripleId: TuplePart,
+): Uint8Array => concat(AVET_PREFIX, encodeTuple(attribute, value, entity, txId, tripleId));
 
 /**
  * Build a VAET index key (for ref values only).
@@ -84,7 +87,8 @@ export const vaetKey = (
   attribute: TuplePart,
   entity: TuplePart,
   txId: TuplePart,
-): Uint8Array => concat(VAET_PREFIX, encodeTuple(value, attribute, entity, txId));
+  tripleId: TuplePart,
+): Uint8Array => concat(VAET_PREFIX, encodeTuple(value, attribute, entity, txId, tripleId));
 
 /**
  * Build a META key for a triple ID.
@@ -121,20 +125,20 @@ const TYPE_STR = String.fromCharCode(0x05);
 const META_STR = String.fromCharCode(0x20);
 
 /** Build EAVT key as latin1 string (zero Uint8Array allocations). */
-export const eavtKeyStr = (e: string, a: string, v: string, tx: string): string =>
-  EAVT_STR + e + a + v + tx;
+export const eavtKeyStr = (e: string, a: string, v: string, tx: string, id: string): string =>
+  EAVT_STR + e + a + v + tx + id;
 
 /** Build AEVT key as latin1 string. */
-export const aevtKeyStr = (a: string, e: string, v: string, tx: string): string =>
-  AEVT_STR + a + e + v + tx;
+export const aevtKeyStr = (a: string, e: string, v: string, tx: string, id: string): string =>
+  AEVT_STR + a + e + v + tx + id;
 
 /** Build AVET key as latin1 string. */
-export const avetKeyStr = (a: string, v: string, e: string, tx: string): string =>
-  AVET_STR + a + v + e + tx;
+export const avetKeyStr = (a: string, v: string, e: string, tx: string, id: string): string =>
+  AVET_STR + a + v + e + tx + id;
 
 /** Build VAET key as latin1 string. */
-export const vaetKeyStr = (v: string, a: string, e: string, tx: string): string =>
-  VAET_STR + v + a + e + tx;
+export const vaetKeyStr = (v: string, a: string, e: string, tx: string, id: string): string =>
+  VAET_STR + v + a + e + tx + id;
 
 /** Build META key as latin1 string. */
 export const metaKeyStr = (tripleIdEncoded: string): string => META_STR + tripleIdEncoded;

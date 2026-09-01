@@ -80,29 +80,30 @@ const asciiToBytes = (s: string): Uint8Array => {
 // Eliminates 2 allocations per triple (JSON string + textEncoder.encode).
 //
 // Layout (all multi-byte integers are big-endian):
-//   [1 byte]  format version (0x01)
-//   [2 bytes] tripleId length, then [N bytes] tripleId (UTF-8)
-//   [2 bytes] entity length, then [N bytes] entity
-//   [2 bytes] attribute length, then [N bytes] attribute
+//   [1 byte]  format version (0x02)
+//   [4 bytes] tripleId length, then [N bytes] tripleId (UTF-8)
+//   [4 bytes] entity length, then [N bytes] entity
+//   [4 bytes] attribute length, then [N bytes] attribute
 //   [1 byte]  value type tag (0=string, 1=number, 2=boolean, 3=datetime, 4=ref, 5=json, 6=blob)
 //   [varies]  value payload (see below)
-//   [2 bytes] txId length, then [N bytes] txId
+//   [4 bytes] txId length, then [N bytes] txId
 //   [8 bytes] createdAt (float64 big-endian)
 //   [1 byte]  flags: bit0 = hasCreatedBy, bit1 = hasRetractedAt, bit2 = hasRetractTxId, bit3 = hasEntityType
-//   [conditional] createdBy: [2 bytes] length + [N bytes] string
+//   [conditional] createdBy: [4 bytes] length + [N bytes] string
 //   [conditional] retractedAt: [8 bytes] float64
-//   [conditional] retractTxId: [2 bytes] length + [N bytes] string
-//   [conditional] entityType: [2 bytes] length + [N bytes] string
+//   [conditional] retractTxId: [4 bytes] length + [N bytes] string
+//   [conditional] entityType: [4 bytes] length + [N bytes] string
 //
 // Value payloads:
-//   string/ref/blob: [2 bytes] length + [N bytes] UTF-8
+//   string/ref/blob: [4 bytes] length + [N bytes] UTF-8
 //   number/datetime: [8 bytes] float64
 //   boolean: [1 byte] 0x00/0x01
 //   json: [4 bytes] length + [N bytes] JSON string UTF-8
-//   blob: [2 bytes] value length + [N bytes] value + [2 bytes] mimeType length + [N bytes] mimeType
-//         + [8 bytes] size (float64) + [1 byte] hasFilename + [conditional: 2 bytes len + N bytes]
+//   blob: [4 bytes] value length + [N bytes] value + [4 bytes] mimeType length + [N bytes] mimeType
+//         + [8 bytes] size (float64) + [1 byte] hasFilename + [conditional: 4 bytes len + N bytes]
 
-const FORMAT_VERSION = 0x01;
+const LEGACY_BINARY_FORMAT_VERSION = 0x01;
+const FORMAT_VERSION = 0x02;
 
 // Value type tags for binary format
 const VT_STRING = 0;
@@ -127,11 +128,11 @@ const ensureCapacity = (needed: number, offset: number): void => {
   }
 };
 
-/** Write a length-prefixed string (2-byte length + UTF-8 bytes). Returns new offset. */
+/** Write a length-prefixed string (4-byte length + UTF-8 bytes). Returns new offset. */
 const writeStr = (s: string, offset: number): number => {
   // Fast path: ASCII-only (common for entity IDs, attributes, UUIDs)
   const len = s.length;
-  ensureCapacity(2 + len * 3, offset); // worst case: 3 bytes per char for UTF-8
+  ensureCapacity(4 + len * 3, offset); // worst case: 3 bytes per char for UTF-8
   let isAscii = true;
   for (let i = 0; i < len; i++) {
     if (s.charCodeAt(i) >= 0x80) {
@@ -140,9 +141,8 @@ const writeStr = (s: string, offset: number): number => {
     }
   }
   if (isAscii) {
-    _writeBuf[offset] = (len >> 8) & 0xff;
-    _writeBuf[offset + 1] = len & 0xff;
-    offset += 2;
+    _writeDV.setUint32(offset, len, false);
+    offset += 4;
     for (let i = 0; i < len; i++) {
       _writeBuf[offset++] = s.charCodeAt(i);
     }
@@ -150,10 +150,9 @@ const writeStr = (s: string, offset: number): number => {
   }
   // Slow path: use TextEncoder
   const encoded = textEncoder.encode(s);
-  ensureCapacity(2 + encoded.length, offset);
-  _writeBuf[offset] = (encoded.length >> 8) & 0xff;
-  _writeBuf[offset + 1] = encoded.length & 0xff;
-  offset += 2;
+  ensureCapacity(4 + encoded.length, offset);
+  _writeDV.setUint32(offset, encoded.length, false);
+  offset += 4;
   _writeBuf.set(encoded, offset);
   return offset + encoded.length;
 };
@@ -273,9 +272,15 @@ const serializeDatom = (datom: Datom): Uint8Array => {
 };
 
 /** Read a length-prefixed string. Returns [string, newOffset]. */
-const readStr = (buf: Uint8Array, offset: number): [string, number] => {
-  const len = (buf[offset]! << 8) | buf[offset + 1]!;
-  offset += 2;
+const readStr = (buf: Uint8Array, offset: number, lengthBytes: 2 | 4): [string, number] => {
+  const len =
+    lengthBytes === 2
+      ? (buf[offset]! << 8) | buf[offset + 1]!
+      : buf[offset]! * 0x1000000 +
+        buf[offset + 1]! * 0x10000 +
+        buf[offset + 2]! * 0x100 +
+        buf[offset + 3]!;
+  offset += lengthBytes;
   // Fast path: ASCII
   let isAscii = true;
   for (let i = 0; i < len; i++) {
@@ -294,25 +299,26 @@ const readStr = (buf: Uint8Array, offset: number): [string, number] => {
 
 /**
  * Deserialize a Datom from META storage bytes.
- * Supports both the new binary format (version 0x01) and legacy JSON format.
+ * Supports the current binary format, version 0x01 records, and legacy JSON.
  */
 const deserializeDatom = (bytes: Uint8Array): Datom => {
-  // Detect format: binary starts with 0x01, JSON starts with '{' (0x7B)
-  if (bytes[0] !== FORMAT_VERSION) {
+  const version = bytes[0];
+  if (version !== FORMAT_VERSION && version !== LEGACY_BINARY_FORMAT_VERSION) {
     return JSON.parse(textDecoder.decode(bytes)) as Datom;
   }
+  const lengthBytes = version === LEGACY_BINARY_FORMAT_VERSION ? 2 : 4;
 
   const dv = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
   let offset = 1; // skip version byte
 
   let tripleId: string;
-  [tripleId, offset] = readStr(bytes, offset);
+  [tripleId, offset] = readStr(bytes, offset, lengthBytes);
 
   let entity: string;
-  [entity, offset] = readStr(bytes, offset);
+  [entity, offset] = readStr(bytes, offset, lengthBytes);
 
   let attribute: string;
-  [attribute, offset] = readStr(bytes, offset);
+  [attribute, offset] = readStr(bytes, offset, lengthBytes);
 
   // Value
   const valueTag = bytes[offset++]!;
@@ -320,7 +326,7 @@ const deserializeDatom = (bytes: Uint8Array): Datom => {
   switch (valueTag) {
     case VT_STRING: {
       let sv: string;
-      [sv, offset] = readStr(bytes, offset);
+      [sv, offset] = readStr(bytes, offset, lengthBytes);
       value = { type: "string", value: sv };
       break;
     }
@@ -337,7 +343,7 @@ const deserializeDatom = (bytes: Uint8Array): Datom => {
       break;
     case VT_REF: {
       let rv: string;
-      [rv, offset] = readStr(bytes, offset);
+      [rv, offset] = readStr(bytes, offset, lengthBytes);
       value = { type: "ref", value: rv };
       break;
     }
@@ -351,14 +357,14 @@ const deserializeDatom = (bytes: Uint8Array): Datom => {
     }
     case VT_BLOB: {
       let bv: string, mimeType: string;
-      [bv, offset] = readStr(bytes, offset);
-      [mimeType, offset] = readStr(bytes, offset);
+      [bv, offset] = readStr(bytes, offset, lengthBytes);
+      [mimeType, offset] = readStr(bytes, offset, lengthBytes);
       const size = dv.getFloat64(offset, false);
       offset += 8;
       const hasFilename = bytes[offset++]! !== 0;
       let filename: string | undefined;
       if (hasFilename) {
-        [filename, offset] = readStr(bytes, offset);
+        [filename, offset] = readStr(bytes, offset, lengthBytes);
       }
       value = {
         type: "blob",
@@ -374,7 +380,7 @@ const deserializeDatom = (bytes: Uint8Array): Datom => {
   }
 
   let txId: string;
-  [txId, offset] = readStr(bytes, offset);
+  [txId, offset] = readStr(bytes, offset, lengthBytes);
 
   const createdAt = dv.getFloat64(offset, false);
   offset += 8;
@@ -387,7 +393,7 @@ const deserializeDatom = (bytes: Uint8Array): Datom => {
 
   let createdBy: string | null = null;
   if (hasCreatedBy) {
-    [createdBy, offset] = readStr(bytes, offset);
+    [createdBy, offset] = readStr(bytes, offset, lengthBytes);
   }
 
   let retractedAt: number | null = null;
@@ -398,12 +404,12 @@ const deserializeDatom = (bytes: Uint8Array): Datom => {
 
   let retractTxId: string | null = null;
   if (hasRetractTxId) {
-    [retractTxId, offset] = readStr(bytes, offset);
+    [retractTxId, offset] = readStr(bytes, offset, lengthBytes);
   }
 
   let entityType: string | null = null;
   if (hasEntityType) {
-    [entityType, offset] = readStr(bytes, offset);
+    [entityType, offset] = readStr(bytes, offset, lengthBytes);
   }
 
   return {
@@ -440,6 +446,11 @@ export class KvTripleStore {
 
   constructor(private readonly kv: KvBackendService) {}
 
+  /** Drop decoded datoms after an external/backend transaction commits. */
+  clearCache(): void {
+    this.datomCache.clear();
+  }
+
   /**
    * Assert a new datom into the store.
    * Writes to all indexes + META, storing tripleId as the index entry value.
@@ -449,16 +460,17 @@ export class KvTripleStore {
     const attrPart = tString(datom.attribute);
     const valuePart = valueToTuplePart(datom.value);
     const txPart = tString(datom.txId);
+    const idPart = tString(datom.tripleId);
     const tripleIdValue = textEncoder.encode(datom.tripleId);
 
     const entries: Array<readonly [Uint8Array, Uint8Array]> = [
-      [eavtKey(entityPart, attrPart, valuePart, txPart), tripleIdValue],
-      [aevtKey(attrPart, entityPart, valuePart, txPart), tripleIdValue],
-      [avetKey(attrPart, valuePart, entityPart, txPart), tripleIdValue],
+      [eavtKey(entityPart, attrPart, valuePart, txPart, idPart), tripleIdValue],
+      [aevtKey(attrPart, entityPart, valuePart, txPart, idPart), tripleIdValue],
+      [avetKey(attrPart, valuePart, entityPart, txPart, idPart), tripleIdValue],
     ];
 
     if (datom.value.type === "ref") {
-      entries.push([vaetKey(valuePart, attrPart, entityPart, txPart), tripleIdValue]);
+      entries.push([vaetKey(valuePart, attrPart, entityPart, txPart, idPart), tripleIdValue]);
     }
 
     entries.push([metaKey(datom.tripleId), serializeDatom(datom)]);
@@ -495,14 +507,15 @@ export class KvTripleStore {
       const attrPart = tString(datom.attribute);
       const valuePart = valueToTuplePart(datom.value);
       const txPart = tString(datom.txId);
+      const idPart = tString(datom.tripleId);
       const tripleIdValue = textEncoder.encode(datom.tripleId);
 
-      entries.push([eavtKey(entityPart, attrPart, valuePart, txPart), tripleIdValue]);
-      entries.push([aevtKey(attrPart, entityPart, valuePart, txPart), tripleIdValue]);
-      entries.push([avetKey(attrPart, valuePart, entityPart, txPart), tripleIdValue]);
+      entries.push([eavtKey(entityPart, attrPart, valuePart, txPart, idPart), tripleIdValue]);
+      entries.push([aevtKey(attrPart, entityPart, valuePart, txPart, idPart), tripleIdValue]);
+      entries.push([avetKey(attrPart, valuePart, entityPart, txPart, idPart), tripleIdValue]);
 
       if (datom.value.type === "ref") {
-        entries.push([vaetKey(valuePart, attrPart, entityPart, txPart), tripleIdValue]);
+        entries.push([vaetKey(valuePart, attrPart, entityPart, txPart, idPart), tripleIdValue]);
       }
 
       entries.push([metaKey(datom.tripleId), serializeDatom(datom)]);
@@ -542,12 +555,12 @@ export class KvTripleStore {
       const tripleIdValue = asciiToBytes(datom.tripleId);
       const tripleIdStr = encodeStringStr(datom.tripleId);
 
-      entries[idx++] = [eavtKeyStr(eStr, aStr, vStr, txStr), tripleIdValue];
-      entries[idx++] = [aevtKeyStr(aStr, eStr, vStr, txStr), tripleIdValue];
-      entries[idx++] = [avetKeyStr(aStr, vStr, eStr, txStr), tripleIdValue];
+      entries[idx++] = [eavtKeyStr(eStr, aStr, vStr, txStr, tripleIdStr), tripleIdValue];
+      entries[idx++] = [aevtKeyStr(aStr, eStr, vStr, txStr, tripleIdStr), tripleIdValue];
+      entries[idx++] = [avetKeyStr(aStr, vStr, eStr, txStr, tripleIdStr), tripleIdValue];
 
       if (datom.value.type === "ref") {
-        entries[idx++] = [vaetKeyStr(vStr, aStr, eStr, txStr), tripleIdValue];
+        entries[idx++] = [vaetKeyStr(vStr, aStr, eStr, txStr, tripleIdStr), tripleIdValue];
       }
 
       entries[idx++] = [metaKeyStr(tripleIdStr), serializeDatom(datom)];

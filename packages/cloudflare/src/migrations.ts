@@ -1,4 +1,9 @@
-import { INDEX_DDLS, MIGRATIONS_TABLE_DDL, TRIPLES_TABLE_DDL } from "./schema.js";
+import {
+  COMMIT_POSITION_TABLE_DDL,
+  INDEX_DDLS,
+  MIGRATIONS_TABLE_DDL,
+  TRIPLES_TABLE_DDL,
+} from "./schema.js";
 
 export interface Migration {
   readonly version: number;
@@ -71,5 +76,10 @@ export const migrations: readonly Migration[] = [
     version: 13,
     name: "add_retract_tx_id",
     up: `ALTER TABLE triples ADD COLUMN retract_tx_id TEXT`,
+  },
+  {
+    version: 14,
+    name: "create_commit_position",
+    up: COMMIT_POSITION_TABLE_DDL,
   },
 ];

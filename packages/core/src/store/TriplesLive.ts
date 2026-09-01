@@ -35,13 +35,25 @@ import type { Pattern } from "../types/Pattern.js";
 import type { QueryState } from "../types/QueryBuilder.js";
 import type { Filter, SortSpec } from "../types/Filter.js";
 import type { DatalogQuery, WrappedQuery } from "../datalog/types.js";
-import { WriteError, ReadError, QueryError, DatalogError } from "../errors/index.js";
+import {
+  WriteError,
+  ReadError,
+  QueryError,
+  DatalogError,
+  TransactionConflictError,
+} from "../errors/index.js";
 import type { SqlDialect } from "../dialects/index.js";
 import { CurrentDialect } from "../dialects/index.js";
 import { SqliteDialect } from "../dialects/sqlite.js";
 import { createParamCollector, type ParamCollector } from "../params.js";
-import { TxAttributes } from "../utils/id.js";
 import { TripleStoreRuntime } from "./TripleStoreRuntime.js";
+import {
+  livePreconditionIds,
+  metadataInputs,
+  transactionRecordFromTriples,
+  transactionRecordsFromTriples,
+  validatePreconditions,
+} from "./transactionMetadata.js";
 
 // =============================================================================
 // Row to Triple Conversion
@@ -265,6 +277,7 @@ export const TriplesLive = Layer.effect(
       assertOps: readonly TransactOp[],
       txId: string,
       timestamp: number,
+      actor?: string,
     ): Effect.Effect<Triple[], WriteError> =>
       Effect.gen(function* () {
         if (assertOps.length === 0) return [];
@@ -276,6 +289,7 @@ export const TriplesLive = Layer.effect(
             attribute: op.attribute,
             value: op.value,
             entityType: op.entityType,
+            createdBy: actor,
           };
         });
 
@@ -296,13 +310,30 @@ export const TriplesLive = Layer.effect(
     const transact = (
       operations: readonly TransactOp[],
       meta?: TransactionMeta,
-    ): Effect.Effect<TransactionResult, WriteError | ReadError> =>
+    ): Effect.Effect<TransactionResult, WriteError | ReadError | TransactionConflictError> =>
       adapter.withTransaction(
         Effect.gen(function* () {
+          const invalidCondition = validatePreconditions(operations, meta);
+          if (invalidCondition) {
+            return yield* Effect.fail(
+              new WriteError({
+                message: `Transaction precondition ${invalidCondition} must have a matching retract operation`,
+              }),
+            );
+          }
           const txId = yield* nextTxId;
           const timestamp = yield* now;
+          const position = yield* adapter.nextCommitPosition();
+          const actor = meta?.actor ?? meta?.user;
+          const preconditionIds = livePreconditionIds(meta);
 
           const triples: Triple[] = [];
+          const changes: Array<{
+            readonly op: "assert" | "retract";
+            readonly tripleId: string;
+            readonly entityId: string;
+            readonly attribute: string;
+          }> = [];
           let retractedCount = 0;
 
           let pendingAsserts: TransactOp[] = [];
@@ -314,59 +345,81 @@ export const TriplesLive = Layer.effect(
             }
 
             if (pendingAsserts.length > 0) {
-              const batch = yield* flushAssertBatch(pendingAsserts, txId, timestamp);
+              const batch = yield* flushAssertBatch(pendingAsserts, txId, timestamp, actor);
               triples.push(...batch);
+              changes.push(
+                ...batch.map((triple) => ({
+                  op: "assert" as const,
+                  tripleId: triple.id as string,
+                  entityId: triple.entityId as string,
+                  attribute: triple.attribute as string,
+                })),
+              );
               pendingAsserts = [];
             }
 
             switch (op.op) {
               case "retract": {
-                yield* adapter.retract(op.id as string, timestamp, txId);
-                retractedCount++;
+                const current = yield* adapter.getById(op.id as string);
+                const didRetract = yield* adapter.retract(op.id as string, timestamp, txId);
+                if (!didRetract && preconditionIds.has(op.id as string)) {
+                  return yield* Effect.fail(
+                    new TransactionConflictError({
+                      tripleId: op.id as string,
+                      message: `Expected live triple ${op.id}, but another transaction changed it`,
+                    }),
+                  );
+                }
+                if (didRetract) {
+                  retractedCount++;
+                  if (current) {
+                    changes.push({
+                      op: "retract",
+                      tripleId: current.id,
+                      entityId: current.entity_id,
+                      attribute: current.attribute,
+                    });
+                  }
+                }
                 break;
               }
               case "retract-pattern": {
                 const pattern = queryToPattern(op.pattern);
-                const count = yield* retractByPattern(pattern, txId, timestamp);
-                retractedCount += count;
+                const matched = yield* adapter.query(pattern);
+                for (const row of matched) {
+                  if (yield* adapter.retract(row.id, timestamp, txId)) {
+                    retractedCount++;
+                    changes.push({
+                      op: "retract",
+                      tripleId: row.id,
+                      entityId: row.entity_id,
+                      attribute: row.attribute,
+                    });
+                  }
+                }
                 break;
               }
             }
           }
 
           if (pendingAsserts.length > 0) {
-            const batch = yield* flushAssertBatch(pendingAsserts, txId, timestamp);
+            const batch = yield* flushAssertBatch(pendingAsserts, txId, timestamp, actor);
             triples.push(...batch);
-          }
-
-          // Insert transaction metadata triples (provenance).
-          yield* adapter.insert(
-            {
-              entityId: txId,
-              attribute: TxAttributes.INSTANT,
-              value: { type: "datetime", value: timestamp },
-              entityType: "_Transaction",
-            },
-            txId,
-            timestamp,
-            yield* nextTripleId,
-          );
-
-          if (meta?.user) {
-            yield* adapter.insert(
-              {
-                entityId: txId,
-                attribute: TxAttributes.USER,
-                value: { type: "string", value: meta.user },
-                entityType: "_Transaction",
-              },
-              txId,
-              timestamp,
-              yield* nextTripleId,
+            changes.push(
+              ...batch.map((triple) => ({
+                op: "assert" as const,
+                tripleId: triple.id as string,
+                entityId: triple.entityId as string,
+                attribute: triple.attribute as string,
+              })),
             );
           }
 
-          return { txId, triples, retracted: retractedCount };
+          for (const input of metadataInputs(txId, position, timestamp, meta, changes)) {
+            yield* adapter.insert(input, txId, timestamp, yield* nextTripleId);
+          }
+
+          return { txId, position, instant: timestamp, triples, retracted: retractedCount };
         }),
       );
 
@@ -376,7 +429,16 @@ export const TriplesLive = Layer.effect(
       timestamp?: number,
     ): Effect.Effect<void, WriteError> =>
       Effect.gen(function* () {
-        return yield* adapter.retract(id, timestamp ?? (yield* now), txId ?? (yield* nextTxId));
+        const didRetract = yield* adapter.retract(
+          id,
+          timestamp ?? (yield* now),
+          txId ?? (yield* nextTxId),
+        );
+        if (!didRetract) {
+          return yield* Effect.fail(
+            new WriteError({ message: `Triple not found or already retracted: ${id}` }),
+          );
+        }
       });
 
     const retractByPattern = (
@@ -388,10 +450,11 @@ export const TriplesLive = Layer.effect(
         const triples = yield* match(pattern);
         const resolvedTxId = txId ?? (yield* nextTxId);
         const resolvedTimestamp = timestamp ?? (yield* now);
+        let count = 0;
         for (const triple of triples) {
-          yield* adapter.retract(triple.id, resolvedTimestamp, resolvedTxId);
+          if (yield* adapter.retract(triple.id, resolvedTimestamp, resolvedTxId)) count++;
         }
-        return triples.length;
+        return count;
       });
 
     // =========================================================================
@@ -430,6 +493,38 @@ export const TriplesLive = Layer.effect(
         const rows = yield* adapter.history(entityId);
         return rows.map(rowToTriple);
       });
+
+    const transaction: TriplesService["transaction"] = (txId) =>
+      adapter
+        .query({ entityId: txId, entityType: "_Transaction" })
+        .pipe(Effect.map((rows) => transactionRecordFromTriples(txId, rows.map(rowToTriple))));
+
+    const transactions: TriplesService["transactions"] = (request = {}) => {
+      const after = request.after ?? 0;
+      const limit = request.limit ?? 100;
+      if (!Number.isSafeInteger(after) || after < 0) {
+        return Effect.fail(
+          new ReadError({ message: "Transaction cursor must be a non-negative integer" }),
+        );
+      }
+      if (!Number.isSafeInteger(limit) || limit < 1 || limit > 1_000) {
+        return Effect.fail(
+          new ReadError({ message: "Transaction page limit must be between 1 and 1000" }),
+        );
+      }
+      return adapter.query({ entityType: "_Transaction" }).pipe(
+        Effect.map((rows) => {
+          const page = transactionRecordsFromTriples(rows.map(rowToTriple))
+            .filter((record) => record.position > after)
+            .slice(0, limit);
+          const last = page.at(-1);
+          return {
+            transactions: page,
+            ...(last ? { next: last.position } : {}),
+          };
+        }),
+      );
+    };
 
     // =========================================================================
     // Fluent-builder execution
@@ -566,6 +661,8 @@ export const TriplesLive = Layer.effect(
       match,
       matchAsOf,
       history,
+      transaction,
+      transactions,
       query,
       queryPage,
       explain,

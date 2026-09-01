@@ -1015,9 +1015,12 @@ const buildSelectAndGroupBy = (
       continue;
     }
 
-    const colName = `"${String(term)}"`;
+    // Constants are allowed in `find`, including arbitrary strings. Never use
+    // their value as a SQL identifier; keep it parameterized and give the
+    // projected column an internal alias.
+    const colName = `_constant_${selectParts.length}`;
     selectParts.push(`${formatValue(term, ctx)} AS ${colName}`);
-    columnMap.set(String(term), String(term));
+    columnMap.set(colName, String(term));
   }
 
   let groupByClause = "";

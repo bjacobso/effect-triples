@@ -14,10 +14,23 @@
  */
 
 import { Context, Effect } from "effect";
-import type { Triple, TripleInput, TripleId, EntityId, TransactOp } from "../Triple.js";
+import type {
+  Triple,
+  TripleInput,
+  TripleId,
+  EntityId,
+  TransactOp,
+  TransactionPrecondition,
+} from "../Triple.js";
 import type { Pattern } from "../types/Pattern.js";
 import type { QueryState } from "../types/QueryBuilder.js";
-import type { WriteError, ReadError, QueryError, DatalogError } from "../errors/index.js";
+import type {
+  WriteError,
+  ReadError,
+  QueryError,
+  DatalogError,
+  TransactionConflictError,
+} from "../errors/index.js";
 import type { DatalogQuery, WrappedQuery } from "../datalog/types.js";
 import type {
   QueryResult,
@@ -36,6 +49,8 @@ import type {
  */
 export interface TransactionResult {
   readonly txId: string;
+  readonly position: number;
+  readonly instant: number;
   readonly triples: readonly Triple[];
   readonly retracted: number;
 }
@@ -44,7 +59,51 @@ export interface TransactionResult {
  * Transaction metadata options
  */
 export interface TransactionMeta {
+  /** @deprecated Prefer `actor`; retained for pre-1.0 source compatibility. */
   readonly user?: string;
+  readonly actor?: string;
+  readonly commandId?: string;
+  readonly correlationId?: string;
+  readonly causationId?: string;
+  readonly configSnapshot?: string;
+  /**
+   * Compare-and-retract conditions. Every referenced triple must also have a
+   * `retract` operation in this transaction. If another writer retracts it
+   * first, the whole transaction fails with `TransactionConflictError`.
+   */
+  readonly preconditions?: readonly TransactionPrecondition[];
+}
+
+export interface TransactionChange {
+  readonly op: "assert" | "retract";
+  readonly tripleId: string;
+  readonly entityId: string;
+  readonly attribute: string;
+}
+
+export interface TransactionRecord {
+  readonly txId: string;
+  readonly position: number;
+  readonly instant: number;
+  readonly actor?: string;
+  readonly commandId?: string;
+  readonly correlationId?: string;
+  readonly causationId?: string;
+  readonly configSnapshot?: string;
+  readonly changes: readonly TransactionChange[];
+}
+
+export interface TransactionPageRequest {
+  /** Return transactions strictly after this commit position. Defaults to 0. */
+  readonly after?: number;
+  /** Maximum number of transactions to return. Defaults to 100; maximum 1,000. */
+  readonly limit?: number;
+}
+
+export interface TransactionPage {
+  readonly transactions: readonly TransactionRecord[];
+  /** Position of the final returned transaction, suitable for the next `after`. */
+  readonly next?: number;
 }
 
 /**
@@ -116,7 +175,7 @@ export interface TriplesService {
   readonly transact: (
     operations: readonly TransactOp[],
     meta?: TransactionMeta,
-  ) => Effect.Effect<TransactionResult, WriteError | ReadError>;
+  ) => Effect.Effect<TransactionResult, WriteError | ReadError | TransactionConflictError>;
   /** Wrap an arbitrary effect in a database transaction (no-op on KV backends). */
   readonly withTransaction: <A, E>(effect: Effect.Effect<A, E>) => Effect.Effect<A, E | WriteError>;
 
@@ -134,6 +193,12 @@ export interface TriplesService {
   ) => Effect.Effect<readonly Triple[], ReadError>;
   /** Full history (including retracted) for an entity. */
   readonly history: (entityId: EntityId) => Effect.Effect<readonly Triple[], ReadError>;
+  /** Read a persisted causal transaction envelope and its fact changes. */
+  readonly transaction: (txId: string) => Effect.Effect<TransactionRecord | null, ReadError>;
+  /** Read ordered transaction envelopes after a durable resume position. */
+  readonly transactions: (
+    request?: TransactionPageRequest,
+  ) => Effect.Effect<TransactionPage, ReadError>;
 
   // --- Datalog reads -------------------------------------------------------
   /** Execute a Datalog query. */

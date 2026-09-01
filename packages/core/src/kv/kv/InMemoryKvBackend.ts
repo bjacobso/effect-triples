@@ -20,7 +20,7 @@
  * Uint8Array keys are only reconstructed on-demand for getRange results.
  */
 
-import { Effect, Layer, Stream } from "effect";
+import { Effect, Layer, Semaphore, Stream } from "effect";
 import {
   KvBackend,
   type KvBackendService,
@@ -273,6 +273,7 @@ class InMemoryStore {
 
 const makeInMemoryKvBackend = (): KvBackendService => {
   const store = new InMemoryStore();
+  const transactionMutex = Semaphore.makeUnsafe(1);
 
   const service: KvBackendService = {
     get: (key) => Effect.sync(() => store.get(key)),
@@ -286,40 +287,57 @@ const makeInMemoryKvBackend = (): KvBackendService => {
     transact: <A, E>(fn: (tx: KvTransaction) => Effect.Effect<A, E>) => {
       // For in-memory backend, all operations are synchronous and single-threaded.
       // No mutex needed — just buffer writes and commit on success.
-      return Effect.gen(function* () {
-        const writeBuffer = new Map<string, Uint8Array | null>();
+      return transactionMutex.withPermit(
+        Effect.gen(function* () {
+          const writeBuffer = new Map<string, Uint8Array | null>();
 
-        const tx: KvTransaction = {
-          get: (key) =>
-            Effect.sync(() => {
-              const ks = keyToString(key);
-              if (writeBuffer.has(ks)) {
-                return writeBuffer.get(ks) ?? null;
+          const tx: KvTransaction = {
+            get: (key) =>
+              Effect.sync(() => {
+                const ks = keyToString(key);
+                if (writeBuffer.has(ks)) {
+                  return writeBuffer.get(ks) ?? null;
+                }
+                return store.get(key);
+              }),
+            set: (key, value) =>
+              Effect.sync(() => {
+                writeBuffer.set(keyToString(key), value);
+              }),
+            delete: (key) =>
+              Effect.sync(() => {
+                writeBuffer.set(keyToString(key), null);
+              }),
+            getRange: (options) => {
+              const start = keyToString(options.start);
+              const end = keyToString(options.end);
+              const visible = new Map(
+                store
+                  .getRange({ start: options.start, end: options.end })
+                  .map(([key, value]) => [keyToString(key), value]),
+              );
+              for (const [key, value] of writeBuffer) {
+                if (key < start || key >= end) continue;
+                if (value === null) visible.delete(key);
+                else visible.set(key, value);
               }
-              return store.get(key);
-            }),
-          set: (key, value) =>
-            Effect.sync(() => {
-              writeBuffer.set(keyToString(key), value);
-            }),
-          delete: (key) =>
-            Effect.sync(() => {
-              writeBuffer.set(keyToString(key), null);
-            }),
-          getRange: (options) => {
-            // Range scans see committed data (not buffered writes).
-            // Correct for single-threaded in-memory usage.
-            return Stream.fromIterable(store.getRange(options));
-          },
-        };
+              const keys = [...visible.keys()].sort();
+              if (options.reverse) keys.reverse();
+              const selected = options.limit === undefined ? keys : keys.slice(0, options.limit);
+              return Stream.fromIterable(
+                selected.map((key) => [stringToKey(key), visible.get(key)!] as const),
+              );
+            },
+          };
 
-        const result = yield* fn(tx);
+          const result = yield* fn(tx);
 
-        // Commit: apply buffered writes on success.
-        // If fn fails, the yield* above propagates the error and we never reach here.
-        store.applyWriteBuffer(writeBuffer);
-        return result;
-      }) as Effect.Effect<A, E>;
+          // Commit: apply buffered writes on success.
+          // If fn fails, the yield* above propagates the error and we never reach here.
+          store.applyWriteBuffer(writeBuffer);
+          return result;
+        }),
+      ) as Effect.Effect<A, E>;
     },
 
     setAll: (entries) =>

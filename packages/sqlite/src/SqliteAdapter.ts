@@ -12,6 +12,7 @@ import {
   StorageAdapter,
   type StorageAdapterService,
   type TripleRow,
+  TransactionConflictError,
   WriteError,
   ReadError,
   MigrationError,
@@ -85,12 +86,31 @@ export const makeSqliteAdapter = (config: SqliteAdapterConfig = {}) =>
       const withTransaction: StorageAdapterService["withTransaction"] = (effect) =>
         sql.withTransaction(effect).pipe(
           Effect.mapError((error) =>
-            error instanceof WriteError
+            error instanceof WriteError || error instanceof TransactionConflictError
               ? error
               : new WriteError({
                   message: `Transaction failed: ${String(error)}`,
                   cause: error,
                 }),
+          ),
+        );
+
+      const nextCommitPosition: StorageAdapterService["nextCommitPosition"] = () =>
+        provide(
+          sql<{ readonly position: number }>`
+            INSERT INTO triplex_commit_position (singleton, position)
+            VALUES (1, 1)
+            ON CONFLICT(singleton) DO UPDATE SET position = position + 1
+            RETURNING position
+          `.pipe(
+            Effect.map((rows) => Number(rows[0]!.position)),
+            Effect.mapError(
+              (error) =>
+                new WriteError({
+                  message: `Failed to allocate commit position: ${String(error)}`,
+                  cause: error,
+                }),
+            ),
           ),
         );
 
@@ -290,10 +310,11 @@ export const makeSqliteAdapter = (config: SqliteAdapterConfig = {}) =>
       const retract: StorageAdapterService["retract"] = (id, timestamp, txId) =>
         provide(
           Effect.gen(function* () {
-            yield* sql`
+            const rows = yield* sql<{ readonly id: string }>`
             UPDATE triples
             SET retracted_at = ${timestamp}, retract_tx_id = ${txId ?? null}
             WHERE id = ${id} AND retracted_at IS NULL
+            RETURNING id
           `.pipe(
               Effect.mapError(
                 (error) =>
@@ -303,6 +324,7 @@ export const makeSqliteAdapter = (config: SqliteAdapterConfig = {}) =>
                   }),
               ),
             );
+            return rows.length > 0;
           }),
         );
 
@@ -525,6 +547,7 @@ export const makeSqliteAdapter = (config: SqliteAdapterConfig = {}) =>
 
       return {
         withTransaction,
+        nextCommitPosition,
         insert,
         batchInsert,
         retract,

@@ -73,6 +73,15 @@ describe("assert", () => {
     const result = await run(store.getById("non-existent"));
     expect(result).toBeNull();
   });
+
+  it("round-trips strings larger than 64 KiB", async () => {
+    const value = "x".repeat(70_000);
+    const datom = makeDatom({ value: str(value) });
+    await run(store.assert(datom));
+    store.clearCache();
+
+    expect(await run(store.getById(datom.tripleId))).toEqual(datom);
+  });
 });
 
 // ─── AssertBatch ───────────────────────────────────────────────────────────
@@ -93,6 +102,19 @@ describe("assertBatch", () => {
   it("empty batch is a no-op", async () => {
     await run(store.assertBatch([]));
     // No error
+  });
+
+  it("keeps duplicate EAVT values with distinct triple identities", async () => {
+    const d1 = makeDatom({ value: str("same"), txId: "tx:same" });
+    const d2 = makeDatom({ value: str("same"), txId: "tx:same" });
+    await run(store.assertBatch([d1, d2]));
+
+    const results = await run(
+      collect(store.scan({ entity: d1.entity, attribute: d1.attribute, value: str("same") })),
+    );
+    expect(results.map((datom) => datom.tripleId).sort()).toEqual(
+      [d1.tripleId, d2.tripleId].sort(),
+    );
   });
 });
 
