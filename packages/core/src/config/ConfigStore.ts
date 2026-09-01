@@ -17,6 +17,7 @@ import type {
 } from "../errors/index.js";
 import { Triples } from "../store/Triples.js";
 import type { TransactionResult } from "../store/Triples.js";
+import { transactSystem } from "../store/systemNamespace.js";
 import type { Triple, TransactOp } from "../Triple.js";
 import type { TripleValue } from "../Value.js";
 import * as CanonicalJson from "../content/CanonicalJson.js";
@@ -406,7 +407,7 @@ const makeService = Effect.gen(function* () {
       if (input.ref) {
         const current = yield* currentRefTriple(input.ref);
         operations.push(...refOps(input.ref, committed.snapshot.id, current));
-        const transaction = yield* triples.transact(operations, {
+        const transaction = yield* transactSystem(triples, operations, {
           actor: "triplex/config-store",
           configSnapshot: committed.snapshot.id,
           ...(current ? { preconditions: [{ _tag: "TripleLive" as const, id: current.id }] } : {}),
@@ -419,7 +420,7 @@ const makeService = Effect.gen(function* () {
         return { ...committed, store, transaction };
       }
 
-      const transaction = yield* triples.transact(operations, {
+      const transaction = yield* transactSystem(triples, operations, {
         actor: "triplex/config-store",
         configSnapshot: committed.snapshot.id,
       });
@@ -431,7 +432,7 @@ const makeService = Effect.gen(function* () {
       const store = yield* load();
       const next = yield* InMemoryConfigStore.setRef(store, name, snapshotId);
       const current = yield* currentRefTriple(name);
-      yield* triples.transact(refOps(name, snapshotId, current), {
+      yield* transactSystem(triples, refOps(name, snapshotId, current), {
         actor: "triplex/config-store",
         configSnapshot: snapshotId,
         ...(current ? { preconditions: [{ _tag: "TripleLive" as const, id: current.id }] } : {}),

@@ -518,6 +518,116 @@ export const triplesConformanceCases: readonly ConformanceCase[] = [
     }),
   },
   {
+    name: "reserved Triplex namespaces reject ordinary writes atomically",
+    run: Effect.gen(function* () {
+      const t = yield* Triples;
+      const reservedInputs = [
+        {
+          entityId: "_triplex/application/forbidden",
+          attribute: ":name",
+          value: string("reserved entity"),
+        },
+        {
+          entityId: "conf:reserved:attribute",
+          attribute: ":triplex/config-data",
+          value: string("reserved attribute"),
+        },
+        {
+          entityId: "conf:reserved:type",
+          attribute: ":name",
+          value: string("reserved type"),
+          entityType: "triplex.config-object",
+        },
+      ] as const;
+
+      for (const input of reservedInputs) {
+        const failure = yield* t.assert(input).pipe(Effect.flip);
+        yield* check(
+          failure.message.includes("reserved Triplex system namespace"),
+          "reserved writes should fail with an explicit namespace error",
+        );
+      }
+
+      const batchFailure = yield* t
+        .assertBatch([
+          {
+            entityId: "conf:reserved:batch-application",
+            attribute: ":name",
+            value: string("must roll back"),
+          },
+          reservedInputs[0],
+        ])
+        .pipe(Effect.flip);
+      yield* check(
+        batchFailure.message.includes("reserved Triplex system namespace"),
+        "a mixed batch should reject its reserved member",
+      );
+      yield* check(
+        (yield* t.match({ entityId: "conf:reserved:batch-application" })).length === 0,
+        "a rejected mixed batch must not write its application facts",
+      );
+
+      const transactionFailure = yield* t
+        .transact([
+          {
+            op: "assert",
+            entityId: "conf:reserved:transaction-application",
+            attribute: ":name",
+            value: string("must roll back"),
+          },
+          {
+            op: "assert",
+            entityId: "_triplex/application/transaction-forbidden",
+            attribute: ":name",
+            value: string("reserved"),
+          },
+        ])
+        .pipe(Effect.flip);
+      yield* check(
+        transactionFailure.message.includes("reserved Triplex system namespace"),
+        "a mixed transaction should reject its reserved member",
+      );
+      yield* check(
+        (yield* t.match({ entityId: "conf:reserved:transaction-application" })).length === 0,
+        "a rejected mixed transaction must not write its application facts",
+      );
+    }),
+  },
+  {
+    name: "transaction journals cannot be retracted through ordinary writes",
+    run: Effect.gen(function* () {
+      const t = yield* Triples;
+      const committed = yield* t.transact([
+        {
+          op: "assert",
+          entityId: "conf:reserved:journal-subject",
+          attribute: ":name",
+          value: string("journalled"),
+        },
+      ]);
+      const journalFacts = yield* t.match({ entityId: committed.txId });
+      const instant = journalFacts.find((triple) => triple.attribute === ":_tx/instant");
+      yield* check(instant !== undefined, "a committed transaction should have a journal instant");
+
+      const retractFailure = yield* t.retract(instant!.id).pipe(Effect.flip);
+      yield* check(
+        retractFailure.message.includes("reserved Triplex system namespace"),
+        "direct retraction must not mutate the transaction journal",
+      );
+      const patternFailure = yield* t
+        .retractByPattern({ entityType: "_Transaction" })
+        .pipe(Effect.flip);
+      yield* check(
+        patternFailure.message.includes("reserved Triplex system namespace"),
+        "pattern retraction must not mutate transaction journals",
+      );
+      yield* check(
+        (yield* t.match({ entityId: committed.txId })).length === journalFacts.length,
+        "rejected journal mutations must preserve every journal fact",
+      );
+    }),
+  },
+  {
     name: "retract is coherent across write and datalog paths",
     run: Effect.gen(function* () {
       const t = yield* Triples;

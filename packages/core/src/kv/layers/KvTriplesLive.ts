@@ -36,6 +36,11 @@ import {
   transactionRecordsFromTriples,
   validatePreconditions,
 } from "../../store/transactionMetadata.js";
+import {
+  isSystemWriteAuthorized,
+  reservedAssertError,
+  reservedWriteError,
+} from "../../store/systemNamespace.js";
 
 const COMMIT_POSITION_KEY = new Uint8Array([0x21]);
 const textEncoder = new TextEncoder();
@@ -332,6 +337,8 @@ const makeKvTriplesService = Effect.gen(function* () {
 
     assert: (input: TripleInput) =>
       Effect.gen(function* () {
+        const reserved = reservedWriteError(input);
+        if (reserved) return yield* Effect.fail(reserved);
         const tripleId = yield* runtime.nextTripleId;
         const txId = yield* runtime.nextTxId;
         const now = yield* runtime.now;
@@ -346,6 +353,10 @@ const makeKvTriplesService = Effect.gen(function* () {
 
     assertBatch: (inputs: readonly TripleInput[], _options?: BulkInsertOptions) =>
       Effect.gen(function* () {
+        for (const input of inputs) {
+          const reserved = reservedWriteError(input);
+          if (reserved) return yield* Effect.fail(reserved);
+        }
         const txId = yield* runtime.nextTxId;
         const now = yield* runtime.now;
         const datoms = yield* Effect.forEach(inputs, (input) =>
@@ -364,6 +375,15 @@ const makeKvTriplesService = Effect.gen(function* () {
 
     retract: (id: TripleId) =>
       Effect.gen(function* () {
+        const current = yield* hexaStore.getById(id);
+        if (current) {
+          const reserved = reservedWriteError({
+            entityId: current.entity,
+            attribute: current.attribute,
+            entityType: current.entityType ?? undefined,
+          });
+          if (reserved) return yield* Effect.fail(reserved);
+        }
         const retracted = yield* hexaStore.retract(id, yield* runtime.now, yield* runtime.nextTxId);
         if (!retracted) {
           yield* Effect.fail(
@@ -385,6 +405,14 @@ const makeKvTriplesService = Effect.gen(function* () {
         const datoms = pattern.entityType
           ? scanned.filter((datom) => datom.entityType === pattern.entityType)
           : scanned;
+        for (const datom of datoms) {
+          const reserved = reservedWriteError({
+            entityId: datom.entity,
+            attribute: datom.attribute,
+            entityType: datom.entityType ?? undefined,
+          });
+          if (reserved) return yield* Effect.fail(reserved);
+        }
         let count = 0;
         const now = yield* runtime.now;
         const txId = yield* runtime.nextTxId;
@@ -406,6 +434,10 @@ const makeKvTriplesService = Effect.gen(function* () {
         .transact((tx) => {
           const transactionStore = createKvTripleStore(transactionBackend(tx));
           return Effect.gen(function* () {
+            if (!isSystemWriteAuthorized(meta)) {
+              const reserved = reservedAssertError(operations);
+              if (reserved) return yield* Effect.fail(reserved);
+            }
             const invalidCondition = validatePreconditions(operations, meta);
             if (invalidCondition) {
               return yield* Effect.fail(
@@ -456,6 +488,14 @@ const makeKvTriplesService = Effect.gen(function* () {
                 }
                 case "retract": {
                   const current = yield* transactionStore.getById(op.id);
+                  if (current && !isSystemWriteAuthorized(meta)) {
+                    const reserved = reservedWriteError({
+                      entityId: current.entity,
+                      attribute: current.attribute,
+                      entityType: current.entityType ?? undefined,
+                    });
+                    if (reserved) return yield* Effect.fail(reserved);
+                  }
                   const ok = yield* transactionStore.retract(op.id, now, txId);
                   if (!ok && preconditionIds.has(op.id)) {
                     return yield* Effect.fail(
@@ -484,6 +524,16 @@ const makeKvTriplesService = Effect.gen(function* () {
                   const datoms = op.pattern.entityType
                     ? scanned.filter((datom) => datom.entityType === op.pattern.entityType)
                     : scanned;
+                  if (!isSystemWriteAuthorized(meta)) {
+                    for (const datom of datoms) {
+                      const reserved = reservedWriteError({
+                        entityId: datom.entity,
+                        attribute: datom.attribute,
+                        entityType: datom.entityType ?? undefined,
+                      });
+                      if (reserved) return yield* Effect.fail(reserved);
+                    }
+                  }
                   for (const datom of datoms) {
                     const ok = yield* transactionStore.retract(datom.tripleId, now, txId);
                     if (ok) {

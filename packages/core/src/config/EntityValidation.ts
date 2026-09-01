@@ -18,6 +18,7 @@ import type {
 } from "../errors/index.js";
 import { Triples } from "../store/Triples.js";
 import type { TransactionResult } from "../store/Triples.js";
+import { transactSystem } from "../store/systemNamespace.js";
 import type { Triple, TransactOp } from "../Triple.js";
 import type { TripleValue } from "../Value.js";
 import * as CanonicalJson from "../content/CanonicalJson.js";
@@ -621,7 +622,7 @@ const makeService = Effect.gen(function* () {
       const transaction =
         operations.length === 0
           ? undefined
-          : yield* triples.transact(operations, {
+          : yield* transactSystem(triples, operations, {
               actor: "triplex/entity-validation",
               configSnapshot: snapshot.id,
               preconditions,

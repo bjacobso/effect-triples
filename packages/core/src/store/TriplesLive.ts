@@ -54,6 +54,11 @@ import {
   transactionRecordsFromTriples,
   validatePreconditions,
 } from "./transactionMetadata.js";
+import {
+  isSystemWriteAuthorized,
+  reservedAssertError,
+  reservedWriteError,
+} from "./systemNamespace.js";
 
 // =============================================================================
 // Row to Triple Conversion
@@ -248,6 +253,8 @@ export const TriplesLive = Layer.effect(
 
     const assert_ = (input: TripleInput): Effect.Effect<Triple, WriteError> =>
       Effect.gen(function* () {
+        const reserved = reservedWriteError(input);
+        if (reserved) return yield* Effect.fail(reserved);
         const row = yield* adapter.insert(input, yield* nextTxId, yield* now, yield* nextTripleId);
         return rowToTriple(row);
       });
@@ -259,6 +266,10 @@ export const TriplesLive = Layer.effect(
       if (inputs.length === 0) return Effect.succeed([]);
 
       return Effect.gen(function* () {
+        for (const input of inputs) {
+          const reserved = reservedWriteError(input);
+          if (reserved) return yield* Effect.fail(reserved);
+        }
         const txId = yield* nextTxId;
         const timestamp = yield* now;
         const ids = yield* Effect.all(inputs.map(() => nextTripleId));
@@ -313,6 +324,10 @@ export const TriplesLive = Layer.effect(
     ): Effect.Effect<TransactionResult, WriteError | ReadError | TransactionConflictError> =>
       adapter.withTransaction(
         Effect.gen(function* () {
+          if (!isSystemWriteAuthorized(meta)) {
+            const reserved = reservedAssertError(operations);
+            if (reserved) return yield* Effect.fail(reserved);
+          }
           const invalidCondition = validatePreconditions(operations, meta);
           if (invalidCondition) {
             return yield* Effect.fail(
@@ -361,6 +376,14 @@ export const TriplesLive = Layer.effect(
             switch (op.op) {
               case "retract": {
                 const current = yield* adapter.getById(op.id as string);
+                if (current && !isSystemWriteAuthorized(meta)) {
+                  const reserved = reservedWriteError({
+                    entityId: current.entity_id,
+                    attribute: current.attribute,
+                    entityType: current.entity_type ?? undefined,
+                  });
+                  if (reserved) return yield* Effect.fail(reserved);
+                }
                 const didRetract = yield* adapter.retract(op.id as string, timestamp, txId);
                 if (!didRetract && preconditionIds.has(op.id as string)) {
                   return yield* Effect.fail(
@@ -386,6 +409,16 @@ export const TriplesLive = Layer.effect(
               case "retract-pattern": {
                 const pattern = queryToPattern(op.pattern);
                 const matched = yield* adapter.query(pattern);
+                if (!isSystemWriteAuthorized(meta)) {
+                  for (const row of matched) {
+                    const reserved = reservedWriteError({
+                      entityId: row.entity_id,
+                      attribute: row.attribute,
+                      entityType: row.entity_type ?? undefined,
+                    });
+                    if (reserved) return yield* Effect.fail(reserved);
+                  }
+                }
                 for (const row of matched) {
                   if (yield* adapter.retract(row.id, timestamp, txId)) {
                     retractedCount++;
@@ -429,6 +462,23 @@ export const TriplesLive = Layer.effect(
       timestamp?: number,
     ): Effect.Effect<void, WriteError> =>
       Effect.gen(function* () {
+        const current = yield* adapter.getById(id).pipe(
+          Effect.mapError(
+            (cause) =>
+              new WriteError({
+                message: `Failed to inspect triple before retraction: ${id}`,
+                cause,
+              }),
+          ),
+        );
+        if (current) {
+          const reserved = reservedWriteError({
+            entityId: current.entity_id,
+            attribute: current.attribute,
+            entityType: current.entity_type ?? undefined,
+          });
+          if (reserved) return yield* Effect.fail(reserved);
+        }
         const didRetract = yield* adapter.retract(
           id,
           timestamp ?? (yield* now),
@@ -448,6 +498,14 @@ export const TriplesLive = Layer.effect(
     ): Effect.Effect<number, WriteError | ReadError> =>
       Effect.gen(function* () {
         const triples = yield* match(pattern);
+        for (const triple of triples) {
+          const reserved = reservedWriteError({
+            entityId: triple.entityId,
+            attribute: triple.attribute,
+            entityType: Option.getOrUndefined(triple.entityType),
+          });
+          if (reserved) return yield* Effect.fail(reserved);
+        }
         const resolvedTxId = txId ?? (yield* nextTxId);
         const resolvedTimestamp = timestamp ?? (yield* now);
         let count = 0;
