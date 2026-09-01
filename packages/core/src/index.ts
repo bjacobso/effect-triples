@@ -233,41 +233,6 @@ export {
 export { type SqlDialect, CurrentDialect, SqliteDialect } from "./dialects/index.js";
 export { createParamCollector, type ParamCollector } from "./params.js";
 
-export {
-  Sparql,
-  type SparqlService,
-  type QueryDebugInfo as SparqlQueryDebugInfo,
-} from "./sparql/service.js";
-export {
-  type Context as SparqlContext,
-  type SelectResult,
-  type ResultTriple,
-  type ConstructResult,
-  type DescribeResult,
-  type AskResult,
-  type QueryResult as SparqlQueryResult,
-} from "./sparql/types.js";
-export { SparqlQuery } from "./sparql/schema.js";
-export {
-  compile as compileSparql,
-  compileToSql as compileSparqlToSql,
-  type CompiledQuery as SparqlCompiledQuery,
-  type QueryMetrics as SparqlQueryMetrics,
-} from "./sparql/compiler.js";
-export {
-  isVariable as isSparqlVariable,
-  isIRI,
-  isTriplePattern,
-  isOptionalPattern,
-  isUnionPattern,
-  isFilterPattern,
-  isBindPattern,
-  isValuesPattern,
-  isMinusPattern,
-  isPropertyPathPattern,
-  isSubSelectPattern,
-} from "./sparql/schema.js";
-
 // =============================================================================
 // KV Backend + Hexastore
 // =============================================================================

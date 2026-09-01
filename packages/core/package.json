@@ -9,7 +9,6 @@
     "datalog",
     "effect",
     "sha-256",
-    "sparql",
     "triplestore"
   ],
   "homepage": "https://github.com/bjacobso/triplex#readme",
@@ -70,11 +69,6 @@
       "types": "./dist/DatabaseRpc.d.ts",
       "import": "./dist/DatabaseRpc.js",
       "default": "./dist/DatabaseRpc.js"
-    },
-    "./Sparql": {
-      "types": "./dist/Sparql.d.ts",
-      "import": "./dist/Sparql.js",
-      "default": "./dist/Sparql.js"
     },
     "./Snapshot": {
       "types": "./dist/Snapshot.d.ts",

@@ -1,6 +1,6 @@
 # @bjacobso/triplex-sql
 
-Shared SQL migrations, storage layers, Datalog execution, and SPARQL execution for Effect
+Shared SQL migrations, storage layers, and Datalog execution for Effect
 Triples. Most applications install this transitively through a backend package.
 
 ```bash

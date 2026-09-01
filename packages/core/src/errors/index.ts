@@ -117,18 +117,6 @@ export class DatalogValidationError extends Data.TaggedError("DatalogValidationE
   readonly cause?: unknown;
 }> {}
 
-// SPARQL query errors
-export class SparqlError extends Data.TaggedError("SparqlError")<{
-  readonly message: string;
-  readonly cause?: unknown;
-}> {}
-
-export class SparqlValidationError extends Data.TaggedError("SparqlValidationError")<{
-  readonly message: string;
-  readonly query: unknown;
-  readonly cause?: unknown;
-}> {}
-
 // Migration errors
 export class MigrationError extends Data.TaggedError("MigrationError")<{
   readonly version: number;

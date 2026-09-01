@@ -3,7 +3,7 @@
 An Effect-native fact database with Datalog and typed, content-addressed configuration.
 
 The platform-neutral core includes temporal triples, an in-memory ordered-KV hexastore,
-Datalog and SPARQL query engines, subscriptions, entity snapshots, configuration releases,
+Datalog querying, subscriptions, entity snapshots, configuration releases,
 and Effect services.
 
 ## Install

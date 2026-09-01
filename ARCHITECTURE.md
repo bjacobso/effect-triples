@@ -4,7 +4,7 @@ Triplex separates the storage-independent data model from backend implementation
 hosts typed configuration as a modular layer over the same core.
 
 - `@bjacobso/triplex` owns triples, typed values, Effect service contracts, the in-memory ordered-KV
-  hexastore, Datalog and SPARQL schemas and engines, snapshots, and subscriptions. It also owns
+  hexastore, Datalog schemas and engines, snapshots, and subscriptions. It also owns
   the merged **`Triples`** service (writes + triple reads + Datalog reads in one tag) and both of
   its implementations: `TriplesLive` (over `StorageAdapter` + the `QueryExecutor` SPI) and
   `KvTriplesLive` (a single hexastore handle over any `KvBackend`). The Datalog-over-SQL wiring
@@ -36,12 +36,15 @@ hosts typed configuration as a modular layer over the same core.
   and asserted/retracted change descriptions as ordinary `_Transaction` facts. The backend also
   allocates a monotonic commit position in that atomic boundary; `Triples.transactions` pages the
   journal from a durable resume cursor.
+- `_triplex/` entities, `:triplex/` and `:_tx/` attributes, and Triplex-owned entity types are
+  reserved for core services. Ordinary writes fail before mutation; config and validation services
+  cross that boundary through a private core capability.
 - `EntitySnapshot` and `ConfigSnapshot` are deliberately separate models: the former materializes
   one fact entity at a transaction/time; the latter pins an immutable release graph, revision
   stamps, dependency closures, and movable refs.
-- `@bjacobso/triplex-sql` is now migrations, `SqlQueryExecutor` (the SQL implementation of the
-  `QueryExecutor` SPI), and the `Sparql` layer — the query execution shared by SQLite and
-  PostgreSQL. Datalog SQL projections retain hidden value-tag columns until result decoding, and
+- `@bjacobso/triplex-sql` is now migrations and `SqlQueryExecutor` (the SQL implementation of the
+  `QueryExecutor` SPI) shared by SQLite and PostgreSQL. Datalog SQL projections retain hidden
+  value-tag columns until result decoding, and
   scalar-family joins compare textual, numeric, and boolean values consistently with the KV
   executor. A shared KV/SQLite differential corpus is the regression boundary for this contract.
 - Backend packages construct the storage adapters and runtime layers for their platforms.

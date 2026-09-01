@@ -9,7 +9,7 @@
  * const { results } = yield* triples.query({ find: ["?n"], where: [["?p", ":name", "?n"]] }) // datalog read
  * ```
  *
- * `Sparql`, `SnapshotService`, `SubscriptionManager`, and `DatabaseManager`
+ * `SnapshotService`, `SubscriptionManager`, and `DatabaseManager`
  * remain separate optional services — they have genuinely independent consumers.
  */
 

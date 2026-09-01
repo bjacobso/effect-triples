@@ -9,14 +9,14 @@
 
 An Effect-native fact database with Datalog and typed, content-addressed configuration.
 
-Triplex combines temporal triples, pluggable storage, Datalog and SPARQL queries,
+Triplex combines temporal triples, pluggable storage, Datalog queries,
 reactive subscriptions, entity materializations, and immutable configuration releases.
 
 > Pre-1.0 software: APIs may change between minor releases.
 
 Everything is modeled as `(entity, attribute, value)` facts. Writes are append-only,
-so history is retained and any past state is queryable. The same fact store answers
-both Datalog and SPARQL queries, and the storage layer is a swappable Effect `Layer`:
+so history is retained and any past state is queryable. The fact store answers raw
+Datalog queries, and the storage layer is a swappable Effect `Layer`:
 an in-memory hexastore for tests and the browser, or SQLite, PostgreSQL, Cloudflare
 Durable Objects, and FoundationDB for durable deployments.
 
@@ -71,7 +71,7 @@ triple matching and Datalog, run `pnpm example:demo` or see
 [`examples/demo`](examples/demo).
 
 `Triples` is the store's one service: `assert`/`transact` and both read paths —
-`match` for triple patterns, `query` for Datalog — are methods on it. `Sparql`,
+`match` for triple patterns, `query` for Datalog — are methods on it.
 `SnapshotService`, `SubscriptionManager`, and `DatabaseManager` remain separate,
 optional services with their own consumers. There is no fluent `Database` facade —
 you compose the services you need and provide one storage `Layer`.
@@ -464,41 +464,6 @@ triples.query({
 The compile-only entrypoint is still available for tooling: `compileWithRules(query)`
 returns the SQL and params without executing.
 
-## SPARQL queries
-
-SPARQL is available through the `Sparql` service (provided by the SQL layer,
-`SparqlLive` in `@bjacobso/triplex-sql`). Queries are a JSON DSL rather than a query
-string. Variables use `?` and attributes use `:`, matching Datalog.
-
-```ts
-import { Sparql } from "@bjacobso/triplex";
-
-Effect.gen(function* () {
-  const sparql = yield* Sparql;
-
-  const result = yield* sparql.query({
-    form: "select",
-    select: { variables: ["?name", "?email"] },
-    where: [
-      ["?person", ":person/name", "?name"],
-      ["?person", ":person/age", "?age"],
-      { filter: { op: ">=", left: "?age", right: 30 } },
-      { optional: [["?person", ":person/email", "?email"]] },
-    ],
-  });
-
-  // result is a tagged union; for SELECT the rows are:
-  if (result.results.type === "select") {
-    return result.results.results;
-  }
-});
-```
-
-`where` supports `optional`, `union`, `minus`, `filter` (comparisons plus built-ins
-like `contains`, `regex`, `strstarts`), `bind`, `values`, property paths, and
-subselects. Convenience helpers `sparql.select(query)` return the binding rows
-directly, and `sparql.ask(query)` returns a `boolean`.
-
 ## Entity snapshots and subscriptions
 
 `SnapshotService` materializes the current or historical state of one triple entity as
@@ -551,15 +516,15 @@ The core package runs entirely in memory. Durable backends are separate packages
 provide the same `Triples` service over a real store, each with a one-line convenience
 layer.
 
-| Package                          | Convenience layer                         | Runtime                                        |
-| -------------------------------- | ----------------------------------------- | ---------------------------------------------- |
-| `@bjacobso/triplex`              | `KvTriples.layer` (in-memory)             | Node.js 22+, browsers, edge runtimes           |
-| `@bjacobso/triplex-sql`          | shared SQL query/executor + SPARQL layers | SQL-capable runtimes                           |
-| `@bjacobso/triplex-sqlite`       | `SqliteTriples.layer({ filename })`       | Node.js 22+                                    |
-| `@bjacobso/triplex-postgres`     | `PgTriples.layer(config)`                 | Node.js 22+                                    |
-| `@bjacobso/triplex-cloudflare`   | Cloudflare Durable Object SQLite adapter  | Cloudflare Workers                             |
-| `@bjacobso/triplex-foundationdb` | `FdbTriples.layer(config)`                | Node.js 22+ with FoundationDB client libraries |
-| `@bjacobso/triplex-testkit`      | `makeTriplesConformanceSuite` + fixtures  | Node.js 22+                                    |
+| Package                          | Convenience layer                        | Runtime                                        |
+| -------------------------------- | ---------------------------------------- | ---------------------------------------------- |
+| `@bjacobso/triplex`              | `KvTriples.layer` (in-memory)            | Node.js 22+, browsers, edge runtimes           |
+| `@bjacobso/triplex-sql`          | shared SQL query executor                | SQL-capable runtimes                           |
+| `@bjacobso/triplex-sqlite`       | `SqliteTriples.layer({ filename })`      | Node.js 22+                                    |
+| `@bjacobso/triplex-postgres`     | `PgTriples.layer(config)`                | Node.js 22+                                    |
+| `@bjacobso/triplex-cloudflare`   | Cloudflare Durable Object SQLite adapter | Cloudflare Workers                             |
+| `@bjacobso/triplex-foundationdb` | `FdbTriples.layer(config)`               | Node.js 22+ with FoundationDB client libraries |
+| `@bjacobso/triplex-testkit`      | `makeTriplesConformanceSuite` + fixtures | Node.js 22+                                    |
 
 A durable stack is a single convenience layer. For SQLite:
 
@@ -586,16 +551,15 @@ transport surface:
 ```ts
 import { TripleInput, TransactOp } from "@bjacobso/triplex/Triple";
 import { DatalogQuery } from "@bjacobso/triplex/Datalog";
-import { SparqlQuery } from "@bjacobso/triplex/Sparql";
 import { SubscriptionManager } from "@bjacobso/triplex/subscriptions";
 import { Pattern } from "@bjacobso/triplex/types/Pattern";
 import { ConfigStore, TypeExpr } from "@bjacobso/triplex/config";
 import { ContentId } from "@bjacobso/triplex/content";
 ```
 
-Note that `./Datalog`, `./Sparql`, and `./Snapshot` contain query/response **schemas**,
-not the runtime service tags — import `Triples`, `Sparql`, and `SnapshotService`
-from the root. The HTTP/RPC surface is exposed under `./DatalogApi`,
+Note that `./Datalog` and `./Snapshot` contain query/response **schemas**, not the
+runtime service tags — import `Triples` and `SnapshotService` from the root. The
+HTTP/RPC surface is exposed under `./DatalogApi`,
 `./DatalogRpc`, `./Database`, `./DatabaseApi`, `./DatabaseRpc`, `./SnapshotApi`,
 `./TripleApi`, and `./TripleRpc`.
 
