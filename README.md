@@ -76,7 +76,13 @@ tree-shakeable subpath rather than flattening its symbols into the root:
 
 ```ts
 import { Triples } from "@bjacobso/triplex";
-import { ConfigRuntime, ConfigStore, Evaluate, TypeExpr } from "@bjacobso/triplex/config";
+import {
+  ConfigRuntime,
+  ConfigStore,
+  EntityValidation,
+  Evaluate,
+  TypeExpr,
+} from "@bjacobso/triplex/config";
 ```
 
 `TypeExpr` describes runtime-defined types as content-addressed data. Config nodes form
@@ -114,6 +120,53 @@ either the configuration pin or the proof breaks `ConfigRuntime.verify`. Passing
 evaluates the same deployed rule against historical facts. Cardinality is
 explicit: a rule read with multiple live Triple values fails instead of selecting one
 arbitrarily, and non-scalar JSON facts are rejected at the bridge.
+
+### Validating facts against deployed types
+
+Entity types can be configuration too. Define a closed runtime shape using the exact
+Triple attribute names, commit it with the rest of the release, and explicitly revalidate
+after moving a config ref or changing facts:
+
+```ts
+const employeeSchema =
+  yield *
+  EntityValidation.define(
+    "Employee",
+    TypeExpr.struct({
+      ":employee/name": TypeExpr.required(TypeExpr.text),
+      ":employee/age": TypeExpr.required(TypeExpr.integer),
+    }),
+  );
+
+yield *
+  configStore.commit({
+    label: "employee schema v2",
+    objects: [employeeSchema],
+    ref: "live",
+  });
+
+const validation = yield * EntityValidation.EntityValidation;
+yield * validation.revalidate({ ref: "live" });
+
+const invalidNow = yield * validation.currentInvalid("live");
+const invalidAtLeastOnce = yield * validation.everInvalid();
+const messages = yield * validation.violations({ subject: "employee:alice" });
+```
+
+Every result is bound to the exact `ConfigSnapshot`, schema `ContentId`, subject, and
+materialized entity state. Results and individual violations are immutable,
+content-addressed entities under reserved Triplex attributes. Revalidation atomically
+moves a `(ref, entity type, subject)` head; fixing an entity removes it from the current
+invalid query without erasing that it was invalid before. `currentInvalidQuery`,
+`everInvalidQuery`, and `violationsQuery` return ordinary Datalog queries for composing
+validation state with the rest of an application's graph.
+
+Revalidation is explicit in this release: call it after relevant fact writes and after
+moving or committing the selected config ref. These are observations, not write guards: after
+a ref move, old results do not match the new snapshot; after a fact-only change, the previous
+observation remains current until revalidation moves its head. Applications that require
+synchronous write validation should place the write and follow-up workflow behind their own
+command boundary.
 
 The browser example at [`examples/config-explorer`](examples/config-explorer) walks
 through typed nodes, releases, refs, impact, evaluation, and proof verification.

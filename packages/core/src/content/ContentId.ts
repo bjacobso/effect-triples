@@ -35,6 +35,9 @@ export const Domain = {
   boolExpr: "triplex/expression",
   evaluation: "triplex/evaluation",
   decision: "triplex/decision",
+  validationResult: "triplex/validation-result",
+  validationViolation: "triplex/validation-violation",
+  validationRun: "triplex/validation-run",
   observationClosure: "triplex/observation-closure",
   observationValue: "triplex/observation-value",
 } as const;

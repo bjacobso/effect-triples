@@ -24,6 +24,11 @@ hosts typed configuration as a modular layer over the same core.
   Triple facts statically reachable by the rule, and invokes the pure evaluator. It rejects
   ambiguous multi-valued reads instead of hiding cardinality and keeps storage out of proof
   verification.
+- `EntityValidation` is the schema-to-facts bridge. Runtime entity schemas are deployed as config
+  nodes; explicit revalidation writes immutable content-addressed results and individual violation
+  facts, then atomically moves per-ref heads. Datalog can therefore query current invalid entities,
+  ever-invalid entities, and historical messages without confusing an old observation for a
+  current one.
 - `EntitySnapshot` and `ConfigSnapshot` are deliberately separate models: the former materializes
   one fact entity at a transaction/time; the latter pins an immutable release graph, revision
   stamps, dependency closures, and movable refs.

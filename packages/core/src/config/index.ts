@@ -7,6 +7,7 @@ export * as ConfigStore from "./ConfigStore";
 export * as InMemoryConfigStore from "./InMemoryConfigStore";
 export * as ContentId from "../content/ContentId";
 export * as Entity from "./Entity";
+export * as EntityValidation from "./EntityValidation";
 export * as Evaluate from "./Evaluate";
 export * as Reactor from "./Reactor";
 export * as TypeExpr from "./TypeExpr";
