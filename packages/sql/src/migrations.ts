@@ -121,6 +121,20 @@ export const migrations: readonly Migration[] = [
     name: "add_snapshot_type_index",
     up: SNAPSHOT_INDEX_DDLS[3],
   },
+  {
+    version: 20,
+    name: "remove_legacy_fnv_snapshot_pointers",
+    // Entity snapshots are derived materializations. The browser-safe SHA-256
+    // cutover intentionally keeps one ID format, so legacy pointers must be
+    // removed before their blobs. Applications that need historical
+    // materializations should rebuild them from the temporal triples.
+    up: `DELETE FROM entity_snapshots WHERE hash LIKE 'fnv1a:%'`,
+  },
+  {
+    version: 21,
+    name: "remove_legacy_fnv_snapshot_blobs",
+    up: `DELETE FROM entity_blobs WHERE hash LIKE 'fnv1a:%'`,
+  },
 ];
 
 export const runMigrations = Effect.gen(function* () {

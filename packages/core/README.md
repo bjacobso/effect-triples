@@ -59,7 +59,8 @@ is a complete immutable configuration release; they have separate APIs and ident
 domain-separated SHA-256 `ContentId` values. IDs use the format
 `sha256-<64 lowercase hex characters>`.
 
-The pre-1.0 entity-snapshot hash changed from `fnv1a:<8 hex characters>`. Existing
-persisted snapshot/blob records keyed by the old hash must be rebuilt or migrated.
+The pre-1.0 entity-snapshot hash changed from `fnv1a:<8 hex characters>`. SQL migrations
+remove legacy snapshot/blob rows; applications that need those historical derived
+materializations must rebuild them from temporal triples.
 
 MIT © 2026 Ben Jacobson.

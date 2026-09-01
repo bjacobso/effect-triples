@@ -466,10 +466,10 @@ encoding followed by domain-separated SHA-256. A `ContentId` is formatted as
 `sha256-<64 lowercase hex characters>`, with distinct domains for entity snapshots,
 config nodes, closures, stamps, types, evaluations, and observations.
 
-This replaces the earlier `fnv1a:<8 hex characters>` entity-snapshot hash. Existing
-persisted entity snapshot records and blob references keyed by that hash must be rebuilt
-or migrated before upgrading; Triplex intentionally does not retain a dual-format shim
-before 1.0.
+This replaces the earlier `fnv1a:<8 hex characters>` entity-snapshot hash. SQL
+migrations 20 and 21 remove legacy entity-snapshot pointers and their derived blobs;
+applications that need those historical materializations must rebuild them from the
+temporal triples. Triplex intentionally does not retain a dual-format shim before 1.0.
 
 ## Development
 

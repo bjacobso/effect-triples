@@ -110,14 +110,15 @@ export const INDEX_NAMES = [
  * Content-addressed blob storage for entity snapshots.
  *
  * Each unique entity state (canonical JSON of attribute map) is stored once.
- * The hash is the content address: sha256("v1:" + canonical_json).
+ * The hash is a `sha256-<64 hex>` ContentId over the entity-snapshot domain,
+ * canonical version, and canonical JSON.
  * Deduplication is automatic — two entities with identical attributes share one blob.
  */
 export const ENTITY_BLOBS_TABLE_DDL = `
   CREATE TABLE IF NOT EXISTS entity_blobs (
     hash TEXT PRIMARY KEY NOT NULL,
     data TEXT NOT NULL,
-    format_version INTEGER NOT NULL DEFAULT 1,
+    format_version INTEGER NOT NULL DEFAULT 2,
     byte_size INTEGER NOT NULL,
     ref_count INTEGER NOT NULL DEFAULT 1
   )
