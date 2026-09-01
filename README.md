@@ -1,4 +1,4 @@
-# @repo/config-graph
+# config-graph
 
 Content-addressed versioning for the configuration graph: forms, policies,
 automations and the entities/attributes they all depend on, versioned as one
@@ -47,7 +47,7 @@ second copy of the data it was made from; `World.matches` lets someone holding
 a candidate value prove it was the one used.
 
 ```sh
-pnpm --filter @repo/config-graph bench:typecheck   # the compile budget gate
+pnpm bench:typecheck   # the compile budget gate
 ```
 
 Projectors are declared as entities rather than written by hand. Kinds are
@@ -72,7 +72,7 @@ const FormField = Entity.make({
 releases and is the intended entry point for reading this.
 
 ```sh
-pnpm --filter @repo/config-graph test
+pnpm test
 ```
 
 `Reactor` closes the loop in the other direction. Registrations are indexed by
@@ -92,8 +92,8 @@ hand-written SHA-256 rather than `node:crypto`. The page is the proof that the
 kernel is genuinely browser-safe.
 
 ```sh
-pnpm --filter @repo/config-graph explorer
-open packages/config-graph/explorer/index.html
+pnpm explorer
+open explorer/index.html
 ```
 
 The build step also runs `explorer/smoke.mjs`, which executes the page against

@@ -1,7 +1,12 @@
 {
-  "name": "@repo/config-graph",
+  "name": "config-graph",
   "version": "0.0.0",
   "private": true,
+  "packageManager": "pnpm@11.1.3",
+  "engines": {
+    "node": "24.13.0",
+    "pnpm": "11.1.3"
+  },
   "type": "module",
   "exports": {
     ".": "./dist/index.js",
@@ -14,7 +19,7 @@
   "scripts": {
     "build": "tsdown --clean",
     "dev": "tsdown --watch --no-clean",
-    "lint": "oxlint",
+    "lint": "oxlint src explorer bench tsdown.config.ts tsdown.explorer.config.ts vitest.config.ts",
     "clean": "rm -rf dist",
     "test": "vitest --run",
     "bench:typecheck": "node bench/typecheck-budget.mjs",
@@ -22,14 +27,15 @@
     "explorer": "tsdown --config tsdown.explorer.config.ts && node explorer/smoke.mjs"
   },
   "dependencies": {
-    "effect": "catalog:"
+    "effect": "3.21.4"
   },
   "devDependencies": {
-    "@effect/vitest": "catalog:",
-    "@types/node": "catalog:",
-    "tsdown": "catalog:",
-    "typescript": "catalog:",
-    "typescript-7": "catalog:",
-    "vitest": "catalog:"
+    "@effect/vitest": "0.29.0",
+    "@types/node": "20.19.27",
+    "oxlint": "1.77.0",
+    "tsdown": "0.15.6",
+    "typescript": "npm:@typescript/typescript6@6.0.1",
+    "typescript-7": "npm:typescript@7.0.2",
+    "vitest": "3.2.7"
   }
 }
