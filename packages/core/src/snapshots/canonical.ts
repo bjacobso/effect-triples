@@ -15,6 +15,8 @@
 
 import type { TripleValue } from "../Value.js";
 import type { Triple } from "../Triple.js";
+import * as CanonicalJson from "../content/CanonicalJson.js";
+import * as ContentId from "../content/ContentId.js";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -34,7 +36,7 @@ export interface EntitySnapshot {
   readonly entityId: string;
   readonly entityType: string | null;
   readonly attributes: SnapshotAttributeMap;
-  readonly hash: string;
+  readonly hash: ContentId.ContentId;
   readonly txId: string;
   readonly txTime: number;
 }
@@ -43,8 +45,8 @@ export interface EntityDiff {
   readonly entityId: string;
   readonly fromTxId: string;
   readonly toTxId: string;
-  readonly fromHash: string;
-  readonly toHash: string;
+  readonly fromHash: ContentId.ContentId;
+  readonly toHash: ContentId.ContentId;
   readonly added: Record<string, SnapshotValue | SnapshotValue[]>;
   readonly removed: Record<string, SnapshotValue | SnapshotValue[]>;
   readonly changed: Record<
@@ -155,7 +157,7 @@ export const canonicalize = (attributes: SnapshotAttributeMap): string => {
     return [key, val];
   });
 
-  return JSON.stringify(entries);
+  return CanonicalJson.encodeOrThrow(entries as CanonicalJson.CanonicalValue);
 };
 
 // ---------------------------------------------------------------------------
@@ -163,26 +165,12 @@ export const canonicalize = (attributes: SnapshotAttributeMap): string => {
 // ---------------------------------------------------------------------------
 
 /**
- * Simple synchronous hash using FNV-1a (browser + Node compatible).
- * Not cryptographic — sufficient for content-addressed deduplication.
- */
-const fnv1a = (str: string): string => {
-  let hash = 0x811c9dc5;
-  for (let i = 0; i < str.length; i++) {
-    hash ^= str.charCodeAt(i);
-    hash = (hash * 0x01000193) >>> 0;
-  }
-  return hash.toString(16).padStart(8, "0");
-};
-
-/**
  * Compute the content-address hash for a canonical JSON string.
- * Uses FNV-1a for browser compatibility (no node:crypto dependency).
- * Includes a version prefix so the format can evolve without breaking existing hashes.
+ * Uses the shared browser-safe, domain-separated SHA-256 foundation.
  */
-export const hashCanonical = (canonical: string): string => {
+export const hashCanonical = (canonical: string): ContentId.ContentId => {
   const input = `${CANONICAL_VERSION}:${canonical}`;
-  return `fnv1a:${fnv1a(input)}`;
+  return ContentId.hash(ContentId.Domain.entitySnapshot, input);
 };
 
 /**

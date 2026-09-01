@@ -1,0 +1,21 @@
+{
+  "name": "effect-triples-config-explorer",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "tsdown && node smoke.mjs",
+    "test": "pnpm build",
+    "typecheck": "tsc --noEmit",
+    "clean": "rm -rf build"
+  },
+  "dependencies": {
+    "effect": "catalog:",
+    "effect-triples": "workspace:^"
+  },
+  "devDependencies": {
+    "@types/node": "catalog:",
+    "tsdown": "catalog:",
+    "typescript": "catalog:"
+  }
+}

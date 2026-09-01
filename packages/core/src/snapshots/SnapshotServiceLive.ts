@@ -28,6 +28,7 @@ import {
   FORMAT_VERSION,
 } from "./canonical.js";
 import type { EntityId } from "../Triple.js";
+import type { ContentId } from "../content/ContentId.js";
 import type {
   EntitySnapshotResponse,
   TransactionDetailResponse,
@@ -41,7 +42,7 @@ import type {
 interface EntitySnapshotRow {
   entity_id: string;
   tx_id: string;
-  hash: string;
+  hash: ContentId;
   tx_time: number;
   entity_type: string | null;
 }
@@ -498,7 +499,7 @@ const makeSnapshotService = Effect.gen(function* () {
   const hashAt: SnapshotServiceShape["hashAt"] = (entityId, txId) =>
     Effect.gen(function* () {
       const rows = yield* adapter
-        .rawQuery<{ hash: string }>(
+        .rawQuery<{ hash: ContentId }>(
           `SELECT hash FROM entity_snapshots WHERE entity_id = ? AND tx_id = ?`,
           [entityId, txId],
         )
@@ -557,7 +558,7 @@ const makeSnapshotService = Effect.gen(function* () {
   const hashes: SnapshotServiceShape["hashes"] = (entityId) =>
     Effect.gen(function* () {
       const rows = yield* adapter
-        .rawQuery<{ tx_id: string; tx_time: number; hash: string }>(
+        .rawQuery<{ tx_id: string; tx_time: number; hash: ContentId }>(
           `SELECT tx_id, tx_time, hash FROM entity_snapshots
            WHERE entity_id = ?
            ORDER BY tx_time ASC`,
@@ -651,7 +652,7 @@ const makeSnapshotService = Effect.gen(function* () {
       if (txRows.length === 0) {
         // If we can't find the tx, return all current snapshots
         const allRows = yield* adapter
-          .rawQuery<{ entity_id: string; hash: string }>(
+          .rawQuery<{ entity_id: string; hash: ContentId }>(
             `SELECT s.entity_id, s.hash FROM entity_snapshots s
              WHERE NOT EXISTS (
                SELECT 1 FROM entity_snapshots s2
@@ -679,7 +680,7 @@ const makeSnapshotService = Effect.gen(function* () {
 
       // Find entities that have snapshots after the given tx_time
       const rows = yield* adapter
-        .rawQuery<{ entity_id: string; hash: string }>(
+        .rawQuery<{ entity_id: string; hash: ContentId }>(
           `SELECT s.entity_id, s.hash FROM entity_snapshots s
            WHERE (
              s.tx_time > ?
@@ -711,7 +712,7 @@ const makeSnapshotService = Effect.gen(function* () {
   const checkpoint: SnapshotServiceShape["checkpoint"] = (asOfTime) =>
     Effect.gen(function* () {
       const rows = yield* adapter
-        .rawQuery<{ entity_id: string; hash: string }>(
+        .rawQuery<{ entity_id: string; hash: ContentId }>(
           `SELECT s.entity_id, s.hash FROM entity_snapshots s
            WHERE s.tx_time <= ?
            AND NOT EXISTS (
@@ -919,7 +920,7 @@ const makeSnapshotService = Effect.gen(function* () {
           Effect.gen(function* () {
             const snap = yield* at(entityId, txId).pipe(Effect.catch(() => Effect.succeed(null)));
             let snapshot: EntitySnapshotResponse | null = null;
-            let previousHash: string | null = null;
+            let previousHash: ContentId | null = null;
 
             if (snap) {
               snapshot = {
@@ -934,7 +935,11 @@ const makeSnapshotService = Effect.gen(function* () {
               const history = yield* hashes(entityId).pipe(
                 Effect.catch(() =>
                   Effect.succeed(
-                    [] as ReadonlyArray<{ txId: string; txTime: number; hash: string }>,
+                    [] as ReadonlyArray<{
+                      txId: string;
+                      txTime: number;
+                      hash: ContentId;
+                    }>,
                   ),
                 ),
               );

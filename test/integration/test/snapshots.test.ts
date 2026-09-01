@@ -78,7 +78,7 @@ describe("canonical", () => {
   describe("hashCanonical", () => {
     it("should produce a prefixed hash", () => {
       const hash = hashCanonical("[]");
-      expect(hash).toMatch(/^fnv1a:[a-f0-9]{8}$/);
+      expect(hash).toMatch(/^sha256-[a-f0-9]{64}$/);
     });
 
     it("should produce consistent hashes for same input", () => {
@@ -211,7 +211,7 @@ describe("SnapshotWriter", () => {
         const snapshots = yield* writer.materialize(result.txId, Date.now(), ["p:alice"]);
         expect(snapshots).toHaveLength(1);
         expect(snapshots[0]!.entityId).toBe("p:alice");
-        expect(snapshots[0]!.hash).toMatch(/^fnv1a:/);
+        expect(snapshots[0]!.hash).toMatch(/^sha256-[a-f0-9]{64}$/);
         expect(snapshots[0]!.attributes[":person/name"]).toEqual({
           type: "string",
           value: "Alice",

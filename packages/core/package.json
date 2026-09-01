@@ -103,6 +103,16 @@
       "import": "./dist/subscriptions/index.js",
       "default": "./dist/subscriptions/index.js"
     },
+    "./config": {
+      "types": "./dist/config/index.d.ts",
+      "import": "./dist/config/index.js",
+      "default": "./dist/config/index.js"
+    },
+    "./content": {
+      "types": "./dist/content/index.d.ts",
+      "import": "./dist/content/index.js",
+      "default": "./dist/content/index.js"
+    },
     "./types/Pattern": {
       "types": "./dist/types/Pattern.d.ts",
       "import": "./dist/types/Pattern.js",
@@ -114,13 +124,16 @@
     "dev": "tsdown --watch",
     "test": "vitest --run",
     "typecheck": "tsc --noEmit",
-    "clean": "rm -rf dist"
+    "clean": "rm -rf dist",
+    "bench:config": "node bench/config/scale.mjs",
+    "bench:config:typecheck": "node bench/config/typecheck-budget.mjs"
   },
   "dependencies": {
     "effect": "catalog:",
     "ulidx": "catalog:"
   },
   "devDependencies": {
+    "@effect/vitest": "catalog:",
     "@types/node": "catalog:",
     "vitest": "catalog:"
   },

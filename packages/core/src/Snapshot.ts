@@ -6,6 +6,7 @@
  */
 
 import { Schema } from "effect";
+import { ContentIdSchema } from "./content/ContentId.js";
 
 // =============================================================================
 // Transaction Summary (for listing)
@@ -78,8 +79,8 @@ export const EntitySnapshotResponse = Schema.Struct({
   entityType: Schema.NullOr(Schema.String),
   /** Attribute map: attribute name → value or array of values */
   attributes: Schema.Record(Schema.String, Schema.Unknown),
-  /** Content-addressed hash (e.g., "sha256:abcdef...") */
-  hash: Schema.String,
+  /** Content-addressed hash (`sha256-<64 lowercase hex>`). */
+  hash: ContentIdSchema,
   /** Transaction ID that produced this snapshot */
   txId: Schema.String,
   /** Transaction timestamp (epoch millis) */
@@ -97,7 +98,7 @@ export type EntitySnapshotResponse = typeof EntitySnapshotResponse.Type;
 export const HashHistoryEntry = Schema.Struct({
   txId: Schema.String,
   txTime: Schema.Number,
-  hash: Schema.String,
+  hash: ContentIdSchema,
 });
 export type HashHistoryEntry = typeof HashHistoryEntry.Type;
 
@@ -123,7 +124,7 @@ export const TransactionEntitySnapshot = Schema.Struct({
   /** Snapshot at this transaction (null if entity was fully retracted) */
   snapshot: Schema.NullOr(EntitySnapshotResponse),
   /** Previous hash (null if this is the first transaction for this entity) */
-  previousHash: Schema.NullOr(Schema.String),
+  previousHash: Schema.NullOr(ContentIdSchema),
 });
 export type TransactionEntitySnapshot = typeof TransactionEntitySnapshot.Type;
 

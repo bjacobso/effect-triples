@@ -106,6 +106,7 @@ try {
   writeFileSync(
     join(consumerDir, "consumer.ts"),
     `import type { DatalogQuery, TripleInput } from "effect-triples";
+import { ConfigStore, Evaluate, TypeExpr } from "effect-triples/config";
 import * as Cloudflare from "effect-triples-cloudflare";
 import * as FoundationDb from "effect-triples-foundationdb";
 import * as Postgres from "effect-triples-postgres";
@@ -124,6 +125,9 @@ const query: DatalogQuery = {
 };
 void triple;
 void query;
+void ConfigStore;
+void Evaluate;
+void TypeExpr;
 void makeSqliteLayer;
 void Cloudflare;
 void FoundationDb;

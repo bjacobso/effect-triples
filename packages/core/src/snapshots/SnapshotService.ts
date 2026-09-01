@@ -9,6 +9,7 @@
  */
 
 import { Context, Data, Effect } from "effect";
+import type { ContentId } from "../content/ContentId.js";
 import type { EntitySnapshot, EntityDiff } from "./canonical.js";
 import type {
   TransactionDetailResponse,
@@ -43,7 +44,10 @@ export interface SnapshotServiceShape {
     asOf: number,
   ) => Effect.Effect<EntitySnapshot | null, SnapshotError>;
 
-  readonly hashAt: (entityId: string, txId: string) => Effect.Effect<string | null, SnapshotError>;
+  readonly hashAt: (
+    entityId: string,
+    txId: string,
+  ) => Effect.Effect<ContentId | null, SnapshotError>;
 
   readonly batchCurrent: (
     entityIds: readonly string[],
@@ -52,7 +56,10 @@ export interface SnapshotServiceShape {
   // History
   readonly hashes: (
     entityId: string,
-  ) => Effect.Effect<ReadonlyArray<{ txId: string; txTime: number; hash: string }>, SnapshotError>;
+  ) => Effect.Effect<
+    ReadonlyArray<{ txId: string; txTime: number; hash: ContentId }>,
+    SnapshotError
+  >;
 
   readonly diff: (
     entityId: string,
@@ -61,11 +68,11 @@ export interface SnapshotServiceShape {
   ) => Effect.Effect<EntityDiff, SnapshotError>;
 
   // Structural queries
-  readonly findByHash: (hash: string) => Effect.Effect<ReadonlyArray<string>, SnapshotError>;
+  readonly findByHash: (hash: ContentId) => Effect.Effect<ReadonlyArray<string>, SnapshotError>;
 
   readonly findChanged: (
     sinceTxId: string,
-  ) => Effect.Effect<ReadonlyArray<{ entityId: string; hash: string }>, SnapshotError>;
+  ) => Effect.Effect<ReadonlyArray<{ entityId: string; hash: ContentId }>, SnapshotError>;
 
   // Checkpoint support
   readonly checkpoint: (asOf: number) => Effect.Effect<ReadonlyMap<string, string>, SnapshotError>;
