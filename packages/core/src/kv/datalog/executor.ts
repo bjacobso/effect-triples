@@ -560,7 +560,7 @@ const hydrateOptionalProjection = (
         }
 
         for (const field of projection.fields) {
-          if (field.variable in hydrated) continue;
+          if (hydrated[field.variable] !== null && hydrated[field.variable] !== undefined) continue;
           hydrated[field.variable] = entityFields.get(field.attribute) ?? null;
         }
 

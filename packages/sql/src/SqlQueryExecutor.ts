@@ -31,15 +31,68 @@ import {
 // =============================================================================
 
 type ResultRow = Record<string, unknown>;
+type CompiledValueColumns =
+  CompiledQuery["valueColumnMap"] extends Map<string, infer Columns> ? Columns : never;
 
 // =============================================================================
 // Result Conversion
 // =============================================================================
 
-const rowToContext = (row: ResultRow, columnMap: Map<string, string>): QueryContext => {
+const toNumber = (value: unknown): number | null => {
+  if (typeof value === "number") return value;
+  if (typeof value === "bigint") return Number(value);
+  if (typeof value === "string" && value.trim() !== "") {
+    const number = Number(value);
+    return Number.isNaN(number) ? null : number;
+  }
+  return null;
+};
+
+const decodeStoredValue = (row: ResultRow, columns: CompiledValueColumns): QueryContext[string] => {
+  const type = row[columns.type];
+  switch (type) {
+    case "string":
+    case "ref":
+    case "blob": {
+      const value = row[columns.string];
+      return value === null || value === undefined ? null : String(value);
+    }
+    case "number":
+      return toNumber(row[columns.number]);
+    case "boolean": {
+      const value = row[columns.boolean];
+      return value === true || value === 1 || value === 1n || value === "1";
+    }
+    case "datetime":
+      return toNumber(row[columns.datetime]);
+    case "json": {
+      const value = row[columns.json];
+      return value === null || value === undefined
+        ? null
+        : typeof value === "string"
+          ? value
+          : JSON.stringify(value);
+    }
+    default:
+      return null;
+  }
+};
+
+const rowToContext = (
+  row: ResultRow,
+  columnMap: Map<string, string>,
+  valueColumnMap: Map<string, CompiledValueColumns>,
+  numericColumns: Set<string>,
+): QueryContext => {
   const context: Record<string, string | number | boolean | null> = {};
 
   for (const [colName, varName] of columnMap) {
+    const valueColumns = valueColumnMap.get(colName);
+    if (valueColumns) {
+      context[varName] = decodeStoredValue(row, valueColumns);
+      continue;
+    }
+
     const value = row[colName];
 
     if (value === null || value === undefined) {
@@ -47,13 +100,10 @@ const rowToContext = (row: ResultRow, columnMap: Map<string, string>): QueryCont
       continue;
     }
 
-    if (typeof value === "string") {
-      const num = Number(value);
-      if (!isNaN(num) && value.trim() !== "") {
-        context[varName] = num;
-      } else {
-        context[varName] = value;
-      }
+    if (numericColumns.has(colName)) {
+      context[varName] = toNumber(value);
+    } else if (typeof value === "string") {
+      context[varName] = value;
     } else if (typeof value === "number") {
       context[varName] = value;
     } else if (typeof value === "boolean") {
@@ -156,7 +206,9 @@ export const SqlQueryExecutorLive = Layer.effect(
         const execTime = performance.now() - execStart;
 
         // 3. Convert rows to QueryContext objects
-        const results: QueryContext[] = rows.map((row) => rowToContext(row, compiled.columnMap));
+        const results: QueryContext[] = rows.map((row) =>
+          rowToContext(row, compiled.columnMap, compiled.valueColumnMap, compiled.numericColumns),
+        );
 
         // 4. Return with optional debug info
         if (debug && compiled.metrics) {
@@ -220,7 +272,9 @@ export const SqlQueryExecutorLive = Layer.effect(
         }
 
         // 4. Convert rows to QueryContext objects
-        const results: QueryContext[] = rows.map((row) => rowToContext(row, compiled.columnMap));
+        const results: QueryContext[] = rows.map((row) =>
+          rowToContext(row, compiled.columnMap, compiled.valueColumnMap, compiled.numericColumns),
+        );
 
         // 5. Compute nextCursor
         let nextCursor: string | undefined;

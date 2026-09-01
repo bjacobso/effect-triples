@@ -41,7 +41,9 @@ hosts typed configuration as a modular layer over the same core.
   stamps, dependency closures, and movable refs.
 - `@bjacobso/triplex-sql` is now migrations, `SqlQueryExecutor` (the SQL implementation of the
   `QueryExecutor` SPI), and the `Sparql` layer — the query execution shared by SQLite and
-  PostgreSQL.
+  PostgreSQL. Datalog SQL projections retain hidden value-tag columns until result decoding, and
+  scalar-family joins compare textual, numeric, and boolean values consistently with the KV
+  executor. A shared KV/SQLite differential corpus is the regression boundary for this contract.
 - Backend packages construct the storage adapters and runtime layers for their platforms.
 - `@bjacobso/triplex-testkit` is the public home for reusable backend conformance helpers.
 - `test/integration` owns tests that intentionally compose multiple publishable packages.

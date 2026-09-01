@@ -148,7 +148,7 @@ describe("Datalog SQL Compiler", () => {
       expect(sql).toContain("t1");
       expect(sql).toContain("t2");
       // Third table should join on the value (ref) of the second table
-      expect(sql).toContain("t2.entity_id = t1.value_string");
+      expect(sql).toContain("t2.entity_id = COALESCE(t1.value_string, t1.value_json)");
     });
 
     it("should join a repeated value variable without constraining the entity", () => {
@@ -162,7 +162,9 @@ describe("Datalog SQL Compiler", () => {
 
       const sql = compileToSql(query);
 
-      expect(sql).toContain("t1.value_string = t0.value_string");
+      expect(sql).toContain(
+        "COALESCE(t1.value_number, t1.value_datetime) = COALESCE(t0.value_number, t0.value_datetime)",
+      );
       expect(sql).not.toContain("t1.entity_id = t0.value_string");
     });
   });
@@ -180,7 +182,7 @@ describe("Datalog SQL Compiler", () => {
 
       const result = compile(query);
 
-      expect(result.sql).toContain("t1.value_number >= ?");
+      expect(result.sql).toContain("COALESCE(t1.value_number, t1.value_datetime) >= ?");
       expect(result.params).toContain(18);
     });
 
@@ -196,7 +198,7 @@ describe("Datalog SQL Compiler", () => {
 
       const result = compile(query);
 
-      expect(result.sql).toContain("t1.value_string = ?");
+      expect(result.sql).toContain("COALESCE(t1.value_string, t1.value_json) = ?");
       expect(result.params).toContain("active");
     });
 
@@ -212,7 +214,9 @@ describe("Datalog SQL Compiler", () => {
 
       const result = compile(query);
 
-      expect(result.sql).toContain("t1.value_string <> ?");
+      expect(result.sql).toContain(
+        "NOT (((t1.value_type IN ('string', 'ref', 'blob', 'json')) AND COALESCE(t1.value_string, t1.value_json) = ?))",
+      );
       expect(result.params).toContain("inactive");
     });
 
@@ -228,7 +232,7 @@ describe("Datalog SQL Compiler", () => {
 
       const result = compile(query);
 
-      expect(result.sql).toContain("t1.value_number < ?");
+      expect(result.sql).toContain("COALESCE(t1.value_number, t1.value_datetime) < ?");
       expect(result.params).toContain(30);
     });
   });
@@ -370,7 +374,7 @@ describe("Datalog SQL Compiler", () => {
       const result = compile(query);
 
       expect(result.sql).toContain("OR");
-      expect(result.sql).toContain("t1.value_string = ?");
+      expect(result.sql).toContain("COALESCE(t1.value_string, t1.value_json) = ?");
       expect(result.params).toContain("offline");
       expect(result.params).toContain("degraded");
     });
@@ -1253,7 +1257,7 @@ describe("Compiler Internals", () => {
 
     it("should resolve Triple value binding with number mode", () => {
       expect(resolveBinding(tripleBinding("t0", "value"), { valueMode: "number" })).toBe(
-        "t0.value_number",
+        "COALESCE(t0.value_number, t0.value_datetime)",
       );
     });
 
@@ -1266,7 +1270,7 @@ describe("Compiler Internals", () => {
     it("should resolve Triple value binding with coalesce mode", () => {
       const result = resolveBinding(tripleBinding("t0", "value"), { valueMode: "coalesce" });
       expect(result).toBe(
-        "COALESCE(t0.value_string, CAST(t0.value_number AS TEXT), CAST(t0.value_boolean AS TEXT))",
+        "COALESCE(t0.value_string, CAST(t0.value_number AS TEXT), CAST(t0.value_boolean AS TEXT), CAST(t0.value_datetime AS TEXT), t0.value_json)",
       );
     });
 

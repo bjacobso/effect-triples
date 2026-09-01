@@ -7,7 +7,7 @@
  * - Total count retrieval for pagination UI
  */
 
-import { compile, type CompiledQuery } from "./compiler.js";
+import { compile, type CompiledQuery, type CompiledValueColumns } from "./compiler.js";
 import { isVariable } from "./schema.js";
 import type { SqlDialect } from "../dialects/index.js";
 import { SqliteDialect } from "../dialects/sqlite.js";
@@ -33,6 +33,10 @@ export interface CompiledWrappedQuery {
   countParams: readonly unknown[];
   /** Column map from inner query */
   columnMap: Map<string, string>;
+  /** Hidden storage columns used for exact value decoding. */
+  valueColumnMap: Map<string, CompiledValueColumns>;
+  /** Columns whose SQL representation must be decoded as a number. */
+  numericColumns: Set<string>;
 }
 
 // =============================================================================
@@ -222,10 +226,23 @@ export const compileWrapped = (
   const cte = `WITH ${cteName} AS (\n${innerCompiled.sql}\n)`;
 
   // 3. Build SELECT columns from inner query's find clause
-  const selectColumns = inner.find
-    .filter((term): term is string => typeof term === "string" && isVariable(term))
-    .map((v) => `"${v}"`)
-    .join(", ");
+  const selectColumns = new Set(
+    inner.find
+      .filter((term): term is string => typeof term === "string" && isVariable(term))
+      .map((v) => `"${v}"`),
+  );
+  for (const columns of innerCompiled.valueColumnMap.values()) {
+    for (const column of [
+      `"${columns.type}"`,
+      `"${columns.string}"`,
+      `"${columns.number}"`,
+      `"${columns.boolean}"`,
+      `"${columns.datetime}"`,
+      `"${columns.json}"`,
+    ]) {
+      selectColumns.add(column);
+    }
+  }
 
   // 4. Build wrapper WHERE clause from filters + cursor (main query)
   const mainCollector = createParamCollector(dialect);
@@ -265,7 +282,7 @@ export const compileWrapped = (
   // 7. Assemble main query
   const sqlParts = [
     cte,
-    `SELECT ${selectColumns || "*"}`,
+    `SELECT ${[...selectColumns].join(", ") || "*"}`,
     `FROM ${cteName}`,
     whereClause,
     orderByClause,
@@ -300,5 +317,7 @@ export const compileWrapped = (
     params: mainCollector.params,
     countParams,
     columnMap: innerCompiled.columnMap,
+    valueColumnMap: innerCompiled.valueColumnMap,
+    numericColumns: innerCompiled.numericColumns,
   };
 };

@@ -10,7 +10,17 @@
  */
 
 import { Effect } from "effect";
-import { ref, string, TransactionConflictError, Triples, type EntityId } from "@bjacobso/triplex";
+import {
+  boolean,
+  datetime,
+  json,
+  number,
+  ref,
+  string,
+  TransactionConflictError,
+  Triples,
+  type EntityId,
+} from "@bjacobso/triplex";
 
 // ─── Lightweight fixture descriptors (unchanged) ────────────────────────────
 
@@ -112,6 +122,111 @@ export const triplesConformanceCases: readonly ConformanceCase[] = [
       });
       const names = results.map((r) => r["?name"]);
       yield* check(names.includes("Bob"), "datalog query should surface Bob");
+    }),
+  },
+  {
+    name: "datalog projections preserve scalar types without guessing from text",
+    run: Effect.gen(function* () {
+      const t = yield* Triples;
+      yield* t.assertBatch([
+        { entityId: "42", attribute: ":conf/code", value: string("007") },
+        { entityId: "42", attribute: ":conf/count", value: number(7) },
+        { entityId: "42", attribute: ":conf/enabled", value: boolean(true) },
+        { entityId: "42", attribute: ":conf/instant", value: datetime(1_700_000_000_000) },
+        { entityId: "42", attribute: ":conf/data", value: json({ ok: true }) },
+        { entityId: "42", attribute: ":conf/owner", value: ref("7") },
+      ]);
+
+      const { results } = yield* t.query({
+        find: ["?entity", "?code", "?count", "?enabled", "?instant", "?data", "?owner"],
+        where: [
+          ["?entity", ":conf/code", "?code"],
+          ["?entity", ":conf/count", "?count"],
+          ["?entity", ":conf/enabled", "?enabled"],
+          ["?entity", ":conf/instant", "?instant"],
+          ["?entity", ":conf/data", "?data"],
+          ["?entity", ":conf/owner", "?owner"],
+        ],
+      });
+      const row = results[0];
+      yield* check(results.length === 1, "typed projection fixture should produce one row");
+      yield* check(row?.["?entity"] === "42", "numeric-looking entity IDs must stay strings");
+      yield* check(row?.["?code"] === "007", "numeric-looking string values must stay strings");
+      yield* check(row?.["?count"] === 7, "number values must project as numbers");
+      yield* check(row?.["?enabled"] === true, "boolean values must project as booleans");
+      yield* check(
+        row?.["?instant"] === 1_700_000_000_000,
+        "datetime values must project as epoch numbers",
+      );
+      yield* check(row?.["?data"] === '{"ok":true}', "JSON values must use canonical row text");
+      yield* check(row?.["?owner"] === "7", "numeric-looking refs must stay strings");
+    }),
+  },
+  {
+    name: "datalog value joins compare every scalar family",
+    run: Effect.gen(function* () {
+      const t = yield* Triples;
+      yield* t.assertBatch([
+        { entityId: "conf:join:left:number", attribute: ":conf/left", value: number(7) },
+        { entityId: "conf:join:right:number", attribute: ":conf/right", value: number(7) },
+        { entityId: "conf:join:left:string", attribute: ":conf/left", value: string("7") },
+        { entityId: "conf:join:right:string", attribute: ":conf/right", value: string("7") },
+        { entityId: "conf:join:right:other", attribute: ":conf/right", value: number(8) },
+      ]);
+
+      const { results } = yield* t.query({
+        find: ["?left", "?right"],
+        where: [
+          ["?left", ":conf/left", "?value"],
+          ["?right", ":conf/right", "?value"],
+        ],
+      });
+      const pairs = results.map((row) => `${row["?left"]}->${row["?right"]}`).sort();
+      yield* check(
+        JSON.stringify(pairs) ===
+          JSON.stringify([
+            "conf:join:left:number->conf:join:right:number",
+            "conf:join:left:string->conf:join:right:string",
+          ]),
+        "value joins must match numeric and textual families without crossing them",
+      );
+    }),
+  },
+  {
+    name: "datalog equality predicates compare numeric values as numbers",
+    run: Effect.gen(function* () {
+      const t = yield* Triples;
+      yield* t.assertBatch([
+        { entityId: "conf:eq:number", attribute: ":conf/equality", value: number(7) },
+        { entityId: "conf:eq:datetime", attribute: ":conf/equality", value: datetime(7) },
+        { entityId: "conf:eq:string", attribute: ":conf/equality", value: string("7") },
+        { entityId: "conf:eq:other", attribute: ":conf/equality", value: number(8) },
+      ]);
+
+      const equal = yield* t.query({
+        find: ["?entity"],
+        where: [
+          ["?entity", ":conf/equality", "?value"],
+          ["=", "?value", 7],
+        ],
+      });
+      const unequal = yield* t.query({
+        find: ["?entity"],
+        where: [
+          ["?entity", ":conf/equality", "?value"],
+          ["!=", "?value", 7],
+        ],
+      });
+      yield* check(
+        JSON.stringify(equal.results.map((row) => row["?entity"]).sort()) ===
+          JSON.stringify(["conf:eq:datetime", "conf:eq:number"]),
+        "numeric equality must include number and datetime scalars",
+      );
+      yield* check(
+        JSON.stringify(unequal.results.map((row) => row["?entity"]).sort()) ===
+          JSON.stringify(["conf:eq:other", "conf:eq:string"]),
+        "numeric inequality must preserve type-aware scalar semantics",
+      );
     }),
   },
   {

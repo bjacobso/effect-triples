@@ -11,12 +11,13 @@ graph constraints and temporal Datalog.
 
 ## Immediate correctness gate: backend parity
 
-- Run one differential Datalog corpus against KV and SQLite now, then PostgreSQL before marking
-  that adapter stable.
+- The first differential Datalog corpus now runs identical typed projections, scalar joins,
+  predicates, negation, booleans, and ref joins against KV and SQLite. Grow this corpus with every
+  query-engine bug, then run it against PostgreSQL before marking that adapter stable.
 - Cover every value type, value-to-value joins, recursive rules, aggregation, unbound variables,
   links, pagination, and hostile schema-valid inputs.
-- Preserve value tags in SQL result projection so strings such as `"007"`, refs, datetimes, and
-  JSON cannot be guessed from their textual representation.
+- SQL projection now carries hidden storage tags through execution, so strings such as `"007"`,
+  numeric-looking entity IDs and refs, datetimes, booleans, and JSON are decoded without guessing.
 - Keep PostgreSQL, FoundationDB, and Cloudflare experimental until each backend passes the shared
   conformance and differential suites in CI.
 
