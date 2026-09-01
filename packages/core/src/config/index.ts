@@ -2,6 +2,7 @@ export * as BoolExpr from "./BoolExpr";
 export * as CanonicalJson from "../content/CanonicalJson";
 export * as Catalog from "./Catalog";
 export * as ConfigNode from "./ConfigNode";
+export * as ConfigRuntime from "./ConfigRuntime";
 export * as ConfigStore from "./ConfigStore";
 export * as InMemoryConfigStore from "./InMemoryConfigStore";
 export * as ContentId from "../content/ContentId";

@@ -34,6 +34,7 @@ export const Domain = {
   typeExpr: "triplex/type",
   boolExpr: "triplex/expression",
   evaluation: "triplex/evaluation",
+  decision: "triplex/decision",
   observationClosure: "triplex/observation-closure",
   observationValue: "triplex/observation-value",
 } as const;

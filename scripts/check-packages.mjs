@@ -106,7 +106,7 @@ try {
   writeFileSync(
     join(consumerDir, "consumer.ts"),
     `import type { DatalogQuery, TripleInput } from "@bjacobso/triplex";
-import { ConfigStore, Evaluate, TypeExpr } from "@bjacobso/triplex/config";
+import { ConfigRuntime, ConfigStore, Evaluate, TypeExpr } from "@bjacobso/triplex/config";
 import * as Cloudflare from "@bjacobso/triplex-cloudflare";
 import * as FoundationDb from "@bjacobso/triplex-foundationdb";
 import * as Postgres from "@bjacobso/triplex-postgres";
@@ -126,6 +126,7 @@ const query: DatalogQuery = {
 void triple;
 void query;
 void ConfigStore;
+void ConfigRuntime;
 void Evaluate;
 void TypeExpr;
 void makeSqliteLayer;

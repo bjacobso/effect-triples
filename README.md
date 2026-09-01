@@ -76,7 +76,7 @@ tree-shakeable subpath rather than flattening its symbols into the root:
 
 ```ts
 import { Triples } from "@bjacobso/triplex";
-import { ConfigStore, Evaluate, TypeExpr } from "@bjacobso/triplex/config";
+import { ConfigRuntime, ConfigStore, Evaluate, TypeExpr } from "@bjacobso/triplex/config";
 ```
 
 `TypeExpr` describes runtime-defined types as content-addressed data. Config nodes form
@@ -91,6 +91,29 @@ using Datalog for reverse-dependency and deploy-impact candidates. The immutable
 `InMemoryConfigStore` remains available as the reference implementation. `Evaluate`
 produces reproducible decision proofs, and `Evaluate.verify` detects altered decisions
 or observations without replacing Merkle verification with database queries.
+
+`ConfigRuntime.evaluate` is the storage-to-proof bridge: it resolves a release ref, builds
+the rule catalog from that exact `ConfigSnapshot`, reads only the temporal Triple facts
+the rule can observe, and returns the pinned evaluation:
+
+```ts
+const decision =
+  yield *
+  ConfigRuntime.evaluate({
+    ref: "live",
+    rule: "may-deploy",
+    subject: "employee:alice",
+    clock: { now: Date.now(), granularity: "day" },
+  });
+
+ConfigRuntime.verify(decision); // []
+```
+
+The decision ID binds the selected release root, subject, and nested evaluation; changing
+either the configuration pin or the proof breaks `ConfigRuntime.verify`. Passing `asOf`
+evaluates the same deployed rule against historical facts. Cardinality is
+explicit: a rule read with multiple live Triple values fails instead of selecting one
+arbitrarily, and non-scalar JSON facts are rejected at the bridge.
 
 The browser example at [`examples/config-explorer`](examples/config-explorer) walks
 through typed nodes, releases, refs, impact, evaluation, and proof verification.
@@ -464,7 +487,7 @@ from the root. The HTTP/RPC surface is exposed under `./DatalogApi`,
 Triplex uses one browser-safe content-addressing foundation: deterministic canonical
 encoding followed by domain-separated SHA-256. A `ContentId` is formatted as
 `sha256-<64 lowercase hex characters>`, with distinct domains for entity snapshots,
-config nodes, closures, stamps, types, evaluations, and observations.
+config nodes, closures, stamps, types, evaluations, release-pinned decisions, and observations.
 
 This replaces the earlier `fnv1a:<8 hex characters>` entity-snapshot hash. SQL
 migrations 20 and 21 remove legacy entity-snapshot pointers and their derived blobs;

@@ -19,6 +19,11 @@ hosts typed configuration as a modular layer over the same core.
   the `Triples` transaction boundary. Release creation and an optional ref move are atomic;
   reverse-dependency and impact-candidate discovery use Datalog, while content identity and proof
   verification remain Merkle operations.
+- `ConfigRuntime` is the narrow execution bridge between the models. It resolves a config ref,
+  derives a catalog from that immutable release, materializes only the current or historical
+  Triple facts statically reachable by the rule, and invokes the pure evaluator. It rejects
+  ambiguous multi-valued reads instead of hiding cardinality and keeps storage out of proof
+  verification.
 - `EntitySnapshot` and `ConfigSnapshot` are deliberately separate models: the former materializes
   one fact entity at a transaction/time; the latter pins an immutable release graph, revision
   stamps, dependency closures, and movable refs.

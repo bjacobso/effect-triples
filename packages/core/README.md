@@ -42,13 +42,18 @@ SQL implementations live in `@bjacobso/triplex-sql` and the backend-specific pac
 
 ```ts
 import { Triples } from "@bjacobso/triplex";
-import { ConfigStore, Evaluate, TypeExpr } from "@bjacobso/triplex/config";
+import { ConfigRuntime, ConfigStore, Evaluate, TypeExpr } from "@bjacobso/triplex/config";
 ```
 
 `ConfigStore.layer` stores typed configuration graphs, immutable `ConfigSnapshot`
 releases, revisions, dependency closures, and movable refs through the `Triples`
 transaction boundary. `InMemoryConfigStore` is the immutable semantic reference.
 `Evaluate` creates and verifies content-addressed decision proofs.
+
+`ConfigRuntime.evaluate` joins the two storage-independent models: it resolves a deployed
+configuration ref, derives its rule catalog, reads the current or historical Triple facts
+that rule can observe, and returns an evaluation proof whose decision ID binds the release
+root, subject, and nested evaluation.
 
 `EntitySnapshot` is a temporal materialization of one triple entity. `ConfigSnapshot`
 is a complete immutable configuration release; they have separate APIs and identities.
