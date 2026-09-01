@@ -18,77 +18,77 @@
  * compiler; it is what "types are runtime data" means.
  */
 
-import { Effect, ParseResult, Schema } from "effect";
+import { Effect, Schema } from "effect";
 
 import * as TypeExpr from "./TypeExpr";
 
 /** ISO calendar date with no zone - distinct from an instant, on purpose. */
-const IsoDate = Schema.String.pipe(
-  Schema.pattern(/^\d{4}-\d{2}-\d{2}$/, {
-    message: () => "Expected an ISO calendar date (YYYY-MM-DD)",
+const IsoDate = Schema.String.check(
+  Schema.isPattern(/^\d{4}-\d{2}-\d{2}$/, {
+    message: "Expected an ISO calendar date (YYYY-MM-DD)",
   })
 );
 
-const primSchema = (name: TypeExpr.PrimName): Schema.Schema<any, any> => {
+const primSchema = (name: TypeExpr.PrimName): Schema.Codec<any, any> => {
   switch (name) {
     case "text":
       return Schema.String;
     case "number":
       return Schema.Number;
     case "integer":
-      return Schema.Number.pipe(Schema.int());
+      return Schema.Int;
     case "boolean":
       return Schema.Boolean;
     case "date":
       return IsoDate;
     case "instant":
-      return Schema.Number.pipe(Schema.int());
+      return Schema.Int;
   }
 };
 
 const applyConstraint = (
-  schema: Schema.Schema<any, any>,
+  schema: Schema.Codec<any, any>,
   constraint: TypeExpr.Constraint
-): Schema.Schema<any, any> => {
+): Schema.Codec<any, any> => {
   switch (constraint._tag) {
     case "Pattern":
-      return (schema as Schema.Schema<string, string>).pipe(
-        Schema.pattern(new RegExp(constraint.regex))
-      ) as Schema.Schema<any, any>;
+      return (schema as Schema.Codec<string>).check(
+        Schema.isPattern(new RegExp(constraint.regex))
+      ) as Schema.Codec<any, any>;
     case "MinLength":
-      return (schema as Schema.Schema<string, string>).pipe(
-        Schema.minLength(constraint.value)
-      ) as Schema.Schema<any, any>;
+      return (schema as Schema.Codec<string>).check(
+        Schema.isMinLength(constraint.value)
+      ) as Schema.Codec<any, any>;
     case "MaxLength":
-      return (schema as Schema.Schema<string, string>).pipe(
-        Schema.maxLength(constraint.value)
-      ) as Schema.Schema<any, any>;
+      return (schema as Schema.Codec<string>).check(
+        Schema.isMaxLength(constraint.value)
+      ) as Schema.Codec<any, any>;
     case "Min":
-      return (schema as Schema.Schema<number, number>).pipe(
-        Schema.greaterThanOrEqualTo(constraint.value)
-      ) as Schema.Schema<any, any>;
+      return (schema as Schema.Codec<number>).check(
+        Schema.isGreaterThanOrEqualTo(constraint.value)
+      ) as Schema.Codec<any, any>;
     case "Max":
-      return (schema as Schema.Schema<number, number>).pipe(
-        Schema.lessThanOrEqualTo(constraint.value)
-      ) as Schema.Schema<any, any>;
+      return (schema as Schema.Codec<number>).check(
+        Schema.isLessThanOrEqualTo(constraint.value)
+      ) as Schema.Codec<any, any>;
   }
 };
 
-const go = (expr: TypeExpr.TypeExpr): Schema.Schema<any, any> => {
+const go = (expr: TypeExpr.TypeExpr): Schema.Codec<any, any> => {
   switch (expr._tag) {
     case "Any":
-      return Schema.Unknown as Schema.Schema<any, any>;
+      return Schema.Unknown as Schema.Codec<any, any>;
     case "Prim":
       return primSchema(expr.prim);
     case "Enum":
       // A one-value enum is a literal, not a union of one.
-      return Schema.Literal(...expr.values) as Schema.Schema<any, any>;
+      return Schema.Literals(expr.values) as Schema.Codec<any, any>;
     case "Ref":
       // A reference is a key addressing another entity; the target is resolved
       // by the store, not by decoding.
-      return Schema.String as Schema.Schema<any, any>;
+      return Schema.String as Schema.Codec<any, any>;
     case "List":
-      return Schema.Array(go(expr.item)) as Schema.Schema<any, any>;
+      return Schema.Array(go(expr.item)) as Schema.Codec<any, any>;
     case "Struct":
       return Schema.Struct(
         Object.fromEntries(
@@ -100,9 +100,11 @@ const go = (expr: TypeExpr.TypeExpr): Schema.Schema<any, any> => {
                 : // Applied on decode and emitted on encode, so an omitted
                   // field and an explicitly-defaulted one produce identical
                   // bytes and therefore an identical content id.
-                  Schema.optionalWith(go(field.type), {
-                    default: () => field.fallback,
-                  })
+                  go(field.type).pipe(
+                    Schema.withDecodingDefaultType(
+                      Effect.succeed(field.fallback)
+                    )
+                  )
               : go(field.type),
           ])
         )
@@ -113,11 +115,11 @@ const go = (expr: TypeExpr.TypeExpr): Schema.Schema<any, any> => {
         // would refuse a change the compiler would happily accept. Annotating
         // the node rather than passing parse options means every caller of
         // `compile` gets the same semantics, including nested uses.
-      ).annotations({
+      ).annotate({
         parseOptions: { onExcessProperty: "error" },
-      }) as unknown as Schema.Schema<any, any>;
+      }) as unknown as Schema.Codec<any, any>;
     case "Union":
-      return Schema.Union(...expr.members.map(go)) as unknown as Schema.Schema<
+      return Schema.Union(expr.members.map(go)) as unknown as Schema.Codec<
         any,
         any
       >;
@@ -135,8 +137,8 @@ const go = (expr: TypeExpr.TypeExpr): Schema.Schema<any, any> => {
  */
 export const compile = (
   expr: TypeExpr.TypeExpr
-): Schema.Schema<unknown, unknown> =>
-  go(expr) as unknown as Schema.Schema<unknown, unknown>;
+): Schema.Codec<unknown, unknown> =>
+  go(expr) as unknown as Schema.Codec<unknown, unknown>;
 
 /** Does this value satisfy the type? The instance-level check, when needed. */
 export const is = (expr: TypeExpr.TypeExpr, value: unknown): boolean =>
@@ -153,9 +155,9 @@ export const is = (expr: TypeExpr.TypeExpr, value: unknown): boolean =>
 export const normalize = (
   expr: TypeExpr.TypeExpr,
   input: unknown
-): Effect.Effect<unknown, ParseResult.ParseError> => {
+): Effect.Effect<unknown, Schema.SchemaError> => {
   const schema = compile(expr);
-  return Schema.decodeUnknown(schema)(input).pipe(
-    Effect.flatMap((decoded) => Schema.encode(schema)(decoded))
+  return Schema.decodeUnknownEffect(schema)(input).pipe(
+    Effect.flatMap((decoded) => Schema.encodeEffect(schema)(decoded))
   );
 };

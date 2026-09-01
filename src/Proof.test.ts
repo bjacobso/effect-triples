@@ -78,7 +78,7 @@ describe("verify: the auditor's check", () => {
       Effect.gen(function* () {
         const decision = Evaluate.evaluate(expr, world, clock, catalog);
         const wire = JSON.parse(JSON.stringify(decision));
-        const decoded = yield* Schema.decodeUnknown(Evaluate.EvaluationSchema)(wire); // prettier-ignore
+        const decoded = yield* Schema.decodeUnknownEffect(Evaluate.EvaluationSchema)(wire); // prettier-ignore
 
         // Verification runs on the DECODED tree, not the one still in memory -
         // otherwise it would be checking an object it already trusted.

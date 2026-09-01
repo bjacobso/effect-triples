@@ -58,7 +58,7 @@ describe("TypeExpr identity", () => {
       });
 
       const wire = JSON.parse(JSON.stringify(customerDefined));
-      const decoded = yield* Schema.decodeUnknown(T.TypeExprSchema)(wire);
+      const decoded = yield* Schema.decodeUnknownEffect(T.TypeExprSchema)(wire);
 
       expect(T.id(decoded)).toEqual(T.id(customerDefined));
     })
@@ -218,6 +218,7 @@ describe("TypeSchema.compile", () => {
     expect(TypeSchema.is(type, { state: "TX", count: 2 })).toBe(false);
     expect(TypeSchema.is(type, { state: "CA", count: 2.5 })).toBe(false);
     expect(TypeSchema.is(type, { state: "CA", count: 2, note: "toolong" })).toBe(false); // prettier-ignore
+    expect(TypeSchema.is(type, { state: "CA", count: 2, extra: true })).toBe(false); // prettier-ignore
   });
 
   it("compiles bounds and patterns into real validation", () => {

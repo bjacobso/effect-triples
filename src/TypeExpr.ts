@@ -235,21 +235,21 @@ export const id = (expr: TypeExpr): ContentId.ContentId =>
  * the *language*, and is written once by us. The types customers create are
  * values of it.
  */
-export const TypeExprSchema: Schema.Schema<TypeExpr> = Schema.suspend(
-  (): Schema.Schema<TypeExpr> =>
-    Schema.Union(
+export const TypeExprSchema: Schema.Codec<TypeExpr> = Schema.suspend(
+  (): Schema.Codec<TypeExpr> =>
+    Schema.Union([
       Schema.Struct({ _tag: Schema.Literal("Any"), v: Schema.Literal(1) }),
       Schema.Struct({
         _tag: Schema.Literal("Prim"),
         v: Schema.Literal(1),
-        prim: Schema.Literal(
+        prim: Schema.Literals([
           "text",
           "number",
           "integer",
           "boolean",
           "date",
           "instant"
-        ),
+        ]),
       }),
       Schema.Struct({
         _tag: Schema.Literal("Enum"),
@@ -269,16 +269,16 @@ export const TypeExprSchema: Schema.Schema<TypeExpr> = Schema.suspend(
       Schema.Struct({
         _tag: Schema.Literal("Struct"),
         v: Schema.Literal(1),
-        fields: Schema.Record({
-          key: Schema.String,
-          value: Schema.Struct({
+        fields: Schema.Record(
+          Schema.String,
+          Schema.Struct({
             type: TypeExprSchema,
             optional: Schema.Boolean,
             fallback: Schema.optional(
-              Schema.Union(Schema.String, Schema.Number, Schema.Boolean)
+              Schema.Union([Schema.String, Schema.Number, Schema.Boolean])
             ),
-          }),
-        }),
+          })
+        ),
       }),
       Schema.Struct({
         _tag: Schema.Literal("Union"),
@@ -290,7 +290,7 @@ export const TypeExprSchema: Schema.Schema<TypeExpr> = Schema.suspend(
         v: Schema.Literal(1),
         base: TypeExprSchema,
         constraints: Schema.Array(
-          Schema.Union(
+          Schema.Union([
             Schema.Struct({
               _tag: Schema.Literal("Pattern"),
               regex: Schema.String,
@@ -308,8 +308,8 @@ export const TypeExprSchema: Schema.Schema<TypeExpr> = Schema.suspend(
               value: Schema.Number,
             }),
             Schema.Struct({ _tag: Schema.Literal("Max"), value: Schema.Number })
-          )
+          ])
         ),
       })
-    ) as unknown as Schema.Schema<TypeExpr>
+    ]) as unknown as Schema.Codec<TypeExpr>
 );

@@ -362,7 +362,7 @@ describe("ConfigNode.makeTyped", () => {
         attrs: { label: 42 },
       }).pipe(Effect.flip);
 
-      expect(error._tag).toEqual("ParseError");
+      expect(error._tag).toEqual("SchemaError");
     })
   );
 

@@ -25,7 +25,7 @@ const SIZES = sizes.length > 0 ? sizes : [300];
 
 const schemaAttrs = (i) => `const Attrs${i} = Schema.Struct({
   slug: Schema.String, name: Schema.String,
-  status: Schema.Literal("draft", "published", "deprecated"),
+  status: Schema.Literals(["draft", "published", "deprecated"]),
   count: Schema.Number, flag: Schema.optional(Schema.Boolean),
   tags: Schema.Array(Schema.String),
   nested: Schema.Struct({ a: Schema.String, b: Schema.Number }),

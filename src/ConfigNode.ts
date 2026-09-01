@@ -37,7 +37,7 @@
  * `makeTyped` and `stamp` for why the two are kept apart.
  */
 
-import { Data, Effect, ParseResult } from "effect";
+import { Data, Effect, Schema } from "effect";
 
 import * as CanonicalJson from "./CanonicalJson";
 import * as ContentId from "./ContentId";
@@ -199,7 +199,7 @@ export const makeTyped = (input: {
   ConfigNode,
   | DuplicateChildKeyError
   | CanonicalJson.CanonicalEncodingError
-  | ParseResult.ParseError
+  | Schema.SchemaError
 > =>
   Effect.gen(function* () {
     const attrs = yield* TypeSchema.normalize(input.type, input.attrs);

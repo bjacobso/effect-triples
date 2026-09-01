@@ -19,18 +19,18 @@
  * thing that must never have two.
  */
 
-import { Schema } from "effect";
+import { Brand, Schema } from "effect";
 
 import * as Sha256 from "./Sha256";
 
-export const ContentIdSchema = Schema.String.pipe(
-  Schema.pattern(/^sha256-[0-9a-f]{64}$/, {
-    message: () => "Expected a content id of the form sha256-<64 hex chars>",
-  }),
-  Schema.brand("ContentId")
-);
+export type ContentId = string & Brand.Brand<"ContentId">;
 
-export type ContentId = typeof ContentIdSchema.Type;
+export const ContentIdSchema: Schema.Codec<ContentId, string> =
+  Schema.String.check(
+    Schema.isPattern(/^sha256-[0-9a-f]{64}$/, {
+      message: "Expected a content id of the form sha256-<64 hex chars>",
+    })
+  ).pipe(Schema.brand("ContentId")) as Schema.Codec<ContentId, string>;
 
 /**
  * Hash `payload` within `domain`. `domain` names the kind of thing being

@@ -542,14 +542,14 @@ export const impact = (
  * can be handed to an auditor, stored, or sent over a wire without becoming a
  * second copy of the facts it was made from.
  */
-export const EvaluationSchema: Schema.Schema<Evaluation> = Schema.suspend(
-  (): Schema.Schema<Evaluation> =>
+export const EvaluationSchema: Schema.Codec<Evaluation> = Schema.suspend(
+  (): Schema.Codec<Evaluation> =>
     Schema.Struct({
-      truth: Schema.Literal("true", "false", "unknown"),
+      truth: Schema.Literals(["true", "false", "unknown"]),
       cid: ContentId.ContentIdSchema,
       expr: ContentId.ContentIdSchema,
       observed: Schema.Array(
-        Schema.Union(
+        Schema.Union([
           Schema.Struct({
             _tag: Schema.Literal("Config"),
             kind: Schema.String,
@@ -565,14 +565,14 @@ export const EvaluationSchema: Schema.Schema<Evaluation> = Schema.suspend(
           }),
           Schema.Struct({
             _tag: Schema.Literal("Clock"),
-            granularity: Schema.Literal("instant", "day"),
+            granularity: Schema.Literals(["instant", "day"]),
             bucket: Schema.Number,
           })
-        )
+        ])
       ),
       children: Schema.Array(EvaluationSchema),
       reason: Schema.optional(Schema.String),
-    }) as unknown as Schema.Schema<Evaluation>
+    }) as unknown as Schema.Codec<Evaluation>
 );
 
 export interface Tampered {

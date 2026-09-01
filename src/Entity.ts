@@ -43,7 +43,7 @@
  * upstream, in whatever reads the database to call these projectors.
  */
 
-import { Effect, ParseResult } from "effect";
+import { Effect, Schema } from "effect";
 
 import * as CanonicalJson from "./CanonicalJson";
 import * as ConfigNode from "./ConfigNode";
@@ -146,7 +146,7 @@ export interface Entity<
     EntityNode<K>,
     | ConfigNode.DuplicateChildKeyError
     | CanonicalJson.CanonicalEncodingError
-    | ParseResult.ParseError
+    | Schema.SchemaError
   >;
 }
 
