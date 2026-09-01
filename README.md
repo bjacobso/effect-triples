@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="assets/triplex-logo.png" alt="Triplex logo" width="640" />
+</p>
+
 # Triplex
 
 An Effect-native fact database with Datalog and typed, content-addressed configuration.
