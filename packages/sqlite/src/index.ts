@@ -1,5 +1,5 @@
 /**
- * SQLite backend package for effect-triples.
+ * SQLite backend package for @bjacobso/triplex.
  *
  * Provides SQLite-specific storage adapter, backend, and connection layer.
  */

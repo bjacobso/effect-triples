@@ -22,13 +22,16 @@ import { Effect, Layer } from "effect";
 import { SqlClient } from "effect/unstable/sql";
 import { SqliteClient } from "@effect/sql-sqlite-node";
 import { NodeServices } from "@effect/platform-node";
-import { DatabaseManager } from "effect-triples";
-import { Triples, type TriplesService } from "effect-triples";
-import { DatabaseManagerLive, DatabaseRegistryLive } from "effect-triples-sql";
-import { makeSqliteBackend } from "effect-triples-sqlite";
-import { makePostgresqlBackendFromUrl, makePostgresqlLayerFromUrl } from "effect-triples-postgres";
-import { KvTriplesLive, InMemoryKvBackendLive, TripleStoreRuntimeLayer } from "effect-triples";
-import { makeFdbKvBackend, type FdbKvBackendConfig } from "effect-triples-foundationdb";
+import { DatabaseManager } from "@bjacobso/triplex";
+import { Triples, type TriplesService } from "@bjacobso/triplex";
+import { DatabaseManagerLive, DatabaseRegistryLive } from "@bjacobso/triplex-sql";
+import { makeSqliteBackend } from "@bjacobso/triplex-sqlite";
+import {
+  makePostgresqlBackendFromUrl,
+  makePostgresqlLayerFromUrl,
+} from "@bjacobso/triplex-postgres";
+import { KvTriplesLive, InMemoryKvBackendLive, TripleStoreRuntimeLayer } from "@bjacobso/triplex";
+import { makeFdbKvBackend, type FdbKvBackendConfig } from "@bjacobso/triplex-foundationdb";
 import { promises as fs } from "node:fs";
 
 // ─── Types ─────────────────────────────────────────────────────────────────

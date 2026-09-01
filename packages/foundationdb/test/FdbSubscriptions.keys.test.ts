@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { QueryDependencies } from "effect-triples/subscriptions";
+import type { QueryDependencies } from "@bjacobso/triplex/subscriptions";
 import {
   fdbSubscriptionAttributeKey,
   fdbSubscriptionEntityKey,

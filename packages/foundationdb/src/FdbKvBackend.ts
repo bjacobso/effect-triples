@@ -37,7 +37,7 @@ import {
   type KvEntry,
   type KvTransaction,
   type RangeOptions,
-} from "effect-triples";
+} from "@bjacobso/triplex";
 
 // ─── FDB imports (dynamic to allow graceful failure) ───────────────────────
 

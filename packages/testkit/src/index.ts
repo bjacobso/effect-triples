@@ -1,5 +1,5 @@
 /**
- * Shared backend test helpers for Effect Triples.
+ * Shared backend test helpers for Triplex.
  *
  * The centrepiece is {@link makeTriplesConformanceSuite}: a single behavioral
  * suite, expressed as an `Effect` that requires a {@link Triples} service, which
@@ -10,7 +10,7 @@
  */
 
 import { Effect } from "effect";
-import { ref, string, Triples, type EntityId } from "effect-triples";
+import { ref, string, Triples, type EntityId } from "@bjacobso/triplex";
 
 // ─── Lightweight fixture descriptors (unchanged) ────────────────────────────
 

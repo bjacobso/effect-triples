@@ -15,7 +15,7 @@ import {
   DatabaseAlreadyExists,
   InternalError,
   RuntimeClock,
-} from "effect-triples";
+} from "@bjacobso/triplex";
 import { StorageBackend } from "./StorageBackend.js";
 
 // =============================================================================

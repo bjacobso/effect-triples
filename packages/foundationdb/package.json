@@ -1,21 +1,21 @@
 {
-  "name": "effect-triples-foundationdb",
+  "name": "@bjacobso/triplex-foundationdb",
   "version": "0.1.0",
-  "description": "FoundationDB backend for Effect Triples",
+  "description": "FoundationDB backend for Triplex",
   "keywords": [
     "database",
     "effect",
     "foundationdb",
     "triplestore"
   ],
-  "homepage": "https://github.com/bjacobso/effect-triples#readme",
+  "homepage": "https://github.com/bjacobso/triplex#readme",
   "bugs": {
-    "url": "https://github.com/bjacobso/effect-triples/issues"
+    "url": "https://github.com/bjacobso/triplex/issues"
   },
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/bjacobso/effect-triples.git",
+    "url": "git+https://github.com/bjacobso/triplex.git",
     "directory": "packages/foundationdb"
   },
   "files": [
@@ -42,8 +42,8 @@
     "clean": "rm -rf dist"
   },
   "dependencies": {
+    "@bjacobso/triplex": "workspace:^",
     "effect": "catalog:",
-    "effect-triples": "workspace:^",
     "foundationdb": "^2.0.1"
   },
   "devDependencies": {

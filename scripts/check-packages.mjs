@@ -5,16 +5,16 @@ import { join, resolve } from "node:path";
 
 const root = resolve(import.meta.dirname, "..");
 const packageNames = [
-  "effect-triples",
-  "effect-triples-sql",
-  "effect-triples-sqlite",
-  "effect-triples-postgres",
-  "effect-triples-cloudflare",
-  "effect-triples-foundationdb",
-  "effect-triples-testkit",
+  "@bjacobso/triplex",
+  "@bjacobso/triplex-sql",
+  "@bjacobso/triplex-sqlite",
+  "@bjacobso/triplex-postgres",
+  "@bjacobso/triplex-cloudflare",
+  "@bjacobso/triplex-foundationdb",
+  "@bjacobso/triplex-testkit",
 ];
 
-const workDir = mkdtempSync(join(tmpdir(), "effect-triples-pack-"));
+const workDir = mkdtempSync(join(tmpdir(), "triplex-pack-"));
 const tarDir = join(workDir, "tarballs");
 const consumerDir = join(workDir, "consumer");
 mkdirSync(tarDir);
@@ -65,7 +65,7 @@ try {
 
   const dependencies = Object.fromEntries(
     packageNames.map((name) => {
-      const prefix = `${name.replaceAll("/", "-")}-0.1.0.tgz`;
+      const prefix = `${name.replace(/^@/, "").replaceAll("/", "-")}-0.1.0.tgz`;
       const tarball = tarballs.find((file) => file.endsWith(prefix));
       if (!tarball) throw new Error(`Could not locate tarball for ${name}`);
       return [name, `file:${tarball}`];
@@ -74,7 +74,7 @@ try {
   const coreManifest = JSON.parse(
     run("tar", [
       "-xOzf",
-      dependencies["effect-triples"].slice("file:".length),
+      dependencies["@bjacobso/triplex"].slice("file:".length),
       "package/package.json",
     ]),
   );
@@ -84,7 +84,7 @@ try {
     join(consumerDir, "package.json"),
     JSON.stringify(
       {
-        name: "effect-triples-package-consumer",
+        name: "triplex-package-consumer",
         private: true,
         type: "module",
         dependencies: {
@@ -105,14 +105,14 @@ try {
 
   writeFileSync(
     join(consumerDir, "consumer.ts"),
-    `import type { DatalogQuery, TripleInput } from "effect-triples";
-import { ConfigStore, Evaluate, TypeExpr } from "effect-triples/config";
-import * as Cloudflare from "effect-triples-cloudflare";
-import * as FoundationDb from "effect-triples-foundationdb";
-import * as Postgres from "effect-triples-postgres";
-import * as Sql from "effect-triples-sql";
-import { makeSqliteLayer } from "effect-triples-sqlite";
-import * as Testkit from "effect-triples-testkit";
+    `import type { DatalogQuery, TripleInput } from "@bjacobso/triplex";
+import { ConfigStore, Evaluate, TypeExpr } from "@bjacobso/triplex/config";
+import * as Cloudflare from "@bjacobso/triplex-cloudflare";
+import * as FoundationDb from "@bjacobso/triplex-foundationdb";
+import * as Postgres from "@bjacobso/triplex-postgres";
+import * as Sql from "@bjacobso/triplex-sql";
+import { makeSqliteLayer } from "@bjacobso/triplex-sqlite";
+import * as Testkit from "@bjacobso/triplex-testkit";
 
 const triple: TripleInput = {
   entityId: "person:alice",
@@ -159,8 +159,8 @@ void Testkit;
   writeFileSync(
     join(consumerDir, "smoke.mjs"),
     `import { Effect } from "effect";
-import { Triples, string } from "effect-triples";
-import { SqliteTriples } from "effect-triples-sqlite";
+import { Triples, string } from "@bjacobso/triplex";
+import { SqliteTriples } from "@bjacobso/triplex-sqlite";
 
 const result = await Effect.runPromise(
   Effect.gen(function* () {

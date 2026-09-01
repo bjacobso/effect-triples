@@ -7,7 +7,7 @@
 import { Deferred, Effect, Ref } from "effect";
 import { describe, expect, layer } from "@effect/vitest";
 import { createRequire } from "node:module";
-import type { QueryDependencies } from "effect-triples/subscriptions";
+import type { QueryDependencies } from "@bjacobso/triplex/subscriptions";
 import {
   makeFdbChangeEmitterService,
   makeFdbSubscriptionService,

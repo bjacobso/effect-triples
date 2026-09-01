@@ -1,8 +1,8 @@
 {
-  "name": "effect-triples-stress",
+  "name": "triplex-stress",
   "version": "0.1.0",
   "private": true,
-  "description": "Performance and stress tests for Effect Triples data backends",
+  "description": "Performance and stress tests for Triplex data backends",
   "type": "module",
   "scripts": {
     "stress-test": "vitest run",
@@ -14,15 +14,15 @@
     "clean": "rm -rf dist stress-data benchmark-results-*.json"
   },
   "dependencies": {
+    "@bjacobso/triplex": "workspace:^",
+    "@bjacobso/triplex-foundationdb": "workspace:^",
+    "@bjacobso/triplex-postgres": "workspace:^",
+    "@bjacobso/triplex-sql": "workspace:^",
+    "@bjacobso/triplex-sqlite": "workspace:^",
     "@effect/platform-node": "catalog:",
     "@effect/sql-pg": "catalog:",
     "@effect/sql-sqlite-node": "catalog:",
-    "effect": "catalog:",
-    "effect-triples": "workspace:^",
-    "effect-triples-foundationdb": "workspace:^",
-    "effect-triples-postgres": "workspace:^",
-    "effect-triples-sql": "workspace:^",
-    "effect-triples-sqlite": "workspace:^"
+    "effect": "catalog:"
   },
   "devDependencies": {
     "@types/node": "catalog:",

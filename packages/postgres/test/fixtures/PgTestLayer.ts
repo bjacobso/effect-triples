@@ -34,13 +34,13 @@
 import { Context, Effect, Layer } from "effect";
 import { GenericContainer, Wait } from "testcontainers";
 import type { StartedTestContainer } from "testcontainers";
-import { CurrentDialect, TriplesLive, TripleStoreRuntimeLayer } from "effect-triples";
-import { SqlQueryExecutorLive } from "effect-triples-sql";
+import { CurrentDialect, TriplesLive, TripleStoreRuntimeLayer } from "@bjacobso/triplex";
+import { SqlQueryExecutorLive } from "@bjacobso/triplex-sql";
 import {
   makePostgresqlLayerFromUrl,
   PostgresqlAdapterLive,
   PostgresqlDialect,
-} from "effect-triples-postgres";
+} from "@bjacobso/triplex-postgres";
 
 // ─── Constants ─────────────────────────────────────────────────────────────
 

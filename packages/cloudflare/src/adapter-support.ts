@@ -1,11 +1,11 @@
-import type { TripleValue, ValueType } from "effect-triples";
+import type { TripleValue, ValueType } from "@bjacobso/triplex";
 import {
   MigrationError,
   ReadError,
   StorageAdapter,
   type StorageAdapterService,
   WriteError,
-} from "effect-triples";
+} from "@bjacobso/triplex";
 
 export { StorageAdapter, type StorageAdapterService, MigrationError, ReadError, WriteError };
 

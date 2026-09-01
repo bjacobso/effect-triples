@@ -1,9 +1,9 @@
-# effect-triples-sqlite
+# @bjacobso/triplex-sqlite
 
-The Node.js SQLite backend for Effect Triples, built on `@effect/sql-sqlite-node`.
+The Node.js SQLite backend for Triplex, built on `@effect/sql-sqlite-node`.
 
 ```bash
-npm install effect effect-triples effect-triples-sqlite
+npm install effect @bjacobso/triplex @bjacobso/triplex-sqlite
 ```
 
 Requires Node.js 22 or newer.

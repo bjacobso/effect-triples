@@ -13,7 +13,7 @@ import { Context, Effect, Layer } from "effect";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import * as os from "node:os";
-import { KvBackend } from "effect-triples";
+import { KvBackend } from "@bjacobso/triplex";
 import { makeFdbKvBackendService, type FdbKvBackendConfig } from "../../src/FdbKvBackend.js";
 
 // ─── Constants ─────────────────────────────────────────────────────────────

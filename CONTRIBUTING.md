@@ -1,6 +1,6 @@
 # Contributing
 
-Effect Triples uses Node.js 22 or newer and pnpm 10.11.
+Triplex uses Node.js 22 or newer and pnpm 10.11.
 
 ```bash
 pnpm install --frozen-lockfile
@@ -12,7 +12,7 @@ pnpm pack:check
 and package builds. The stress suite is intentionally opt-in:
 
 ```bash
-pnpm --filter effect-triples-stress stress-test
+pnpm --filter triplex-stress stress-test
 ```
 
 PostgreSQL and FoundationDB integrations need external services or native libraries and are

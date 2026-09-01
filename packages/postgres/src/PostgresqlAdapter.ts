@@ -15,9 +15,9 @@ import {
   ReadError,
   MigrationError,
   createParamCollector,
-} from "effect-triples";
-import { packValue, runMigrations } from "effect-triples-sql";
-import { isVariable } from "effect-triples/types/Pattern";
+} from "@bjacobso/triplex";
+import { packValue, runMigrations } from "@bjacobso/triplex-sql";
+import { isVariable } from "@bjacobso/triplex/types/Pattern";
 import { PostgresqlDialect } from "./dialect.js";
 
 /**

@@ -6,7 +6,7 @@
  *
  * @example
  * ```typescript
- * import { Triples } from "effect-triples"
+ * import { Triples } from "@bjacobso/triplex"
  *
  * const result = yield* Triples.query({
  *   find: ["?name", "?age"],

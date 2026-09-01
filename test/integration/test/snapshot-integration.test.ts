@@ -23,10 +23,10 @@ import {
   describeCapabilities,
   TripleStoreRuntime,
   TripleStoreRuntimeLayer,
-} from "effect-triples";
-import type { EntityId, TripleId } from "effect-triples";
-import { SqliteAdapterLive } from "effect-triples-sqlite";
-import { SqlQueryExecutorLive } from "effect-triples-sql";
+} from "@bjacobso/triplex";
+import type { EntityId, TripleId } from "@bjacobso/triplex";
+import { SqliteAdapterLive } from "@bjacobso/triplex-sqlite";
+import { SqlQueryExecutorLive } from "@bjacobso/triplex-sql";
 
 const sqliteDialectLayer = Layer.succeed(CurrentDialect, SqliteDialect);
 

@@ -18,12 +18,12 @@ import {
   SparqlValidationError,
   SparqlError,
   ReadError,
-} from "effect-triples";
+} from "@bjacobso/triplex";
 import type {
   SparqlContext as Context,
   SparqlQueryResult as QueryResult,
   SelectResult,
-} from "effect-triples";
+} from "@bjacobso/triplex";
 
 // =============================================================================
 // Result Row Type

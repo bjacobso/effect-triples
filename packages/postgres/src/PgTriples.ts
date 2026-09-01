@@ -17,8 +17,8 @@ import {
   CurrentDialect,
   TripleStoreRuntimeLayer,
   RuntimeServicesLive,
-} from "effect-triples";
-import { SqlQueryExecutorLive } from "effect-triples-sql";
+} from "@bjacobso/triplex";
+import { SqlQueryExecutorLive } from "@bjacobso/triplex-sql";
 import { PostgresqlAdapterLive } from "./PostgresqlAdapter.js";
 import { PostgresqlDialect } from "./dialect.js";
 import {

@@ -13,8 +13,8 @@ import {
   triplesToAttributeMap,
   diffAttributes,
   EMPTY_ENTITY_HASH,
-} from "effect-triples";
-import type { EntityId } from "effect-triples";
+} from "@bjacobso/triplex";
+import type { EntityId } from "@bjacobso/triplex";
 import { SqliteTestLayer } from "./fixtures/SqliteTestLayer.js";
 
 // ---------------------------------------------------------------------------

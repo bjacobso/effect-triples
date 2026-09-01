@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { Effect } from "effect";
-import { Triples, blob } from "effect-triples";
-import type { EntityId } from "effect-triples";
+import { Triples, blob } from "@bjacobso/triplex";
+import type { EntityId } from "@bjacobso/triplex";
 import { SqliteTestLayer } from "./fixtures/SqliteTestLayer.js";
 
 const TestLayer = SqliteTestLayer;

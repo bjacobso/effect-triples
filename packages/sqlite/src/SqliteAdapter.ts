@@ -15,9 +15,9 @@ import {
   WriteError,
   ReadError,
   MigrationError,
-} from "effect-triples";
-import { packValue, runMigrations, INDEX_DDLS, INDEX_NAMES } from "effect-triples-sql";
-import { isVariable } from "effect-triples/types/Pattern";
+} from "@bjacobso/triplex";
+import { packValue, runMigrations, INDEX_DDLS, INDEX_NAMES } from "@bjacobso/triplex-sql";
+import { isVariable } from "@bjacobso/triplex/types/Pattern";
 
 // =============================================================================
 // Configuration

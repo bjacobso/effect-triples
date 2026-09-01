@@ -1,10 +1,10 @@
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { Effect, Layer, Schedule } from "effect";
 import { SqlClient } from "effect/unstable/sql";
-import { generateId } from "effect-triples";
-import { string, boolean, ref } from "effect-triples";
-import type { EntityId } from "effect-triples";
-import type { BulkInsertOptions } from "effect-triples";
+import { generateId } from "@bjacobso/triplex";
+import { string, boolean, ref } from "@bjacobso/triplex";
+import type { EntityId } from "@bjacobso/triplex";
+import type { BulkInsertOptions } from "@bjacobso/triplex";
 import { writeFileSync } from "node:fs";
 import { arch, cpus, platform, totalmem } from "node:os";
 import {

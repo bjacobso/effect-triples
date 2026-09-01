@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { Effect, Layer } from "effect";
-import { Triples, Sparql, string, number, ref } from "effect-triples";
-import { SparqlLive } from "effect-triples-sql";
+import { Triples, Sparql, string, number, ref } from "@bjacobso/triplex";
+import { SparqlLive } from "@bjacobso/triplex-sql";
 import { SqliteTestLayer } from "./fixtures/SqliteTestLayer.js";
 
 // Combined test layer: Sparql + Triples + SQLite

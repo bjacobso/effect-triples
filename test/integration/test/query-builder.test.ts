@@ -12,10 +12,10 @@ import {
   TripleStoreRuntimeLayer,
   string,
   number,
-} from "effect-triples";
+} from "@bjacobso/triplex";
 import { SqliteTestLayer } from "./fixtures/SqliteTestLayer.js";
-import { SqliteAdapterLive } from "effect-triples-sqlite";
-import { SqlQueryExecutorLive } from "effect-triples-sql";
+import { SqliteAdapterLive } from "@bjacobso/triplex-sqlite";
+import { SqlQueryExecutorLive } from "@bjacobso/triplex-sql";
 
 const TestLayer = SqliteTestLayer;
 const makeRawQueryCountingLayer = (counter: { count: number; sql: string | null }) => {

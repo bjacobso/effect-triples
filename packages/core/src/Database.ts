@@ -12,7 +12,7 @@ import { DatabaseName as DatabaseNamePrimitive } from "./Branded.js";
 // =============================================================================
 
 /**
- * Valid database name: database-native primitive owned by effect-triples
+ * Valid database name: database-native primitive owned by @bjacobso/triplex
  */
 const DatabaseName = DatabaseNamePrimitive.annotate({
   identifier: "DatabaseName",

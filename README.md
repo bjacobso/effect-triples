@@ -1,8 +1,9 @@
-# Effect Triples
+# Triplex
 
-A standalone, Effect-native triple store with temporal facts, Datalog and SPARQL
-queries, reactive subscriptions, content-addressed snapshots, and pluggable storage
-backends.
+An Effect-native fact database with Datalog and typed, content-addressed configuration.
+
+Triplex combines temporal triples, pluggable storage, Datalog and SPARQL queries,
+reactive subscriptions, entity materializations, and immutable configuration releases.
 
 > Pre-1.0 software: APIs may change between minor releases.
 
@@ -15,13 +16,14 @@ Durable Objects, and FoundationDB for durable deployments.
 ## Installation
 
 ```sh
-pnpm add effect-triples effect
+pnpm add @bjacobso/triplex effect
 ```
 
-`effect-triples` is ESM-only and targets Node.js 22+ (it also runs in modern browsers
-and edge runtimes). It is developed and tested against `effect@3.19.13`; upgrading
-Effect independently may require a matching `effect-triples` release. Storage backends
-ship as separate packages (see [Storage backends](#storage-backends)).
+`@bjacobso/triplex` is ESM-only and targets Node.js 22+ (its core also runs in modern
+browsers and edge runtimes). It is developed and tested against
+`effect@4.0.0-rc.112`; upgrading Effect independently may require a matching Triplex
+release. Storage backends ship as separate packages (see
+[Storage backends](#storage-backends)).
 
 ## Quick start
 
@@ -31,7 +33,7 @@ includes a zero-dependency in-memory backend, so a working store is one layer �
 
 ```ts
 import { Effect } from "effect";
-import { KvTriples, Triples, string } from "effect-triples";
+import { KvTriples, Triples, string } from "@bjacobso/triplex";
 
 const program = Effect.gen(function* () {
   const triples = yield* Triples;
@@ -66,6 +68,32 @@ triple matching and Datalog, run `pnpm example:demo` or see
 `SnapshotService`, `SubscriptionManager`, and `DatabaseManager` remain separate,
 optional services with their own consumers. There is no fluent `Database` facade —
 you compose the services you need and provide one storage `Layer`.
+
+## Typed configuration
+
+Configuration is a first-class module of the primary package, exposed through a
+tree-shakeable subpath rather than flattening its symbols into the root:
+
+```ts
+import { Triples } from "@bjacobso/triplex";
+import { ConfigStore, Evaluate, TypeExpr } from "@bjacobso/triplex/config";
+```
+
+`TypeExpr` describes runtime-defined types as content-addressed data. Config nodes form
+immutable Merkle graphs; commits produce `ConfigSnapshot` release roots containing
+revisions, schema stamps, and dependency closures. Git-style refs such as `live` and
+`test` can move between releases without copying configuration.
+
+`ConfigStore.layer` persists those objects through any `Triples` implementation and
+commits a release plus an optional ref move in one Triples transaction. It preserves
+deduplication, structural sharing, schema compatibility, and `validUnder` history while
+using Datalog for reverse-dependency and deploy-impact candidates. The immutable
+`InMemoryConfigStore` remains available as the reference implementation. `Evaluate`
+produces reproducible decision proofs, and `Evaluate.verify` detects altered decisions
+or observations without replacing Merkle verification with database queries.
+
+The browser example at [`examples/config-explorer`](examples/config-explorer) walks
+through typed nodes, releases, refs, impact, evaluation, and proof verification.
 
 ## Triples and values
 
@@ -109,7 +137,7 @@ Assert one fact, a batch, or an atomic transaction, and read facts back by entit
 by pattern:
 
 ```ts
-import { number, ref, string, Triples } from "effect-triples";
+import { number, ref, string, Triples } from "@bjacobso/triplex";
 
 Effect.gen(function* () {
   const triples = yield* Triples;
@@ -299,11 +327,11 @@ returns the SQL and params without executing.
 ## SPARQL queries
 
 SPARQL is available through the `Sparql` service (provided by the SQL layer,
-`SparqlLive` in `effect-triples-sql`). Queries are a JSON DSL rather than a query
+`SparqlLive` in `@bjacobso/triplex-sql`). Queries are a JSON DSL rather than a query
 string. Variables use `?` and attributes use `:`, matching Datalog.
 
 ```ts
-import { Sparql } from "effect-triples";
+import { Sparql } from "@bjacobso/triplex";
 
 Effect.gen(function* () {
   const sparql = yield* Sparql;
@@ -331,13 +359,14 @@ like `contains`, `regex`, `strstarts`), `bind`, `values`, property paths, and
 subselects. Convenience helpers `sparql.select(query)` return the binding rows
 directly, and `sparql.ask(query)` returns a `boolean`.
 
-## Snapshots and subscriptions
+## Entity snapshots and subscriptions
 
-`SnapshotService` materializes the current or historical state of an entity as a single
-canonicalized, content-hashed record — useful for change detection, sync, and audit:
+`SnapshotService` materializes the current or historical state of one triple entity as
+an `EntitySnapshot`: a canonicalized, content-hashed record useful for change detection,
+sync, and audit:
 
 ```ts
-import { SnapshotService } from "effect-triples";
+import { SnapshotService } from "@bjacobso/triplex";
 
 Effect.gen(function* () {
   const snapshots = yield* SnapshotService;
@@ -354,8 +383,13 @@ is no `store.subscribe(...)` method — this dependency-tracking model, together
 `TopicFilteredSyncHub` for websocket-style push, is the building block for live queries
 and client sync.
 
+An `EntitySnapshot` is not a configuration release. `ConfigSnapshot`, exported from
+`@bjacobso/triplex/config`, is an immutable root for a complete typed configuration
+release. The names and APIs remain separate so a point-in-time entity materialization
+cannot be confused with a deployable configuration graph.
+
 ```ts
-import { SubscriptionManager } from "effect-triples";
+import { SubscriptionManager } from "@bjacobso/triplex";
 
 Effect.gen(function* () {
   const subs = yield* SubscriptionManager;
@@ -377,20 +411,20 @@ The core package runs entirely in memory. Durable backends are separate packages
 provide the same `Triples` service over a real store, each with a one-line convenience
 layer.
 
-| Package                       | Convenience layer                         | Runtime                                        |
-| ----------------------------- | ----------------------------------------- | ---------------------------------------------- |
-| `effect-triples`              | `KvTriples.layer` (in-memory)             | Node.js 22+, browsers, edge runtimes           |
-| `effect-triples-sql`          | shared SQL query/executor + SPARQL layers | SQL-capable runtimes                           |
-| `effect-triples-sqlite`       | `SqliteTriples.layer({ filename })`       | Node.js 22+                                    |
-| `effect-triples-postgres`     | `PgTriples.layer(config)`                 | Node.js 22+                                    |
-| `effect-triples-cloudflare`   | Cloudflare Durable Object SQLite adapter  | Cloudflare Workers                             |
-| `effect-triples-foundationdb` | `FdbTriples.layer(config)`                | Node.js 22+ with FoundationDB client libraries |
-| `effect-triples-testkit`      | `makeTriplesConformanceSuite` + fixtures  | Node.js 22+                                    |
+| Package                          | Convenience layer                         | Runtime                                        |
+| -------------------------------- | ----------------------------------------- | ---------------------------------------------- |
+| `@bjacobso/triplex`              | `KvTriples.layer` (in-memory)             | Node.js 22+, browsers, edge runtimes           |
+| `@bjacobso/triplex-sql`          | shared SQL query/executor + SPARQL layers | SQL-capable runtimes                           |
+| `@bjacobso/triplex-sqlite`       | `SqliteTriples.layer({ filename })`       | Node.js 22+                                    |
+| `@bjacobso/triplex-postgres`     | `PgTriples.layer(config)`                 | Node.js 22+                                    |
+| `@bjacobso/triplex-cloudflare`   | Cloudflare Durable Object SQLite adapter  | Cloudflare Workers                             |
+| `@bjacobso/triplex-foundationdb` | `FdbTriples.layer(config)`                | Node.js 22+ with FoundationDB client libraries |
+| `@bjacobso/triplex-testkit`      | `makeTriplesConformanceSuite` + fixtures  | Node.js 22+                                    |
 
 A durable stack is a single convenience layer. For SQLite:
 
 ```ts
-import { SqliteTriples } from "effect-triples-sqlite";
+import { SqliteTriples } from "@bjacobso/triplex-sqlite";
 
 const SqliteLive = SqliteTriples.layer({ filename: "app.db" });
 // or SqliteTriples.layerMemory for an in-memory database
@@ -402,19 +436,21 @@ tag. For manual wiring, provide `TriplesLive` over a `StorageAdapter`, a
 
 ## Entrypoints
 
-Everything is re-exported from the package root, so `import { … } from "effect-triples"`
-always works — this is where the service tags (`Triples`, `Sparql`, `SnapshotService`,
-and `SubscriptionManager`), the value helpers, and the layers live.
+The package root exports the triples, query, entity-snapshot, and subscription APIs.
+Typed configuration stays under `@bjacobso/triplex/config`, and shared content-addressing
+primitives stay under `@bjacobso/triplex/content`, keeping both entrypoints tree-shakeable.
 
 The core package also exposes tree-shakeable ESM subpaths for the schemas, types, and
 transport surface:
 
 ```ts
-import { TripleInput, TransactOp } from "effect-triples/Triple";
-import { DatalogQuery } from "effect-triples/Datalog";
-import { SparqlQuery } from "effect-triples/Sparql";
-import { SubscriptionManager } from "effect-triples/subscriptions";
-import { Pattern } from "effect-triples/types/Pattern";
+import { TripleInput, TransactOp } from "@bjacobso/triplex/Triple";
+import { DatalogQuery } from "@bjacobso/triplex/Datalog";
+import { SparqlQuery } from "@bjacobso/triplex/Sparql";
+import { SubscriptionManager } from "@bjacobso/triplex/subscriptions";
+import { Pattern } from "@bjacobso/triplex/types/Pattern";
+import { ConfigStore, TypeExpr } from "@bjacobso/triplex/config";
+import { ContentId } from "@bjacobso/triplex/content";
 ```
 
 Note that `./Datalog`, `./Sparql`, and `./Snapshot` contain query/response **schemas**,
@@ -422,6 +458,18 @@ not the runtime service tags — import `Triples`, `Sparql`, and `SnapshotServic
 from the root. The HTTP/RPC surface is exposed under `./DatalogApi`,
 `./DatalogRpc`, `./Database`, `./DatabaseApi`, `./DatabaseRpc`, `./SnapshotApi`,
 `./TripleApi`, and `./TripleRpc`.
+
+## Content IDs and pre-1.0 migration
+
+Triplex uses one browser-safe content-addressing foundation: deterministic canonical
+encoding followed by domain-separated SHA-256. A `ContentId` is formatted as
+`sha256-<64 lowercase hex characters>`, with distinct domains for entity snapshots,
+config nodes, closures, stamps, types, evaluations, and observations.
+
+This replaces the earlier `fnv1a:<8 hex characters>` entity-snapshot hash. Existing
+persisted entity snapshot records and blob references keyed by that hash must be rebuilt
+or migrated before upgrading; Triplex intentionally does not retain a dual-format shim
+before 1.0.
 
 ## Development
 

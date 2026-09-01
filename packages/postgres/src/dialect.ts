@@ -1,4 +1,4 @@
-import type { SqlDialect } from "effect-triples";
+import type { SqlDialect } from "@bjacobso/triplex";
 
 export const PostgresqlDialect: SqlDialect = {
   name: "postgresql",

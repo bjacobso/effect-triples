@@ -34,9 +34,8 @@
  * itself, and it is why the version lives on the node rather than on the
  * module.
  *
- * This module is the layer everything else would sit on: in a standalone repo
- * it is the zero-dependency package that both a triple store and a
- * content-addressed config graph depend on, while neither depends on the other.
+ * This module sits on Triplex's shared content-addressing foundation and stays
+ * independent of the triple persistence layer.
  */
 
 import { Schema } from "effect";

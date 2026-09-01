@@ -11,7 +11,7 @@
  *   checkInvalidation,
  *   SubscriptionManager,
  *   makeSubscriptionManager,
- * } from "effect-triples/subscriptions";
+ * } from "@bjacobso/triplex/subscriptions";
  *
  * // Extract dependencies from a query
  * const deps = extractDependencies({

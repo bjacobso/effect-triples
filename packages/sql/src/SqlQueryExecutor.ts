@@ -24,7 +24,7 @@ import {
   type CompiledWrappedQuery,
   SqliteDialect,
   createPaginationCursor,
-} from "effect-triples";
+} from "@bjacobso/triplex";
 
 // =============================================================================
 // Result Row Type

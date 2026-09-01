@@ -1,5 +1,5 @@
 /**
- * PostgreSQL backend package for effect-triples.
+ * PostgreSQL backend package for @bjacobso/triplex.
  *
  * Provides PostgreSQL-specific storage adapter, backend, and connection layer.
  */

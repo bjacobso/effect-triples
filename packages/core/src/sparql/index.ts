@@ -105,7 +105,7 @@ export { emptyContext } from "./types.js";
 // SQL Compiler
 export { compile, compileToSql, type CompiledQuery, type QueryMetrics } from "./compiler.js";
 
-// Service (Layer implementations live in effect-triples-sql)
+// Service (Layer implementations live in @bjacobso/triplex-sql)
 export { Sparql, type SparqlService, type QueryDebugInfo } from "./service.js";
 
-// NOTE: SparqlLive and SparqlLayer have moved to effect-triples-sql.
+// NOTE: SparqlLive and SparqlLayer have moved to @bjacobso/triplex-sql.

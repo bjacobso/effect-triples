@@ -1,5 +1,5 @@
 {
-  "name": "effect-triples-integration-tests",
+  "name": "triplex-integration-tests",
   "version": "0.1.0",
   "private": true,
   "type": "module",
@@ -8,12 +8,12 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@bjacobso/triplex": "workspace:^",
+    "@bjacobso/triplex-sql": "workspace:^",
+    "@bjacobso/triplex-sqlite": "workspace:^",
+    "@bjacobso/triplex-testkit": "workspace:^",
     "@effect/sql-sqlite-node": "catalog:",
-    "effect": "catalog:",
-    "effect-triples": "workspace:^",
-    "effect-triples-sql": "workspace:^",
-    "effect-triples-sqlite": "workspace:^",
-    "effect-triples-testkit": "workspace:^"
+    "effect": "catalog:"
   },
   "devDependencies": {
     "@types/node": "catalog:",

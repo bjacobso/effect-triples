@@ -1,9 +1,9 @@
-# effect-triples-cloudflare
+# @bjacobso/triplex-cloudflare
 
-Cloudflare Durable Object SQLite storage support for Effect Triples.
+Cloudflare Durable Object SQLite storage support for Triplex.
 
 ```bash
-npm install effect effect-triples effect-triples-cloudflare
+npm install effect @bjacobso/triplex @bjacobso/triplex-cloudflare
 ```
 
 MIT © 2026 Ben Jacobson.

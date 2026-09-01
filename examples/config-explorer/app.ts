@@ -14,7 +14,7 @@ import {
   OnboardingConfig,
   Reactor,
   World,
-} from "effect-triples/config";
+} from "@bjacobso/triplex/config";
 
 const { BASELINE, releaseWithRules, ruleSet } = OnboardingConfig;
 type AccountConfig = OnboardingConfig.AccountConfig;

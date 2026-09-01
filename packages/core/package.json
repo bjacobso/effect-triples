@@ -1,22 +1,25 @@
 {
-  "name": "effect-triples",
+  "name": "@bjacobso/triplex",
   "version": "0.1.0",
-  "description": "Effect-native temporal triple store with Datalog, SPARQL, snapshots, and subscriptions",
+  "description": "An Effect-native fact database with Datalog and typed, content-addressed configuration.",
   "keywords": [
+    "configuration",
+    "content-addressed",
     "database",
     "datalog",
     "effect",
+    "sha-256",
     "sparql",
     "triplestore"
   ],
-  "homepage": "https://github.com/bjacobso/effect-triples#readme",
+  "homepage": "https://github.com/bjacobso/triplex#readme",
   "bugs": {
-    "url": "https://github.com/bjacobso/effect-triples/issues"
+    "url": "https://github.com/bjacobso/triplex/issues"
   },
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/bjacobso/effect-triples.git",
+    "url": "git+https://github.com/bjacobso/triplex.git",
     "directory": "packages/core"
   },
   "files": [

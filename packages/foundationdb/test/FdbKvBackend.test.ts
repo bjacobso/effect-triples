@@ -7,14 +7,14 @@
  * Requires Docker + FoundationDB client libraries to be available.
  *
  * ```bash
- * pnpm test --filter effect-triples-foundationdb -- test/FdbKvBackend.test.ts
+ * pnpm test --filter @bjacobso/triplex-foundationdb -- test/FdbKvBackend.test.ts
  * ```
  */
 
 import { Effect, Stream } from "effect";
 import { describe, expect, layer } from "@effect/vitest";
 import { createRequire } from "node:module";
-import { KvBackend } from "effect-triples";
+import { KvBackend } from "@bjacobso/triplex";
 import { makeFdbKvBackendService } from "../src/FdbKvBackend.js";
 import { FdbClusterFile, FdbContainerLayer, FdbTestLayer } from "./fixtures/FdbTestLayer.js";
 

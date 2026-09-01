@@ -1,4 +1,4 @@
-# Effect Triples demo
+# Triplex demo
 
 This demo uses the self-contained in-memory backend to write linked entities, read
 raw triples, filter with Datalog, and traverse a relationship with a Datalog join.

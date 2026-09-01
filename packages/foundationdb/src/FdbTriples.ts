@@ -10,7 +10,7 @@
  */
 
 import { Layer } from "effect";
-import { KvTriples, TripleStoreRuntimeLayer, RuntimeServicesLive } from "effect-triples";
+import { KvTriples, TripleStoreRuntimeLayer, RuntimeServicesLive } from "@bjacobso/triplex";
 import { makeFdbKvBackend, type FdbKvBackendConfig } from "./FdbKvBackend.js";
 
 export const FdbTriples = {

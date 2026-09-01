@@ -1,7 +1,7 @@
 import { Effect, Layer } from "effect";
 import { SqlClient } from "effect/unstable/sql";
 import { SqliteClient } from "@effect/sql-sqlite-node";
-import { runMigrations } from "effect-triples-sql";
+import { runMigrations } from "@bjacobso/triplex-sql";
 
 // Create SQLite layer with WAL mode for better concurrent read performance
 export const makeSqliteLayer = (filename: string) =>

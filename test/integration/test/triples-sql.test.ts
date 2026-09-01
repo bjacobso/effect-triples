@@ -13,10 +13,10 @@ import {
   number,
   boolean,
   ref,
-} from "effect-triples";
-import { SqlQueryExecutorLive } from "effect-triples-sql";
-import { SqliteAdapterLive } from "effect-triples-sqlite";
-import type { EntityId, TripleId } from "effect-triples";
+} from "@bjacobso/triplex";
+import { SqlQueryExecutorLive } from "@bjacobso/triplex-sql";
+import { SqliteAdapterLive } from "@bjacobso/triplex-sqlite";
+import type { EntityId, TripleId } from "@bjacobso/triplex";
 import { SqliteTestLayer } from "./fixtures/SqliteTestLayer.js";
 
 const TestLayer = SqliteTestLayer;

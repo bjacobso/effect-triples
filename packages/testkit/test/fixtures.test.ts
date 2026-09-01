@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { Effect } from "effect";
-import { KvTriples } from "effect-triples";
+import { KvTriples } from "@bjacobso/triplex";
 
 import {
   defineBackendFixture,

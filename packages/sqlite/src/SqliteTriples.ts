@@ -20,8 +20,8 @@ import {
   CurrentDialect,
   TripleStoreRuntimeLayer,
   RuntimeServicesLive,
-} from "effect-triples";
-import { SqlQueryExecutorLive } from "effect-triples-sql";
+} from "@bjacobso/triplex";
+import { SqlQueryExecutorLive } from "@bjacobso/triplex-sql";
 import { SqliteAdapterLive } from "./SqliteAdapter.js";
 import { SqliteDialect } from "./dialect.js";
 import { makeSqliteLayer, SqliteTestLayer } from "./SqliteLayer.js";

@@ -1,9 +1,9 @@
-# effect-triples-postgres
+# @bjacobso/triplex-postgres
 
-The PostgreSQL backend for Effect Triples, built on `@effect/sql-pg`.
+The PostgreSQL backend for Triplex, built on `@effect/sql-pg`.
 
 ```bash
-npm install effect effect-triples effect-triples-postgres
+npm install effect @bjacobso/triplex @bjacobso/triplex-postgres
 ```
 
 Requires Node.js 22 or newer and a PostgreSQL connection URL.

@@ -8,13 +8,13 @@
  * Tests are skipped if Docker is not available.
  *
  * Run with:
- *   pnpm test --filter effect-triples-postgres -- test/integration/postgresql.test.ts
+ *   pnpm test --filter @bjacobso/triplex-postgres -- test/integration/postgresql.test.ts
  */
 
 import { describe, it, expect } from "vitest";
 import { Effect } from "effect";
-import { Triples, string, number, ref, compile } from "effect-triples";
-import { PostgresqlDialect } from "effect-triples-postgres";
+import { Triples, string, number, ref, compile } from "@bjacobso/triplex";
+import { PostgresqlDialect } from "@bjacobso/triplex-postgres";
 import { PgTestLayer, checkDockerAvailable } from "../fixtures/PgTestLayer.js";
 
 // Skip all container-based tests if Docker is not available

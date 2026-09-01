@@ -1,6 +1,6 @@
 # Database Package Suggestions & Roadmap
 
-This document outlines strategic enhancements to make `effect-triples` a world-class, open-source triple store and Datalog engine.
+This document outlines strategic enhancements to make `@bjacobso/triplex` a world-class, open-source triple store and Datalog engine.
 
 ## 1. Structured Data Retrieval (Pull API)
 

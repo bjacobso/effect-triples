@@ -23,7 +23,7 @@ import {
   INDEX_DDLS,
   migrations,
 } from "../adapter-support.js";
-import type { TripleRow } from "effect-triples";
+import type { TripleRow } from "@bjacobso/triplex";
 
 // =============================================================================
 // Durable Object Types

@@ -2,7 +2,7 @@
  * Unified database package.
  *
  * Owns the collapsed public database surface.
- * SQL-bound code (layers, migrations, storage backends) lives in effect-triples-sql.
+ * SQL-bound code (layers, migrations, storage backends) lives in @bjacobso/triplex-sql.
  */
 
 export * from "./Branded.js";

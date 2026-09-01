@@ -1,7 +1,14 @@
 import { describe, it, expect } from "vitest";
 import { Effect } from "effect";
 import { SqlClient } from "effect/unstable/sql";
-import { Triples, string, number, ref, compileWithRules, type DatalogQuery } from "effect-triples";
+import {
+  Triples,
+  string,
+  number,
+  ref,
+  compileWithRules,
+  type DatalogQuery,
+} from "@bjacobso/triplex";
 import { SqliteTestLayer } from "./fixtures/SqliteTestLayer.js";
 
 const TestLayer = SqliteTestLayer;

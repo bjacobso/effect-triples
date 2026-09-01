@@ -9,9 +9,9 @@
 
 import { describe, it, expect } from "vitest";
 import { Effect } from "effect";
-import { Triples } from "effect-triples";
-import { SqliteTriples } from "effect-triples-sqlite";
-import { triplesConformanceCases, makeTriplesConformanceSuite } from "effect-triples-testkit";
+import { Triples } from "@bjacobso/triplex";
+import { SqliteTriples } from "@bjacobso/triplex-sqlite";
+import { triplesConformanceCases, makeTriplesConformanceSuite } from "@bjacobso/triplex-testkit";
 
 const provide = <A, E>(effect: Effect.Effect<A, E, Triples>): Promise<A> =>
   Effect.runPromise(effect.pipe(Effect.provide(SqliteTriples.layerMemory)));

@@ -7,8 +7,8 @@
  */
 
 import { Context, Effect, Layer } from "effect";
-import { ChangeEmitter, type ChangeEmitterService, type ChangeEvent } from "effect-triples";
-import { extractEntityType, type QueryDependencies } from "effect-triples/subscriptions";
+import { ChangeEmitter, type ChangeEmitterService, type ChangeEvent } from "@bjacobso/triplex";
+import { extractEntityType, type QueryDependencies } from "@bjacobso/triplex/subscriptions";
 import type FdbDatabase from "foundationdb/dist/lib/database.js";
 import type FdbTransaction from "foundationdb/dist/lib/transaction.js";
 import type { Watch } from "foundationdb/dist/lib/transaction.js";

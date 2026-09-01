@@ -74,12 +74,12 @@ importers:
 
   examples/config-explorer:
     dependencies:
+      '@bjacobso/triplex':
+        specifier: workspace:^
+        version: link:../../packages/core
       effect:
         specifier: 'catalog:'
         version: 4.0.0-rc.112
-      effect-triples:
-        specifier: workspace:^
-        version: link:../../packages/core
     devDependencies:
       '@types/node':
         specifier: 'catalog:'
@@ -93,12 +93,12 @@ importers:
 
   examples/demo:
     dependencies:
+      '@bjacobso/triplex':
+        specifier: workspace:^
+        version: link:../../packages/core
       effect:
         specifier: 'catalog:'
         version: 4.0.0-rc.112
-      effect-triples:
-        specifier: workspace:^
-        version: link:../../packages/core
     devDependencies:
       '@types/node':
         specifier: 'catalog:'
@@ -112,12 +112,12 @@ importers:
 
   packages/cloudflare:
     dependencies:
+      '@bjacobso/triplex':
+        specifier: workspace:^
+        version: link:../core
       effect:
         specifier: 'catalog:'
         version: 4.0.0-rc.112
-      effect-triples:
-        specifier: workspace:^
-        version: link:../core
     devDependencies:
       '@types/node':
         specifier: 'catalog:'
@@ -147,12 +147,12 @@ importers:
 
   packages/foundationdb:
     dependencies:
+      '@bjacobso/triplex':
+        specifier: workspace:^
+        version: link:../core
       effect:
         specifier: 'catalog:'
         version: 4.0.0-rc.112
-      effect-triples:
-        specifier: workspace:^
-        version: link:../core
       foundationdb:
         specifier: ^2.0.1
         version: 2.0.1
@@ -172,18 +172,18 @@ importers:
 
   packages/postgres:
     dependencies:
+      '@bjacobso/triplex':
+        specifier: workspace:^
+        version: link:../core
+      '@bjacobso/triplex-sql':
+        specifier: workspace:^
+        version: link:../sql
       '@effect/sql-pg':
         specifier: 'catalog:'
         version: 4.0.0-rc.112(effect@4.0.0-rc.112)
       effect:
         specifier: 'catalog:'
         version: 4.0.0-rc.112
-      effect-triples:
-        specifier: workspace:^
-        version: link:../core
-      effect-triples-sql:
-        specifier: workspace:^
-        version: link:../sql
     devDependencies:
       '@types/node':
         specifier: 'catalog:'
@@ -197,12 +197,12 @@ importers:
 
   packages/sql:
     dependencies:
+      '@bjacobso/triplex':
+        specifier: workspace:^
+        version: link:../core
       effect:
         specifier: 'catalog:'
         version: 4.0.0-rc.112
-      effect-triples:
-        specifier: workspace:^
-        version: link:../core
     devDependencies:
       '@types/node':
         specifier: 'catalog:'
@@ -213,18 +213,18 @@ importers:
 
   packages/sqlite:
     dependencies:
+      '@bjacobso/triplex':
+        specifier: workspace:^
+        version: link:../core
+      '@bjacobso/triplex-sql':
+        specifier: workspace:^
+        version: link:../sql
       '@effect/sql-sqlite-node':
         specifier: 'catalog:'
         version: 4.0.0-rc.112(effect@4.0.0-rc.112)
       effect:
         specifier: 'catalog:'
         version: 4.0.0-rc.112
-      effect-triples:
-        specifier: workspace:^
-        version: link:../core
-      effect-triples-sql:
-        specifier: workspace:^
-        version: link:../sql
     devDependencies:
       '@types/node':
         specifier: 'catalog:'
@@ -235,12 +235,12 @@ importers:
 
   packages/testkit:
     dependencies:
+      '@bjacobso/triplex':
+        specifier: workspace:^
+        version: link:../core
       effect:
         specifier: 'catalog:'
         version: 4.0.0-rc.112
-      effect-triples:
-        specifier: workspace:^
-        version: link:../core
     devDependencies:
       '@types/node':
         specifier: 'catalog:'
@@ -251,24 +251,24 @@ importers:
 
   test/integration:
     dependencies:
+      '@bjacobso/triplex':
+        specifier: workspace:^
+        version: link:../../packages/core
+      '@bjacobso/triplex-sql':
+        specifier: workspace:^
+        version: link:../../packages/sql
+      '@bjacobso/triplex-sqlite':
+        specifier: workspace:^
+        version: link:../../packages/sqlite
+      '@bjacobso/triplex-testkit':
+        specifier: workspace:^
+        version: link:../../packages/testkit
       '@effect/sql-sqlite-node':
         specifier: 'catalog:'
         version: 4.0.0-rc.112(effect@4.0.0-rc.112)
       effect:
         specifier: 'catalog:'
         version: 4.0.0-rc.112
-      effect-triples:
-        specifier: workspace:^
-        version: link:../../packages/core
-      effect-triples-sql:
-        specifier: workspace:^
-        version: link:../../packages/sql
-      effect-triples-sqlite:
-        specifier: workspace:^
-        version: link:../../packages/sqlite
-      effect-triples-testkit:
-        specifier: workspace:^
-        version: link:../../packages/testkit
     devDependencies:
       '@types/node':
         specifier: 'catalog:'
@@ -279,6 +279,21 @@ importers:
 
   test/stress:
     dependencies:
+      '@bjacobso/triplex':
+        specifier: workspace:^
+        version: link:../../packages/core
+      '@bjacobso/triplex-foundationdb':
+        specifier: workspace:^
+        version: link:../../packages/foundationdb
+      '@bjacobso/triplex-postgres':
+        specifier: workspace:^
+        version: link:../../packages/postgres
+      '@bjacobso/triplex-sql':
+        specifier: workspace:^
+        version: link:../../packages/sql
+      '@bjacobso/triplex-sqlite':
+        specifier: workspace:^
+        version: link:../../packages/sqlite
       '@effect/platform-node':
         specifier: 'catalog:'
         version: 4.0.0-rc.112(effect@4.0.0-rc.112)(redis@6.2.1)
@@ -291,21 +306,6 @@ importers:
       effect:
         specifier: 'catalog:'
         version: 4.0.0-rc.112
-      effect-triples:
-        specifier: workspace:^
-        version: link:../../packages/core
-      effect-triples-foundationdb:
-        specifier: workspace:^
-        version: link:../../packages/foundationdb
-      effect-triples-postgres:
-        specifier: workspace:^
-        version: link:../../packages/postgres
-      effect-triples-sql:
-        specifier: workspace:^
-        version: link:../../packages/sql
-      effect-triples-sqlite:
-        specifier: workspace:^
-        version: link:../../packages/sqlite
     devDependencies:
       '@types/node':
         specifier: 'catalog:'

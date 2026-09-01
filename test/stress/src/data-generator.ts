@@ -1,5 +1,5 @@
-import type { TripleInput, TransactOp } from "effect-triples";
-import { string, number, boolean, datetime, ref } from "effect-triples";
+import type { TripleInput, TransactOp } from "@bjacobso/triplex";
+import { string, number, boolean, datetime, ref } from "@bjacobso/triplex";
 
 /**
  * Generate employee triples for stress testing.

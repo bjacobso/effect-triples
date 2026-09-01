@@ -1,6 +1,6 @@
 # Agent Guidelines
 
-Effect Triples is a standalone, pre-1.0 package family built with Effect, TypeScript, pnpm, and
+Triplex is a standalone, pre-1.0 package family built with Effect, TypeScript, pnpm, and
 Turbo.
 
 - Preserve the one-way package graph documented in `ARCHITECTURE.md`.

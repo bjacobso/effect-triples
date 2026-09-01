@@ -164,4 +164,4 @@ export interface TriplesService {
  * Namespaced so the bare id can't collide with another library's tag when they
  * share an Effect context.
  */
-export class Triples extends Context.Service<Triples, TriplesService>()("effect-triples/Triples") {}
+export class Triples extends Context.Service<Triples, TriplesService>()("triplex/Triples") {}

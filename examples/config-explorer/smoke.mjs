@@ -7,7 +7,7 @@
  * throws, a render path that runs before its data is ready. Those only show up
  * when the module is actually executed against a document.
  *
- *   node explorer/smoke.mjs
+ *   node examples/config-explorer/smoke.mjs
  */
 
 const listeners = new Map();

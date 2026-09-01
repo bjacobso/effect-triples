@@ -1,6 +1,6 @@
 import { Effect, Layer, Redacted } from "effect";
 import { PgClient } from "@effect/sql-pg";
-import { runMigrations } from "effect-triples-sql";
+import { runMigrations } from "@bjacobso/triplex-sql";
 
 /**
  * PostgreSQL connection configuration.

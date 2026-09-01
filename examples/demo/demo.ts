@@ -1,5 +1,5 @@
 import { Effect } from "effect";
-import { KvTriples, Triples, number, ref, string } from "effect-triples";
+import { KvTriples, Triples, number, ref, string } from "@bjacobso/triplex";
 
 const program = Effect.gen(function* () {
   const triples = yield* Triples;

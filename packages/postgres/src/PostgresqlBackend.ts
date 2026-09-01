@@ -9,8 +9,8 @@
 import { Context, Effect, Layer, Redacted } from "effect";
 import { SqlClient } from "effect/unstable/sql";
 import { PgClient } from "@effect/sql-pg";
-import { type SqlDialect } from "effect-triples";
-import { StorageBackend, type StorageBackendService } from "effect-triples-sql";
+import { type SqlDialect } from "@bjacobso/triplex";
+import { StorageBackend, type StorageBackendService } from "@bjacobso/triplex-sql";
 import { PostgresqlDialect } from "./dialect.js";
 import { PostgresqlAdapterLive } from "./PostgresqlAdapter.js";
 

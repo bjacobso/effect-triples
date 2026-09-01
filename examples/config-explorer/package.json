@@ -1,5 +1,5 @@
 {
-  "name": "effect-triples-config-explorer",
+  "name": "triplex-config-explorer",
   "version": "0.1.0",
   "private": true,
   "type": "module",
@@ -10,8 +10,8 @@
     "clean": "rm -rf build"
   },
   "dependencies": {
-    "effect": "catalog:",
-    "effect-triples": "workspace:^"
+    "@bjacobso/triplex": "workspace:^",
+    "effect": "catalog:"
   },
   "devDependencies": {
     "@types/node": "catalog:",
