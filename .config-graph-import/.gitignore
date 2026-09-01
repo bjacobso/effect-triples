@@ -1,0 +1,4 @@
+bench/.generated/
+dist/
+explorer/build/
+node_modules/
