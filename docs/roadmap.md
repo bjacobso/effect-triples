@@ -2,6 +2,24 @@
 
 This document outlines strategic enhancements to make `@bjacobso/triplex` a world-class, open-source triple store and Datalog engine.
 
+The operational foundation and its ordering constraints are specified in
+[`operational-primitives.md`](operational-primitives.md). Atomic KV transactions,
+compare-and-retract conditions, causal transaction envelopes, and per-transaction change journals
+are implemented, including a backend-issued commit cursor and resumable transaction pages. The
+next reliability milestone is conventional consumer checkpoints and command receipts, followed by
+graph constraints and temporal Datalog.
+
+## Immediate correctness gate: backend parity
+
+- Run one differential Datalog corpus against KV and SQLite now, then PostgreSQL before marking
+  that adapter stable.
+- Cover every value type, value-to-value joins, recursive rules, aggregation, unbound variables,
+  links, pagination, and hostile schema-valid inputs.
+- Preserve value tags in SQL result projection so strings such as `"007"`, refs, datetimes, and
+  JSON cannot be guessed from their textual representation.
+- Keep PostgreSQL, FoundationDB, and Cloudflare experimental until each backend passes the shared
+  conformance and differential suites in CI.
+
 ## 1. Structured Data Retrieval (Pull API)
 
 **Goal:** Enable fetching nested, hierarchical data in a single query.
@@ -18,6 +36,8 @@ This document outlines strategic enhancements to make `@bjacobso/triplex` a worl
 - **Required Attributes:** Validate that entities of a specific type have mandatory facts.
 - **Reference Integrity:** Ensure `:ref` values point to existing entities.
 - **Cardinality:** Distinguish between single-valued and multi-valued attributes.
+- Keep these graph constraints separate from value-local `TypeExpr` definitions.
+- Support both queryable observation findings and opt-in transaction enforcement.
 
 ## 3. Reactive "Live" Queries (Watch API)
 
@@ -26,14 +46,16 @@ This document outlines strategic enhancements to make `@bjacobso/triplex` a worl
 - Implement triple-level dependency tracking for Datalog queries.
 - Provide a `watchQuery` function that emits new results when relevant facts change.
 - Enable incremental result updates to minimize re-computation.
+- Build reliable invalidation on the ordered transaction feed; `ChangeEmitter` remains a
+  best-effort wake-up mechanism.
 
-## 4. Built-in Multi-tenancy
+## 4. Application-Level Multi-tenancy
 
 **Goal:** Native, safe isolation for SaaS applications.
 
-- Add a `tenantId` column to the `triples` table.
-- Automatically inject tenant scoping into all Datalog and TripleStore operations.
-- Ensure zero data-leakage across tenants by default.
+- Define tenancy and authorization above the raw Triples service until there is a complete threat
+  model and a backend-portable query/write policy contract.
+- Do not add an ambient `tenantId` column that silently changes query semantics.
 
 ## 5. Bitemporality (Valid Time)
 

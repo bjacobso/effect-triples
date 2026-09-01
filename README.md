@@ -240,19 +240,24 @@ Effect.gen(function* () {
     { entityId: "person:alice", attribute: ":person/knows", value: ref("person:bob") },
   ]);
 
-  // an atomic transaction with metadata (records :_tx/user and :_tx/instant)
+  // an atomic transaction with a queryable causal envelope
   const tx = yield* triples.transact(
     [
       { op: "assert", entityId: "person:carol", attribute: ":person/name", value: string("Carol") },
       { op: "retract", id: triple.id },
     ],
-    { user: "importer" },
+    {
+      actor: "service:importer",
+      commandId: "import:2026-09-01:carol",
+      correlationId: "import:2026-09-01",
+      configSnapshot: "sha256:…",
+    },
   );
 
   // reads
   const alice = yield* triples.entity("person:alice"); // all facts for the entity
   const names = yield* triples.match({ attribute: ":person/name" }); // by pattern
-  return { tx: tx.txId, alice, names };
+  return { tx: tx.txId, position: tx.position, alice, names };
 });
 ```
 
@@ -283,9 +288,61 @@ Effect.gen(function* () {
 });
 ```
 
-Each `transact` also writes a synthetic transaction entity carrying `:_tx/instant`
-(the commit time as a `datetime`) and `:_tx/user`, so provenance can be queried like
-any other fact — see the transaction-metadata Datalog example below.
+Each `transact` writes a synthetic `_Transaction` entity containing a backend-issued
+`:_tx/position`, `:_tx/instant`, actor, command, correlation, causation, governing config snapshot,
+and JSON change facts. Read one typed envelope with `triples.transaction(txId)`, query the reserved
+attributes through Datalog, or catch up in commit order:
+
+```ts
+const page = yield * triples.transactions({ after: checkpoint, limit: 100 });
+for (const transaction of page.transactions) {
+  yield * handleAtLeastOnce(transaction);
+}
+const nextCheckpoint = page.next ?? checkpoint;
+```
+
+The cursor is committed atomically with the journal, so a failed transaction cannot appear in the
+feed. The feed covers `transact`; standalone low-level writes do not create envelopes.
+Best-effort `ChangeEmitter` notifications are kept separate and should only wake a consumer that
+then catches up from its durable checkpoint.
+
+### Conditional transactions
+
+Moving facts can use compare-and-retract semantics. A `TripleLive` precondition must name a triple
+also retracted by the transaction. If another writer retracts it first, the entire transaction
+rolls back with `TransactionConflictError`:
+
+```ts
+const current = (yield *
+  triples.match({
+    entityId: "task:42",
+    attribute: ":task/status",
+  }))[0]!;
+
+yield *
+  triples.transact(
+    [
+      { op: "retract", id: current.id },
+      {
+        op: "assert",
+        entityId: "task:42",
+        attribute: ":task/status",
+        value: string("claimed"),
+      },
+    ],
+    {
+      actor: "agent:worker-7",
+      commandId: "claim:task:42",
+      preconditions: [{ _tag: "TripleLive", id: current.id }],
+    },
+  );
+```
+
+This is the primitive used by config-ref and entity-validation-head movement. It is suitable for
+task claims, leases, idempotent commands, and optimistic form updates. `Triples.transact` is atomic
+on both SQL and KV backends; the in-memory KV backend also serializes concurrent transactions.
+Standalone `assert`, `assertBatch`, and `retract` remain low-level writes and do not create the full
+causal envelope, so operational commands should use `transact`.
 
 ## Datalog queries
 

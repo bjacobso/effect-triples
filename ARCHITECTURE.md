@@ -29,6 +29,13 @@ hosts typed configuration as a modular layer over the same core.
   facts, then atomically moves per-ref heads. Datalog can therefore query current invalid entities,
   ever-invalid entities, and historical messages without confusing an old observation for a
   current one.
+- The `Triples` transaction boundary owns portable operational guarantees. KV implementations run
+  `transact` through `KvBackend.transact`, SQL implementations use their native transaction, and
+  compare-and-retract preconditions turn moving facts such as config refs and validation heads
+  into optimistic concurrency boundaries. Every successful `transact` persists a causal envelope
+  and asserted/retracted change descriptions as ordinary `_Transaction` facts. The backend also
+  allocates a monotonic commit position in that atomic boundary; `Triples.transactions` pages the
+  journal from a durable resume cursor.
 - `EntitySnapshot` and `ConfigSnapshot` are deliberately separate models: the former materializes
   one fact entity at a transaction/time; the latter pins an immutable release graph, revision
   stamps, dependency closures, and movable refs.
