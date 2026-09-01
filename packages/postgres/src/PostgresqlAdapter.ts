@@ -85,12 +85,14 @@ export const makePostgresqlAdapter = () =>
               INSERT INTO triples (
                 id, entity_id, attribute, value_type,
                 value_string, value_number, value_boolean, value_datetime, value_json,
-                created_at, created_by, entity_type, schema_version, tx_id
+                created_at, recorded_at, valid_from, valid_to,
+                created_by, entity_type, schema_version, tx_id
               ) VALUES (
                 ${id}, ${input.entityId}, ${input.attribute}, ${packed.value_type},
                 ${packed.value_string}, ${packed.value_number}, ${packed.value_boolean},
                 ${packed.value_datetime}, ${packed.value_json},
-                ${timestamp}, ${input.createdBy ?? null}, ${input.entityType ?? null}, ${1}, ${txId}
+                ${timestamp}, ${timestamp}, ${input.validFrom ?? timestamp}, ${input.validTo ?? null},
+                ${input.createdBy ?? null}, ${input.entityType ?? null}, ${1}, ${txId}
               )
             `.pipe(
               Effect.mapError(
@@ -113,8 +115,12 @@ export const makePostgresqlAdapter = () =>
               value_datetime: packed.value_datetime,
               value_json: packed.value_json,
               created_at: timestamp,
+              recorded_at: timestamp,
+              valid_from: input.validFrom ?? timestamp,
+              valid_to: input.validTo ?? null,
               created_by: input.createdBy ?? null,
               retracted_at: null,
+              recorded_retracted_at: null,
               entity_type: input.entityType ?? null,
               schema_version: 1,
               tx_id: txId,
@@ -162,6 +168,9 @@ export const makePostgresqlAdapter = () =>
                       packed.value_datetime,
                       packed.value_json,
                       timestamp,
+                      timestamp,
+                      input.validFrom ?? timestamp,
+                      input.validTo ?? null,
                       input.createdBy ?? null,
                       input.entityType ?? null,
                       1, // schema_version
@@ -175,7 +184,8 @@ export const makePostgresqlAdapter = () =>
                   INSERT INTO triples (
                     id, entity_id, attribute, value_type,
                     value_string, value_number, value_boolean, value_datetime, value_json,
-                    created_at, created_by, entity_type, schema_version, tx_id
+                    created_at, recorded_at, valid_from, valid_to,
+                    created_by, entity_type, schema_version, tx_id
                   ) VALUES ${valuesSql}
                 `;
 
@@ -201,8 +211,12 @@ export const makePostgresqlAdapter = () =>
                 value_datetime: packed.value_datetime,
                 value_json: packed.value_json,
                 created_at: timestamp,
+                recorded_at: timestamp,
+                valid_from: input.validFrom ?? timestamp,
+                valid_to: input.validTo ?? null,
                 created_by: input.createdBy ?? null,
                 retracted_at: null,
+                recorded_retracted_at: null,
                 entity_type: input.entityType ?? null,
                 schema_version: 1,
                 tx_id: txId,
@@ -227,7 +241,7 @@ export const makePostgresqlAdapter = () =>
           Effect.gen(function* () {
             const rows = yield* sql<{ readonly id: string }>`
               UPDATE triples
-              SET retracted_at = ${timestamp}, retract_tx_id = ${txId ?? null}
+              SET retracted_at = ${timestamp}, recorded_retracted_at = ${timestamp}, retract_tx_id = ${txId ?? null}
               WHERE id = ${id} AND retracted_at IS NULL
               RETURNING id
             `.pipe(
@@ -267,31 +281,65 @@ export const makePostgresqlAdapter = () =>
           }),
         );
 
-      const getByEntity: StorageAdapterService["getByEntity"] = (entityId) =>
-        provide(
-          Effect.gen(function* () {
-            const rows = yield* sql<TripleRow>`
-              SELECT * FROM triples
-              WHERE entity_id = ${entityId} AND retracted_at IS NULL
-            `.pipe(
+      const temporalConditions = (
+        basis: { readonly recordedAt?: number; readonly validAt: number } | undefined,
+        collector: ReturnType<typeof createParamCollector>,
+      ): string[] => {
+        const conditions =
+          basis?.recordedAt === undefined
+            ? ["recorded_retracted_at IS NULL"]
+            : [
+                `recorded_at <= ${collector.add(basis.recordedAt)}`,
+                `(recorded_retracted_at IS NULL OR recorded_retracted_at > ${collector.add(basis.recordedAt)})`,
+              ];
+        if (basis !== undefined) {
+          conditions.push(
+            `valid_from <= ${collector.add(basis.validAt)}`,
+            `(valid_to IS NULL OR valid_to > ${collector.add(basis.validAt)})`,
+          );
+        }
+        return conditions;
+      };
+
+      const getByEntity: StorageAdapterService["getByEntity"] = (entityId, basis) =>
+        query({ entityId }, basis);
+
+      const getByEntities: StorageAdapterService["getByEntities"] = (entityIds, basis) => {
+        if (entityIds.length === 0) return Effect.succeed(new Map());
+        const unique = [...new Set(entityIds)];
+        const collector = createParamCollector(PostgresqlDialect);
+        const conditions = [
+          `entity_id IN (${unique.map((id) => collector.add(id)).join(", ")})`,
+          ...temporalConditions(basis, collector),
+        ];
+        return provide(
+          sql
+            .unsafe<TripleRow>(`SELECT * FROM triples WHERE ${conditions.join(" AND ")}`, [
+              ...collector.params,
+            ])
+            .pipe(
+              Effect.map((rows) => {
+                const grouped = new Map<string, TripleRow[]>();
+                for (const id of unique) grouped.set(id, []);
+                for (const row of rows) grouped.get(row.entity_id)?.push(row);
+                return grouped as ReadonlyMap<string, readonly TripleRow[]>;
+              }),
               Effect.mapError(
                 (error) =>
                   new ReadError({
-                    message: `Failed to get entity: ${String(error)}`,
+                    message: `Failed to batch-load entities: ${String(error)}`,
                     cause: error,
                   }),
               ),
-            );
-
-            return rows;
-          }),
+            ),
         );
+      };
 
-      const query: StorageAdapterService["query"] = (pattern) =>
+      const query: StorageAdapterService["query"] = (pattern, basis) =>
         provide(
           Effect.gen(function* () {
             const collector = createParamCollector(PostgresqlDialect);
-            const conditions: string[] = ["retracted_at IS NULL"];
+            const conditions = temporalConditions(basis, collector);
 
             if (pattern.entityId && !isVariable(pattern.entityId)) {
               conditions.push(`entity_id = ${collector.add(pattern.entityId)}`);
@@ -350,45 +398,7 @@ export const makePostgresqlAdapter = () =>
         );
 
       const queryAsOf: StorageAdapterService["queryAsOf"] = (pattern, asOf) =>
-        provide(
-          Effect.gen(function* () {
-            const collector = createParamCollector(PostgresqlDialect);
-            const conditions: string[] = [
-              `created_at <= ${collector.add(asOf)}`,
-              `(retracted_at IS NULL OR retracted_at > ${collector.add(asOf)})`,
-            ];
-
-            if (pattern.entityId && !isVariable(pattern.entityId)) {
-              conditions.push(`entity_id = ${collector.add(pattern.entityId)}`);
-            }
-
-            if (pattern.attribute && !isVariable(pattern.attribute)) {
-              conditions.push(`attribute = ${collector.add(pattern.attribute)}`);
-            }
-
-            if (pattern.entityType) {
-              conditions.push(`entity_type = ${collector.add(pattern.entityType)}`);
-            }
-
-            const whereClause = conditions.join(" AND ");
-
-            const rows = yield* sql
-              .unsafe<TripleRow>(`SELECT * FROM triples WHERE ${whereClause}`, [
-                ...collector.params,
-              ])
-              .pipe(
-                Effect.mapError(
-                  (error) =>
-                    new ReadError({
-                      message: `Failed to query triples as of: ${String(error)}`,
-                      cause: error,
-                    }),
-                ),
-              );
-
-            return rows;
-          }),
-        );
+        query(pattern, { recordedAt: asOf, validAt: asOf });
 
       const history: StorageAdapterService["history"] = (entityId) =>
         provide(
@@ -458,6 +468,7 @@ export const makePostgresqlAdapter = () =>
         retract,
         getById,
         getByEntity,
+        getByEntities,
         query,
         queryAsOf,
         history,

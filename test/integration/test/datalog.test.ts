@@ -1562,9 +1562,13 @@ describe("Recursive Datalog Queries", () => {
         }).pipe(Effect.provide(TestLayer)),
       );
 
-      // The explain SQL should match the SQL that was actually executed
-      expect(plan.queryPlan.steps[0].query).toBe(queryResult.debug?.generatedSql);
-      // Params should match too
+      // Explain describes the timeless query shape. Execution additionally
+      // resolves the default business-time basis at the read instant.
+      expect(plan.queryPlan.steps[0].query).toContain("t0.attribute = ?");
+      expect(queryResult.debug?.generatedSql).toContain("t0.valid_from <=");
+      expect(queryResult.debug?.generatedSql).toContain("t1.valid_from <=");
+      // Temporal instants are emitted as safe numeric literals, so query
+      // parameters still describe the same logical filters.
       expect(plan.queryPlan.steps[0].params).toEqual([...(queryResult.debug!.params ?? [])]);
     });
 

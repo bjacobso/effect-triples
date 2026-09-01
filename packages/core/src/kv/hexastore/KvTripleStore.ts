@@ -16,6 +16,7 @@
 import { Effect, Stream } from "effect";
 import type { TripleValue } from "../../Value.js";
 import type { KvBackendService } from "../kv/KvBackend.js";
+import type { ResolvedTemporalBasis } from "../../Temporal.js";
 import {
   eavtKey,
   aevtKey,
@@ -47,8 +48,12 @@ export interface Datom {
   readonly value: TripleValue;
   readonly txId: string;
   readonly createdAt: number;
+  readonly recordedAt: number;
+  readonly validFrom: number;
+  readonly validTo: number | null;
   readonly createdBy: string | null;
   readonly retractedAt: number | null;
+  readonly recordedRetractedAt: number | null;
   readonly retractTxId: string | null;
   readonly entityType: string | null;
 }
@@ -103,7 +108,8 @@ const asciiToBytes = (s: string): Uint8Array => {
 //         + [8 bytes] size (float64) + [1 byte] hasFilename + [conditional: 4 bytes len + N bytes]
 
 const LEGACY_BINARY_FORMAT_VERSION = 0x01;
-const FORMAT_VERSION = 0x02;
+const FORMAT_VERSION = 0x03;
+const PRE_BITEMPORAL_FORMAT_VERSION = 0x02;
 
 // Value type tags for binary format
 const VT_STRING = 0;
@@ -265,6 +271,28 @@ const serializeDatom = (datom: Datom): Uint8Array => {
   offset = writeNullableStr(datom.retractTxId, offset);
   offset = writeNullableStr(datom.entityType, offset);
 
+  // Explicit bitemporal fields (v3+). The legacy created/retracted fields are
+  // retained in the prefix so existing index data can be decoded safely.
+  ensureCapacity(18, offset);
+  _writeDV.setFloat64(offset, datom.recordedAt, false);
+  offset += 8;
+  _writeDV.setFloat64(offset, datom.validFrom, false);
+  offset += 8;
+  let temporalFlags = 0;
+  if (datom.validTo !== null) temporalFlags |= 0x01;
+  if (datom.recordedRetractedAt !== null) temporalFlags |= 0x02;
+  _writeBuf[offset++] = temporalFlags;
+  if (datom.validTo !== null) {
+    ensureCapacity(8, offset);
+    _writeDV.setFloat64(offset, datom.validTo, false);
+    offset += 8;
+  }
+  if (datom.recordedRetractedAt !== null) {
+    ensureCapacity(8, offset);
+    _writeDV.setFloat64(offset, datom.recordedRetractedAt, false);
+    offset += 8;
+  }
+
   // Copy out the result (cannot share the reusable buffer)
   const result = new Uint8Array(offset);
   result.set(_writeBuf.subarray(0, offset));
@@ -303,7 +331,11 @@ const readStr = (buf: Uint8Array, offset: number, lengthBytes: 2 | 4): [string, 
  */
 const deserializeDatom = (bytes: Uint8Array): Datom => {
   const version = bytes[0];
-  if (version !== FORMAT_VERSION && version !== LEGACY_BINARY_FORMAT_VERSION) {
+  if (
+    version !== FORMAT_VERSION &&
+    version !== PRE_BITEMPORAL_FORMAT_VERSION &&
+    version !== LEGACY_BINARY_FORMAT_VERSION
+  ) {
     return JSON.parse(textDecoder.decode(bytes)) as Datom;
   }
   const lengthBytes = version === LEGACY_BINARY_FORMAT_VERSION ? 2 : 4;
@@ -412,6 +444,25 @@ const deserializeDatom = (bytes: Uint8Array): Datom => {
     [entityType, offset] = readStr(bytes, offset, lengthBytes);
   }
 
+  let recordedAt = createdAt;
+  let validFrom = createdAt;
+  let validTo: number | null = null;
+  let recordedRetractedAt = retractedAt;
+  if (version === FORMAT_VERSION) {
+    recordedAt = dv.getFloat64(offset, false);
+    offset += 8;
+    validFrom = dv.getFloat64(offset, false);
+    offset += 8;
+    const temporalFlags = bytes[offset++]!;
+    if ((temporalFlags & 0x01) !== 0) {
+      validTo = dv.getFloat64(offset, false);
+      offset += 8;
+    }
+    if ((temporalFlags & 0x02) !== 0) {
+      recordedRetractedAt = dv.getFloat64(offset, false);
+    }
+  }
+
   return {
     tripleId,
     entity,
@@ -419,8 +470,12 @@ const deserializeDatom = (bytes: Uint8Array): Datom => {
     value,
     txId,
     createdAt,
+    recordedAt,
+    validFrom,
+    validTo,
     createdBy,
     retractedAt,
+    recordedRetractedAt,
     retractTxId,
     entityType,
   };
@@ -598,6 +653,7 @@ export class KvTripleStore {
       const updated: Datom = {
         ...datom,
         retractedAt,
+        recordedRetractedAt: retractedAt,
         retractTxId: retractTxId ?? null,
       };
 
@@ -801,24 +857,27 @@ export class KvTripleStore {
 
   /** Synchronous scan at one historical instant, when the backend supports it. */
   scanCollectAsOf(pattern: ScanPattern, asOf: number): Datom[] | null {
-    const datoms = this.scanCollect(pattern, { includeRetracted: true });
-    return datoms === null
-      ? null
-      : datoms.filter(
-          (datom) =>
-            datom.createdAt <= asOf && (datom.retractedAt === null || datom.retractedAt > asOf),
-        );
+    return this.scanCollectTemporal(pattern, { recordedAt: asOf, validAt: asOf });
   }
 
   /** Batched asynchronous scan at one historical instant. */
   scanCollectAsOfAsync(pattern: ScanPattern, asOf: number): Effect.Effect<Datom[]> {
+    return this.scanCollectTemporalAsync(pattern, { recordedAt: asOf, validAt: asOf });
+  }
+
+  /** Synchronous bitemporal scan, when the backend supports it. */
+  scanCollectTemporal(pattern: ScanPattern, basis: ResolvedTemporalBasis): Datom[] | null {
+    const datoms = this.scanCollect(pattern, { includeRetracted: true });
+    return datoms === null ? null : datoms.filter((datom) => visibleAt(datom, basis));
+  }
+
+  /** Batched asynchronous bitemporal scan. */
+  scanCollectTemporalAsync(
+    pattern: ScanPattern,
+    basis: ResolvedTemporalBasis,
+  ): Effect.Effect<Datom[]> {
     return this.scanCollectAsync(pattern, { includeRetracted: true }).pipe(
-      Effect.map((datoms) =>
-        datoms.filter(
-          (datom) =>
-            datom.createdAt <= asOf && (datom.retractedAt === null || datom.retractedAt > asOf),
-        ),
-      ),
+      Effect.map((datoms) => datoms.filter((datom) => visibleAt(datom, basis))),
     );
   }
 
@@ -855,16 +914,18 @@ export class KvTripleStore {
    * Returns only datoms that were active (non-retracted) at the given timestamp.
    */
   scanAsOf(pattern: ScanPattern, asOf: number): Stream.Stream<Datom> {
+    return this.scanTemporal(pattern, { recordedAt: asOf, validAt: asOf });
+  }
+
+  /** Stream facts visible at one bitemporal basis. */
+  scanTemporal(pattern: ScanPattern, basis: ResolvedTemporalBasis): Stream.Stream<Datom> {
     return this.kv.getRange({ ...patternToScan(pattern) }).pipe(
       Stream.mapEffect(([_key, value]) => {
         const tripleId = textDecoder.decode(value);
         return this.getById(tripleId);
       }),
       Stream.filter((datom): datom is Datom => datom !== null),
-      Stream.filter(
-        (datom) =>
-          datom.createdAt <= asOf && (datom.retractedAt === null || datom.retractedAt > asOf),
-      ),
+      Stream.filter((datom) => visibleAt(datom, basis)),
       Stream.filter((datom) => matchesPattern(datom, pattern)),
     );
   }
@@ -895,6 +956,19 @@ const matchesPattern = (datom: Datom, pattern: ScanPattern): boolean => {
   if (pattern.attribute !== undefined && datom.attribute !== pattern.attribute) return false;
   if (pattern.value !== undefined && !valuesEqual(datom.value, pattern.value)) return false;
   return true;
+};
+
+const visibleAt = (datom: Datom, basis: ResolvedTemporalBasis): boolean => {
+  const recordedVisible =
+    basis.recordedAt === undefined
+      ? datom.recordedRetractedAt === null
+      : datom.recordedAt <= basis.recordedAt &&
+        (datom.recordedRetractedAt === null || datom.recordedRetractedAt > basis.recordedAt);
+  return (
+    recordedVisible &&
+    datom.validFrom <= basis.validAt &&
+    (datom.validTo === null || datom.validTo > basis.validAt)
+  );
 };
 
 /**

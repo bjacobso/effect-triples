@@ -59,6 +59,7 @@ import {
   reservedAssertError,
   reservedWriteError,
 } from "./systemNamespace.js";
+import { basisFromAsOf, resolveTemporalBasis } from "../Temporal.js";
 
 // =============================================================================
 // Row to Triple Conversion
@@ -106,8 +107,13 @@ const rowToTriple = (row: TripleRow): Triple => {
     attribute: row.attribute as Attribute,
     value,
     createdAt: row.created_at,
+    recordedAt: row.recorded_at,
+    validFrom: row.valid_from,
+    validTo: row.valid_to !== null ? Option.some(row.valid_to) : Option.none(),
     createdBy: row.created_by ? Option.some(row.created_by) : Option.none(),
     retractedAt: row.retracted_at ? Option.some(row.retracted_at) : Option.none(),
+    recordedRetractedAt:
+      row.recorded_retracted_at !== null ? Option.some(row.recorded_retracted_at) : Option.none(),
     entityType: row.entity_type ? Option.some(row.entity_type) : Option.none(),
     schemaVersion: row.schema_version ? Option.some(row.schema_version) : Option.none(),
     txId: row.tx_id ? Option.some(row.tx_id) : Option.none(),
@@ -301,6 +307,8 @@ export const TriplesLive = Layer.effect(
             value: op.value,
             entityType: op.entityType,
             createdBy: actor,
+            validFrom: op.validFrom,
+            validTo: op.validTo,
           };
         });
 
@@ -525,15 +533,24 @@ export const TriplesLive = Layer.effect(
         return row ? rowToTriple(row) : null;
       });
 
-    const entity = (entityId: EntityId): Effect.Effect<readonly Triple[], ReadError> =>
+    const entity: TriplesService["entity"] = (entityId, basis) =>
       Effect.gen(function* () {
-        const rows = yield* adapter.getByEntity(entityId);
+        const resolved = resolveTemporalBasis(basis, yield* now);
+        const rows = yield* adapter.getByEntity(entityId, resolved);
         return rows.map(rowToTriple);
       });
 
-    const match = (pattern: Pattern): Effect.Effect<readonly Triple[], ReadError> =>
+    const entitiesById: TriplesService["entitiesById"] = (entityIds, basis) =>
       Effect.gen(function* () {
-        const rows = yield* adapter.query(pattern);
+        const resolved = resolveTemporalBasis(basis, yield* now);
+        const rows = yield* adapter.getByEntities(entityIds, resolved);
+        return entityIds.map((id) => (rows.get(id) ?? []).map(rowToTriple));
+      });
+
+    const match: TriplesService["match"] = (pattern, basis) =>
+      Effect.gen(function* () {
+        const resolved = resolveTemporalBasis(basis, yield* now);
+        const rows = yield* adapter.query(pattern, resolved);
         return rows.map(rowToTriple);
       });
 
@@ -542,7 +559,7 @@ export const TriplesLive = Layer.effect(
       asOf: number,
     ): Effect.Effect<readonly Triple[], ReadError> =>
       Effect.gen(function* () {
-        const rows = yield* adapter.queryAsOf(pattern, asOf);
+        const rows = yield* adapter.query(pattern, resolveTemporalBasis(basisFromAsOf(asOf), asOf));
         return rows.map(rowToTriple);
       });
 
@@ -679,14 +696,32 @@ export const TriplesLive = Layer.effect(
     // =========================================================================
 
     const query = (q: DatalogQuery, options?: QueryOptions) =>
-      executor
-        .execute(q, options?.debug ?? false, options?.asOf)
-        .pipe(Effect.withSpan("triples.query"));
+      Effect.gen(function* () {
+        if (options?.basis !== undefined && options.asOf !== undefined) {
+          return yield* Effect.fail(
+            new ReadError({ message: "Use either basis or asOf, not both" }),
+          );
+        }
+        const basis = resolveTemporalBasis(
+          options?.basis ?? (options?.asOf === undefined ? undefined : basisFromAsOf(options.asOf)),
+          yield* now,
+        );
+        return yield* executor.execute(q, options?.debug ?? false, basis);
+      }).pipe(Effect.withSpan("triples.query"));
 
     const queryPage = (q: WrappedQuery, options?: QueryOptions) =>
-      executor
-        .executePage(q, options?.debug ?? false, options?.asOf)
-        .pipe(Effect.withSpan("triples.queryPage"));
+      Effect.gen(function* () {
+        if (options?.basis !== undefined && options.asOf !== undefined) {
+          return yield* Effect.fail(
+            new ReadError({ message: "Use either basis or asOf, not both" }),
+          );
+        }
+        const basis = resolveTemporalBasis(
+          options?.basis ?? (options?.asOf === undefined ? undefined : basisFromAsOf(options.asOf)),
+          yield* now,
+        );
+        return yield* executor.executePage(q, options?.debug ?? false, basis);
+      }).pipe(Effect.withSpan("triples.queryPage"));
 
     const explain = (q: DatalogQuery) =>
       executor.explain(q).pipe(
@@ -720,6 +755,7 @@ export const TriplesLive = Layer.effect(
       withTransaction,
       get,
       entity,
+      entitiesById,
       match,
       matchAsOf,
       history,

@@ -35,6 +35,20 @@ export const migrations: readonly Migration[] = [
       COMMIT_POSITION_TABLE_DDL,
     ],
   },
+  {
+    version: 2,
+    name: "bitemporal_facts",
+    up: [
+      "ALTER TABLE triples ADD COLUMN recorded_at BIGINT",
+      "ALTER TABLE triples ADD COLUMN recorded_retracted_at BIGINT",
+      "ALTER TABLE triples ADD COLUMN valid_from BIGINT",
+      "ALTER TABLE triples ADD COLUMN valid_to BIGINT",
+      "UPDATE triples SET recorded_at = created_at WHERE recorded_at IS NULL",
+      "UPDATE triples SET recorded_retracted_at = retracted_at WHERE recorded_retracted_at IS NULL AND retracted_at IS NOT NULL",
+      "UPDATE triples SET valid_from = created_at WHERE valid_from IS NULL",
+      "CREATE INDEX IF NOT EXISTS idx_bitemporal ON triples(recorded_at, recorded_retracted_at, valid_from, valid_to)",
+    ],
+  },
 ];
 
 export const runMigrations = Effect.gen(function* () {
@@ -42,7 +56,7 @@ export const runMigrations = Effect.gen(function* () {
 
   // Ensure migrations table exists first
   yield* sql`
-    CREATE TABLE IF NOT EXISTS schema_migrations (
+    CREATE TABLE IF NOT EXISTS triplex_schema_migrations (
       version INTEGER PRIMARY KEY,
       name TEXT NOT NULL,
       applied_at BIGINT NOT NULL
@@ -51,7 +65,7 @@ export const runMigrations = Effect.gen(function* () {
 
   // Get already applied migrations
   const applied = yield* sql<{ version: number }>`
-    SELECT version FROM schema_migrations ORDER BY version
+    SELECT version FROM triplex_schema_migrations ORDER BY version
   `;
   const appliedVersions = new Set(applied.map((r) => r.version));
 
@@ -78,7 +92,7 @@ export const runMigrations = Effect.gen(function* () {
     // Record migration as applied
     const now = Date.now();
     yield* sql`
-      INSERT INTO schema_migrations (version, name, applied_at)
+      INSERT INTO triplex_schema_migrations (version, name, applied_at)
       VALUES (${migration.version}, ${migration.name}, ${now})
     `;
   }

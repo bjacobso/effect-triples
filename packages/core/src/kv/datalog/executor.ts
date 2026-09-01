@@ -18,6 +18,7 @@
 import { Effect, Result, Encoding, Stream } from "effect";
 import type { KvTripleStore } from "../hexastore/KvTripleStore.js";
 import type { TripleValue } from "../../Value.js";
+import type { ResolvedTemporalBasis } from "../../Temporal.js";
 import {
   type Context,
   type Constant,
@@ -59,7 +60,7 @@ const innerClausesMatchContext = (
   store: KvTripleStore,
   clauses: readonly (PatternClause | PredicateClause)[],
   context: Context,
-  asOf?: number,
+  asOf?: ResolvedTemporalBasis,
 ): Effect.Effect<boolean> => {
   return Effect.gen(function* () {
     let current: Context[] = [context];
@@ -82,7 +83,7 @@ const patternAlternativeMatchesContext = (
   store: KvTripleStore,
   pattern: PatternClause,
   context: Context,
-  asOf?: number,
+  asOf?: ResolvedTemporalBasis,
 ): Effect.Effect<boolean> =>
   Effect.map(executePattern(store, pattern, [context], asOf), (matches) => matches.length > 0);
 
@@ -93,7 +94,7 @@ const notClauseMatchesContext = (
   store: KvTripleStore,
   clause: NotClause,
   context: Context,
-  asOf?: number,
+  asOf?: ResolvedTemporalBasis,
 ): Effect.Effect<boolean> =>
   innerClausesMatchContext(store, notClauseInnerClauses(clause), context, asOf);
 
@@ -101,7 +102,7 @@ const orAlternativeMatchesContext = (
   store: KvTripleStore,
   alternative: OrAlternative,
   context: Context,
-  asOf?: number,
+  asOf?: ResolvedTemporalBasis,
 ): Effect.Effect<boolean> => {
   if (isPredicateClause(alternative as Clause)) {
     return Effect.succeed(evaluatePredicate(alternative as PredicateClause, context));
@@ -127,7 +128,7 @@ const executeNot = (
   store: KvTripleStore,
   clause: NotClause,
   contexts: readonly Context[],
-  asOf?: number,
+  asOf?: ResolvedTemporalBasis,
 ): Effect.Effect<Context[]> => {
   return Effect.gen(function* () {
     const results: Context[] = [];
@@ -151,7 +152,7 @@ const executeOr = (
   store: KvTripleStore,
   clause: OrClause,
   contexts: readonly Context[],
-  asOf?: number,
+  asOf?: ResolvedTemporalBasis,
 ): Effect.Effect<Context[]> => {
   const alternatives = normalizeOrAlternatives(clause) as OrAlternative[];
 
@@ -235,7 +236,7 @@ const deriveRulePairs = (
   store: KvTripleStore,
   rules: readonly Rule[],
   ruleName: string,
-  asOf?: number,
+  asOf?: ResolvedTemporalBasis,
 ): Effect.Effect<RulePair[]> =>
   Effect.gen(function* () {
     const definitions = rules.filter((rule) => rule.name === ruleName);
@@ -281,7 +282,7 @@ const executeRules = (
   rules: readonly Rule[],
   contexts: readonly Context[],
   ruleApplication: RuleApplication,
-  asOf?: number,
+  asOf?: ResolvedTemporalBasis,
 ): Effect.Effect<Context[]> =>
   deriveRulePairs(store, rules, ruleApplication[0], asOf).pipe(
     Effect.map((pairs) => applyRulePairs(contexts, ruleApplication, pairs)),
@@ -297,7 +298,7 @@ const executeClause = (
   clause: Clause,
   contexts: readonly Context[],
   rules: readonly Rule[],
-  asOf?: number,
+  asOf?: ResolvedTemporalBasis,
 ): Effect.Effect<Context[]> => {
   if (isPredicateClause(clause)) {
     return Effect.succeed(
@@ -337,7 +338,7 @@ const executeWhere = (
   store: KvTripleStore,
   clauses: readonly Clause[],
   rules: readonly Rule[],
-  asOf?: number,
+  asOf?: ResolvedTemporalBasis,
 ): Effect.Effect<Context[]> => {
   return Effect.gen(function* () {
     let contexts: Context[] = [emptyContext];
@@ -406,7 +407,7 @@ const hydrateOptionalProjection = (
   store: KvTripleStore,
   query: DatalogQuery,
   rows: readonly Context[],
-  asOf?: number,
+  asOf?: ResolvedTemporalBasis,
 ): Effect.Effect<Context[]> => {
   const projection = query.optionalProjection;
   if (!projection || projection.fields.length === 0) {
@@ -435,7 +436,7 @@ const hydrateOptionalProjection = (
           entityFields = new Map<string, Constant>();
           const datoms = yield* asOf === undefined
             ? store.getEntity(entityId).pipe(Stream.runCollect)
-            : store.scanCollectAsOfAsync({ entity: entityId }, asOf);
+            : store.scanCollectTemporalAsync({ entity: entityId }, asOf);
           for (const datom of datoms) {
             if (!entityFields.has(datom.attribute)) {
               entityFields.set(datom.attribute, tripleValueToResultValue(datom.value));
@@ -634,11 +635,11 @@ export const executeQuery = (
   store: KvTripleStore,
   query: DatalogQuery,
   rules: readonly Rule[] = [],
-  options: { readonly asOf?: number } = {},
+  options: { readonly basis?: ResolvedTemporalBasis } = {},
 ): Effect.Effect<QueryResult> => {
   return Effect.gen(function* () {
     // 1. Execute WHERE clauses
-    const contexts = yield* executeWhere(store, query.where, rules, options.asOf);
+    const contexts = yield* executeWhere(store, query.where, rules, options.basis);
 
     // 2. Extract find variables (and aggregate input variables)
     // When aggregation is requested, we must preserve aggregate input variables
@@ -656,7 +657,7 @@ export const executeQuery = (
       results = actualize(contexts, query.find);
     }
 
-    results = yield* hydrateOptionalProjection(store, query, results, options.asOf);
+    results = yield* hydrateOptionalProjection(store, query, results, options.basis);
 
     // 4. HAVING
     if (query.having && query.having.length > 0) {
@@ -703,7 +704,7 @@ export const executeWrappedQuery = (
   store: KvTripleStore,
   query: WrappedQuery,
   rules: readonly Rule[] = [],
-  options: { readonly asOf?: number } = {},
+  options: { readonly basis?: ResolvedTemporalBasis } = {},
 ): Effect.Effect<WrappedQueryResult> => {
   return Effect.gen(function* () {
     // 1. Execute inner query

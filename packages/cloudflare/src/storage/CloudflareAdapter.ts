@@ -332,6 +332,17 @@ export function makeCloudflareAdapter(ctx: DOState): StorageAdapterService {
         }),
     });
 
+  const getByEntities: StorageAdapterService["getByEntities"] = (entityIds, basis) => {
+    if (entityIds.length === 0) return Effect.succeed(new Map());
+    const unique = [...new Set(entityIds)];
+    return Effect.forEach(unique, (entityId) => query({ entityId }, basis)).pipe(
+      Effect.map(
+        (groups) =>
+          new Map(unique.map((entityId, index) => [entityId, groups[index] ?? []] as const)),
+      ),
+    );
+  };
+
   const query: StorageAdapterService["query"] = (pattern) =>
     Effect.try({
       try: () => {
@@ -475,7 +486,9 @@ export function makeCloudflareAdapter(ctx: DOState): StorageAdapterService {
         // Run versioned migrations (same migration list as Node.js)
         const applied = new Set<number>();
         const rows = sqlStorage
-          .exec<{ version: number }>("SELECT version FROM schema_migrations ORDER BY version")
+          .exec<{ version: number }>(
+            "SELECT version FROM triplex_schema_migrations ORDER BY version",
+          )
           .toArray();
         for (const row of rows) {
           applied.add(row.version);
@@ -487,7 +500,7 @@ export function makeCloudflareAdapter(ctx: DOState): StorageAdapterService {
             sqlStorage.exec(statement);
           }
           sqlStorage.exec(
-            "INSERT INTO schema_migrations (version, name, applied_at) VALUES (?, ?, ?)",
+            "INSERT INTO triplex_schema_migrations (version, name, applied_at) VALUES (?, ?, ?)",
             migration.version,
             migration.name,
             Date.now(),
@@ -522,6 +535,7 @@ export function makeCloudflareAdapter(ctx: DOState): StorageAdapterService {
     retract,
     getById,
     getByEntity,
+    getByEntities,
     query,
     queryAsOf,
     history,

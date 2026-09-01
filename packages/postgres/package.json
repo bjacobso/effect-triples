@@ -48,6 +48,7 @@
     "@effect/sql-pg": "catalog:"
   },
   "devDependencies": {
+    "@bjacobso/triplex-testkit": "workspace:^",
     "@types/node": "catalog:",
     "effect": "catalog:",
     "testcontainers": "catalog:",

@@ -10,6 +10,8 @@ export const TripleInput = Schema.Struct({
   value: TripleValue,
   entityType: Schema.optional(Schema.String),
   createdBy: Schema.optional(Schema.String),
+  validFrom: Schema.optional(Schema.Number),
+  validTo: Schema.optional(Schema.Number),
 });
 export type TripleInput = typeof TripleInput.Type;
 
@@ -42,8 +44,12 @@ export const TripleResponse = Schema.Struct({
   attribute: Schema.String,
   value: TripleValue,
   createdAt: Schema.Number,
+  recordedAt: Schema.Number,
+  validFrom: Schema.Number,
+  validTo: Schema.NullOr(Schema.Number),
   createdBy: Schema.NullOr(Schema.String),
   retractedAt: Schema.NullOr(Schema.Number),
+  recordedRetractedAt: Schema.NullOr(Schema.Number),
   entityType: Schema.NullOr(Schema.String),
   schemaVersion: Schema.NullOr(Schema.Number),
   txId: Schema.NullOr(Schema.String),
@@ -57,8 +63,12 @@ export const Triple = Schema.Struct({
   attribute: Attribute,
   value: TripleValue,
   createdAt: Schema.Number,
+  recordedAt: Schema.Number,
+  validFrom: Schema.Number,
+  validTo: Schema.OptionFromOptional(Schema.Number),
   createdBy: Schema.OptionFromOptional(Schema.String),
   retractedAt: Schema.OptionFromOptional(Schema.Number),
+  recordedRetractedAt: Schema.OptionFromOptional(Schema.Number),
   entityType: Schema.OptionFromOptional(Schema.String),
   schemaVersion: Schema.OptionFromOptional(Schema.Number),
   txId: Schema.OptionFromOptional(Schema.String),
@@ -77,8 +87,12 @@ export const TripleRow = Schema.Struct({
   value_datetime: Schema.NullOr(Schema.Number),
   value_json: Schema.NullOr(Schema.String),
   created_at: Schema.Number,
+  recorded_at: Schema.Number,
+  valid_from: Schema.Number,
+  valid_to: Schema.NullOr(Schema.Number),
   created_by: Schema.NullOr(Schema.String),
   retracted_at: Schema.NullOr(Schema.Number),
+  recorded_retracted_at: Schema.NullOr(Schema.Number),
   retract_tx_id: Schema.NullOr(Schema.String),
   entity_type: Schema.NullOr(Schema.String),
   schema_version: Schema.NullOr(Schema.Number),
@@ -92,6 +106,8 @@ export const TransactAssertOp = Schema.Struct({
   attribute: Schema.String,
   value: TripleValue,
   entityType: Schema.optional(Schema.String),
+  validFrom: Schema.optional(Schema.Number),
+  validTo: Schema.optional(Schema.Number),
 });
 export type TransactAssertOp = typeof TransactAssertOp.Type;
 

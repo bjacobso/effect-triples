@@ -8,6 +8,7 @@
 
 import { Context, Effect } from "effect";
 import type { TripleInput, TripleRow, QueryPattern } from "./types.js";
+import type { ResolvedTemporalBasis } from "../Temporal.js";
 import { WriteError, ReadError, MigrationError } from "../errors/index.js";
 
 /**
@@ -35,8 +36,18 @@ export interface StorageAdapterService {
     txId?: string,
   ) => Effect.Effect<boolean, WriteError>;
   readonly getById: (id: string) => Effect.Effect<TripleRow | null, ReadError>;
-  readonly getByEntity: (entityId: string) => Effect.Effect<readonly TripleRow[], ReadError>;
-  readonly query: (pattern: QueryPattern) => Effect.Effect<readonly TripleRow[], ReadError>;
+  readonly getByEntity: (
+    entityId: string,
+    basis?: ResolvedTemporalBasis,
+  ) => Effect.Effect<readonly TripleRow[], ReadError>;
+  readonly getByEntities: (
+    entityIds: readonly string[],
+    basis?: ResolvedTemporalBasis,
+  ) => Effect.Effect<ReadonlyMap<string, readonly TripleRow[]>, ReadError>;
+  readonly query: (
+    pattern: QueryPattern,
+    basis?: ResolvedTemporalBasis,
+  ) => Effect.Effect<readonly TripleRow[], ReadError>;
   readonly queryAsOf: (
     pattern: QueryPattern,
     asOf: number,

@@ -17,19 +17,26 @@ const bool = (value: boolean): TripleValue => ({ type: "boolean", value });
 const ref = (value: string): TripleValue => ({ type: "ref", value });
 
 let counter = 0;
-const makeDatom = (overrides: Partial<Datom> = {}): Datom => ({
-  tripleId: `triple-${++counter}`,
-  entity: "emp:alice",
-  attribute: ":employee/name",
-  value: str("Alice"),
-  txId: "tx:1",
-  createdAt: 1000,
-  createdBy: null,
-  retractedAt: null,
-  retractTxId: null,
-  entityType: null,
-  ...overrides,
-});
+const makeDatom = (overrides: Partial<Datom> = {}): Datom => {
+  const createdAt = overrides.createdAt ?? 1000;
+  return {
+    tripleId: `triple-${++counter}`,
+    entity: "emp:alice",
+    attribute: ":employee/name",
+    value: str("Alice"),
+    txId: "tx:1",
+    createdAt,
+    recordedAt: overrides.recordedAt ?? createdAt,
+    validFrom: overrides.validFrom ?? createdAt,
+    validTo: null,
+    createdBy: null,
+    retractedAt: null,
+    recordedRetractedAt: null,
+    retractTxId: null,
+    entityType: null,
+    ...overrides,
+  };
+};
 
 const run = <A>(effect: Effect.Effect<A>): Promise<A> => Effect.runPromise(effect);
 

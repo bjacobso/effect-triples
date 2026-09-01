@@ -203,6 +203,9 @@ importers:
         specifier: 'catalog:'
         version: 4.0.0-rc.112(effect@4.0.0-rc.112)
     devDependencies:
+      '@bjacobso/triplex-testkit':
+        specifier: workspace:^
+        version: link:../testkit
       '@types/node':
         specifier: 'catalog:'
         version: 25.9.1
@@ -244,6 +247,9 @@ importers:
         specifier: 'catalog:'
         version: 4.0.0-rc.112(effect@4.0.0-rc.112)
     devDependencies:
+      '@bjacobso/triplex-testkit':
+        specifier: workspace:^
+        version: link:../testkit
       '@types/node':
         specifier: 'catalog:'
         version: 25.9.1

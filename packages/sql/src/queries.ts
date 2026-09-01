@@ -94,8 +94,13 @@ export const rowToTriple = (row: TripleRow): Triple => ({
   attribute: row.attribute as Attribute,
   value: unpackValue(row),
   createdAt: row.created_at,
+  recordedAt: row.recorded_at,
+  validFrom: row.valid_from,
+  validTo: row.valid_to !== null ? Option.some(row.valid_to) : Option.none(),
   createdBy: row.created_by ? Option.some(row.created_by) : Option.none(),
   retractedAt: row.retracted_at ? Option.some(row.retracted_at) : Option.none(),
+  recordedRetractedAt:
+    row.recorded_retracted_at !== null ? Option.some(row.recorded_retracted_at) : Option.none(),
   entityType: row.entity_type ? Option.some(row.entity_type) : Option.none(),
   schemaVersion: row.schema_version ? Option.some(row.schema_version) : Option.none(),
   txId: row.tx_id ? Option.some(row.tx_id) : Option.none(),

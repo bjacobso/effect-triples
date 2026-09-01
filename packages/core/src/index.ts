@@ -10,6 +10,7 @@ export * from "./Database.js";
 export * from "./Error.js";
 export * from "./Snapshot.js";
 export * from "./Triple.js";
+export * from "./Temporal.js";
 export * from "./Value.js";
 export * from "./errors/index.js";
 export * from "./types/Pattern.js";

@@ -13,6 +13,7 @@
 import { Context, Effect } from "effect";
 import type { ReadError } from "../errors/index.js";
 import type { DatalogQuery, WrappedQuery } from "../datalog/types.js";
+import type { ResolvedTemporalBasis } from "../Temporal.js";
 
 /**
  * Variable-to-value binding from query execution
@@ -121,7 +122,7 @@ export interface QueryExecutorService {
   readonly execute: (
     query: DatalogQuery,
     debug?: boolean,
-    asOf?: number,
+    basis?: ResolvedTemporalBasis,
   ) => Effect.Effect<{ results: QueryResult; debug?: QueryDebugInfo }, ReadError>;
 
   /**
@@ -134,7 +135,7 @@ export interface QueryExecutorService {
   readonly executePage: (
     query: WrappedQuery,
     debug?: boolean,
-    asOf?: number,
+    basis?: ResolvedTemporalBasis,
   ) => Effect.Effect<WrappedQueryResult, ReadError>;
 
   /**

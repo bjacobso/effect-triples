@@ -175,14 +175,14 @@ export const SqlQueryExecutorLive = Layer.effect(
     const dialectOpt = yield* Effect.serviceOption(CurrentDialect);
     const dialect = dialectOpt._tag === "Some" ? dialectOpt.value : SqliteDialect;
 
-    const execute: QueryExecutorService["execute"] = (q, debug = false, asOf) =>
+    const execute: QueryExecutorService["execute"] = (q, debug = false, basis) =>
       Effect.gen(function* () {
         // 1. Compile to SQL. Recursive rules go through the CTE compiler.
         let compiled: CompiledQuery;
         try {
           compiled = q.rules?.length
-            ? compileWithRules(q, dialect, debug, asOf === undefined ? {} : { asOf })
-            : compile(q, dialect, debug, asOf === undefined ? {} : { asOf });
+            ? compileWithRules(q, dialect, debug, basis === undefined ? {} : { basis })
+            : compile(q, dialect, debug, basis === undefined ? {} : { basis });
         } catch (error) {
           return yield* Effect.fail(
             new ReadError({
@@ -226,12 +226,12 @@ export const SqlQueryExecutorLive = Layer.effect(
         return { results: results as QueryResult };
       });
 
-    const executePage: QueryExecutorService["executePage"] = (q, debug = false, asOf) =>
+    const executePage: QueryExecutorService["executePage"] = (q, debug = false, basis) =>
       Effect.gen(function* () {
         // 1. Compile to SQL with CTE wrapper
         let compiled: CompiledWrappedQuery;
         try {
-          compiled = compileWrapped(q, dialect, asOf === undefined ? {} : { asOf });
+          compiled = compileWrapped(q, dialect, basis === undefined ? {} : { basis });
         } catch (error) {
           return yield* Effect.fail(
             new ReadError({

@@ -47,6 +47,7 @@
     "@effect/sql-sqlite-node": "catalog:"
   },
   "devDependencies": {
+    "@bjacobso/triplex-testkit": "workspace:^",
     "@types/node": "catalog:",
     "effect": "catalog:",
     "vitest": "catalog:"

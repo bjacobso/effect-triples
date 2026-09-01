@@ -158,20 +158,29 @@ export interface CompiledValueColumns {
 }
 
 export interface CompileOptions {
-  /** Evaluate every triple alias at this transaction-time instant. */
+  /** @deprecated Use `basis`. */
   readonly asOf?: number;
+  /** Evaluate every triple alias against this bitemporal basis. */
+  readonly basis?: { readonly recordedAt?: number; readonly validAt: number };
 }
 
-const applyTemporalBasis = (sql: string, asOf: number | undefined): string => {
-  if (asOf === undefined) return sql;
-  if (!Number.isFinite(asOf) || asOf < 0) {
-    throw new Error("Datalog asOf must be a non-negative finite timestamp");
-  }
-  const instant = String(asOf);
+const applyTemporalBasis = (
+  sql: string,
+  basis: CompileOptions["basis"],
+  asOf: number | undefined,
+): string => {
+  const resolved = basis ?? (asOf === undefined ? undefined : { recordedAt: asOf, validAt: asOf });
+  if (resolved === undefined) return sql;
+  const validAt = String(resolved.validAt);
   return sql.replace(
     /\b([A-Za-z_][A-Za-z0-9_]*)\.retracted_at IS NULL/g,
-    (_condition, alias: string) =>
-      `${alias}.created_at <= ${instant} AND (${alias}.retracted_at IS NULL OR ${alias}.retracted_at > ${instant})`,
+    (_condition, alias: string) => {
+      const recorded =
+        resolved.recordedAt === undefined
+          ? `${alias}.recorded_retracted_at IS NULL`
+          : `${alias}.recorded_at <= ${resolved.recordedAt} AND (${alias}.recorded_retracted_at IS NULL OR ${alias}.recorded_retracted_at > ${resolved.recordedAt})`;
+      return `${recorded} AND ${alias}.valid_from <= ${validAt} AND (${alias}.valid_to IS NULL OR ${alias}.valid_to > ${validAt})`;
+    },
   );
 };
 
@@ -1217,7 +1226,7 @@ export const compile = (
   ]
     .filter(Boolean)
     .join("\n");
-  const sql = applyTemporalBasis(currentSql, options.asOf);
+  const sql = applyTemporalBasis(currentSql, options.basis, options.asOf);
 
   const result: CompiledQuery = {
     sql,
@@ -1753,7 +1762,7 @@ export const compileWithRules = (
   ]
     .filter(Boolean)
     .join("\n");
-  const sql = applyTemporalBasis(currentSql, options.asOf);
+  const sql = applyTemporalBasis(currentSql, options.basis, options.asOf);
 
   const result: CompiledQuery = {
     sql,

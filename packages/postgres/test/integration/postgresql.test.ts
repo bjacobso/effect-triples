@@ -16,6 +16,7 @@ import { Effect } from "effect";
 import { Triples, string, number, ref } from "@bjacobso/triplex";
 import { compile } from "@bjacobso/triplex/datalog";
 import { PostgresqlDialect } from "@bjacobso/triplex-postgres";
+import { makeTriplesConformanceSuite } from "@bjacobso/triplex-testkit";
 import { PgTestLayer, checkDockerAvailable } from "../fixtures/PgTestLayer.js";
 
 // Skip all container-based tests if Docker is not available
@@ -25,6 +26,14 @@ describe("PostgreSQL Integration", () => {
   // Helper to run effects with PostgreSQL via testcontainers
   const runWithPostgres = <A, E>(effect: Effect.Effect<A, E, Triples>) =>
     Effect.runPromise(Effect.provide(effect, PgTestLayer));
+
+  it.skipIf(!DOCKER_AVAILABLE)(
+    "matches the shared temporal and query contract",
+    { timeout: 120_000 },
+    async () => {
+      await runWithPostgres(makeTriplesConformanceSuite());
+    },
+  );
 
   describe("basic operations (requires Docker)", () => {
     it.skipIf(!DOCKER_AVAILABLE)(

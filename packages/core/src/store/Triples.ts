@@ -32,6 +32,7 @@ import type {
   TransactionConflictError,
 } from "../errors/index.js";
 import type { DatalogQuery, WrappedQuery } from "../datalog/types.js";
+import type { TemporalBasis } from "../Temporal.js";
 import type {
   QueryResult,
   QueryDebugInfo,
@@ -136,6 +137,8 @@ export interface QueryOptions {
   readonly debug?: boolean;
   /** Evaluate the complete query against facts valid at this epoch-millisecond instant. */
   readonly asOf?: number;
+  /** Authoritative bitemporal read basis. Cannot be combined with `asOf`. */
+  readonly basis?: TemporalBasis;
 }
 
 /**
@@ -185,9 +188,20 @@ export interface TriplesService {
   /** Fetch a single triple by id. */
   readonly get: (id: TripleId) => Effect.Effect<Triple | null, ReadError>;
   /** Fetch all live triples for an entity. */
-  readonly entity: (entityId: EntityId) => Effect.Effect<readonly Triple[], ReadError>;
+  readonly entity: (
+    entityId: EntityId,
+    basis?: TemporalBasis,
+  ) => Effect.Effect<readonly Triple[], ReadError>;
+  /** Batch entity materialization, preserving input order and missing entries. */
+  readonly entitiesById: (
+    entityIds: readonly EntityId[],
+    basis?: TemporalBasis,
+  ) => Effect.Effect<readonly (readonly Triple[])[], ReadError>;
   /** Match triples against a pattern. */
-  readonly match: (pattern: Pattern) => Effect.Effect<readonly Triple[], ReadError>;
+  readonly match: (
+    pattern: Pattern,
+    basis?: TemporalBasis,
+  ) => Effect.Effect<readonly Triple[], ReadError>;
   /** Match triples as of a point in time. */
   readonly matchAsOf: (
     pattern: Pattern,

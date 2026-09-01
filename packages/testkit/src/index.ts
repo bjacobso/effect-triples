@@ -628,6 +628,115 @@ export const triplesConformanceCases: readonly ConformanceCase[] = [
     }),
   },
   {
+    name: "direct and Datalog reads share one bitemporal basis",
+    run: Effect.gen(function* () {
+      const t = yield* Triples;
+      const old = yield* t.assert({
+        entityId: "conf:temporal:policy",
+        attribute: ":conf/status",
+        value: string("draft"),
+        validFrom: 1_000,
+        validTo: 2_000,
+      });
+      yield* t.assert({
+        entityId: "conf:temporal:policy",
+        attribute: ":conf/status",
+        value: string("active"),
+        validFrom: 2_000,
+      });
+
+      const atDraft = yield* t.match(
+        { entityId: "conf:temporal:policy", attribute: ":conf/status" },
+        { validAt: 1_500 },
+      );
+      const atActive = yield* t.query(
+        {
+          find: ["?status"],
+          where: [["conf:temporal:policy", ":conf/status", "?status"]],
+        },
+        { basis: { validAt: 2_500 } },
+      );
+      yield* check(
+        atDraft.length === 1 && atDraft[0]?.id === old.id,
+        "direct reads must apply the valid-time interval",
+      );
+      yield* check(
+        atActive.results.length === 1 && atActive.results[0]?.["?status"] === "active",
+        "Datalog must apply the same valid-time interval",
+      );
+    }),
+  },
+  {
+    name: "historical corrections preserve what was previously recorded",
+    run: Effect.gen(function* () {
+      const t = yield* Triples;
+      const original = yield* t.assert({
+        entityId: "conf:temporal:correction",
+        attribute: ":conf/name",
+        value: string("Orignal"),
+        validFrom: 1_000,
+      });
+      yield* Effect.sleep("2 millis");
+      yield* t.transact([
+        { op: "retract", id: original.id },
+        {
+          op: "assert",
+          entityId: "conf:temporal:correction",
+          attribute: ":conf/name",
+          value: string("Original"),
+          validFrom: 1_000,
+        },
+      ]);
+
+      const beforeCorrection = yield* t.match(
+        { entityId: "conf:temporal:correction", attribute: ":conf/name" },
+        { recordedAt: original.recordedAt, validAt: 1_500 },
+      );
+      const currentKnowledge = yield* t.match(
+        { entityId: "conf:temporal:correction", attribute: ":conf/name" },
+        { validAt: 1_500 },
+      );
+      yield* check(
+        beforeCorrection[0]?.value.type === "string" &&
+          beforeCorrection[0].value.value === "Orignal",
+        "recorded-time history must expose the value known before correction",
+      );
+      yield* check(
+        currentKnowledge[0]?.value.type === "string" &&
+          currentKnowledge[0].value.value === "Original",
+        "current knowledge must expose the corrected historical value",
+      );
+    }),
+  },
+  {
+    name: "batch entity reads preserve association, missing entries, and temporal basis",
+    run: Effect.gen(function* () {
+      const t = yield* Triples;
+      yield* t.assertBatch([
+        {
+          entityId: "conf:batch:first",
+          attribute: ":conf/name",
+          value: string("First"),
+          validFrom: 1_000,
+        },
+        {
+          entityId: "conf:batch:future",
+          attribute: ":conf/name",
+          value: string("Future"),
+          validFrom: 3_000,
+        },
+      ]);
+      const rows = yield* t.entitiesById(
+        ["conf:batch:first", "conf:batch:missing", "conf:batch:future"] as EntityId[],
+        { validAt: 2_000 },
+      );
+      yield* check(rows.length === 3, "batch reads must preserve request association");
+      yield* check(rows[0]?.length === 1, "the first entity should be materialized");
+      yield* check(rows[1]?.length === 0, "missing entities should have an empty result");
+      yield* check(rows[2]?.length === 0, "future facts must respect the batch temporal basis");
+    }),
+  },
+  {
     name: "retract is coherent across write and datalog paths",
     run: Effect.gen(function* () {
       const t = yield* Triples;

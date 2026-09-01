@@ -51,7 +51,7 @@ export const TRIPLES_TABLE_DDL = `
  * Tracks applied migrations for versioned schema updates.
  */
 export const MIGRATIONS_TABLE_DDL = `
-  CREATE TABLE IF NOT EXISTS schema_migrations (
+  CREATE TABLE IF NOT EXISTS triplex_schema_migrations (
     version INTEGER PRIMARY KEY,
     name TEXT NOT NULL,
     applied_at BIGINT NOT NULL

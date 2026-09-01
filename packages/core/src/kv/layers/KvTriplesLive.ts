@@ -41,6 +41,7 @@ import {
   reservedAssertError,
   reservedWriteError,
 } from "../../store/systemNamespace.js";
+import { basisFromAsOf, resolveTemporalBasis, type ResolvedTemporalBasis } from "../../Temporal.js";
 
 const COMMIT_POSITION_KEY = new Uint8Array([0x21]);
 const textEncoder = new TextEncoder();
@@ -68,8 +69,13 @@ const datomToTriple = (datom: Datom): Triple => ({
   attribute: datom.attribute as Triple["attribute"],
   value: datom.value,
   createdAt: datom.createdAt,
+  recordedAt: datom.recordedAt,
+  validFrom: datom.validFrom,
+  validTo: datom.validTo !== null ? Option.some(datom.validTo) : Option.none(),
   createdBy: datom.createdBy !== null ? Option.some(datom.createdBy) : Option.none(),
   retractedAt: datom.retractedAt !== null ? Option.some(datom.retractedAt) : Option.none(),
+  recordedRetractedAt:
+    datom.recordedRetractedAt !== null ? Option.some(datom.recordedRetractedAt) : Option.none(),
   entityType: datom.entityType !== null ? Option.some(datom.entityType) : Option.none(),
   schemaVersion: Option.none(),
   txId: Option.some(datom.txId),
@@ -88,8 +94,12 @@ const tripleInputToDatom = (
   value: input.value,
   txId,
   createdAt,
+  recordedAt: createdAt,
+  validFrom: input.validFrom ?? createdAt,
+  validTo: input.validTo ?? null,
   createdBy: input.createdBy ?? null,
   retractedAt: null,
+  recordedRetractedAt: null,
   retractTxId: null,
   entityType: input.entityType ?? null,
 });
@@ -286,20 +296,31 @@ const makeKvTriplesService = Effect.gen(function* () {
 
   // === Triple-level reads (needed by retractByPattern below) ===============
 
-  const match = (pattern: Pattern): Effect.Effect<readonly Triple[], ReadError> =>
+  const match = (
+    pattern: Pattern,
+    basis?: ResolvedTemporalBasis,
+  ): Effect.Effect<readonly Triple[], ReadError> =>
     Effect.gen(function* () {
       // Fast path: entityType-only query uses the KV TYPE index
       if (pattern.entityType && !pattern.entityId && !pattern.attribute && !pattern.value) {
-        const datoms = hexaStore.getByEntityType(pattern.entityType);
+        const datoms = basis === undefined ? hexaStore.getByEntityType(pattern.entityType) : null;
         if (datoms !== null) {
           return datoms.map(datomToTriple);
         }
-        const asyncDatoms = yield* hexaStore.getByEntityTypeAsync(pattern.entityType);
-        return asyncDatoms.map(datomToTriple);
+        const asyncDatoms =
+          basis === undefined
+            ? yield* hexaStore.getByEntityTypeAsync(pattern.entityType)
+            : yield* hexaStore.scanCollectTemporalAsync({}, basis);
+        return asyncDatoms
+          .filter((datom) => datom.entityType === pattern.entityType)
+          .map(datomToTriple);
       }
 
       const scanPat = patternToScan(pattern);
-      const syncDatoms = hexaStore.scanCollect(scanPat);
+      const syncDatoms =
+        basis === undefined
+          ? hexaStore.scanCollect(scanPat)
+          : hexaStore.scanCollectTemporal(scanPat, basis);
       let results: Triple[];
       if (syncDatoms !== null) {
         if (pattern.entityType) {
@@ -314,7 +335,9 @@ const makeKvTriplesService = Effect.gen(function* () {
         }
         results = syncDatoms.map(datomToTriple);
       } else {
-        const datoms = yield* hexaStore.scanCollectAsync(scanPat);
+        const datoms = yield* basis === undefined
+          ? hexaStore.scanCollectAsync(scanPat)
+          : hexaStore.scanCollectTemporalAsync(scanPat, basis);
         results = datoms.map(datomToTriple);
       }
 
@@ -469,6 +492,8 @@ const makeKvTriplesService = Effect.gen(function* () {
                       value: op.value,
                       entityType: op.entityType,
                       createdBy: actor,
+                      validFrom: op.validFrom,
+                      validTo: op.validTo,
                     },
                     yield* runtime.nextTripleId,
                     txId,
@@ -594,13 +619,14 @@ const makeKvTriplesService = Effect.gen(function* () {
         ),
       ),
 
-    entity: (entityId: EntityId) =>
+    entity: (entityId: EntityId, basis) =>
       Effect.gen(function* () {
-        const syncDatoms = hexaStore.scanCollect({ entity: entityId });
+        const resolved = resolveTemporalBasis(basis, yield* runtime.now);
+        const syncDatoms = hexaStore.scanCollectTemporal({ entity: entityId }, resolved);
         if (syncDatoms !== null) {
           return syncDatoms.map(datomToTriple);
         }
-        const datoms = yield* hexaStore.scanCollectAsync({ entity: entityId });
+        const datoms = yield* hexaStore.scanCollectTemporalAsync({ entity: entityId }, resolved);
         return datoms.map(datomToTriple);
       }).pipe(
         Effect.catch((e) =>
@@ -608,12 +634,33 @@ const makeKvTriplesService = Effect.gen(function* () {
         ),
       ),
 
-    match,
+    entitiesById: (entityIds, basis) =>
+      Effect.gen(function* () {
+        const resolved = resolveTemporalBasis(basis, yield* runtime.now);
+        return yield* Effect.forEach(entityIds, (entityId) =>
+          hexaStore
+            .scanCollectTemporalAsync({ entity: entityId }, resolved)
+            .pipe(Effect.map((datoms) => datoms.map(datomToTriple))),
+        );
+      }).pipe(
+        Effect.catch((e) =>
+          Effect.fail(
+            new ReadError({ message: `Batch entity read failed: ${String(e)}`, cause: e }),
+          ),
+        ),
+      ),
+
+    match: (pattern, basis) =>
+      Effect.gen(function* () {
+        return yield* match(pattern, resolveTemporalBasis(basis, yield* runtime.now));
+      }),
 
     matchAsOf: (pattern: Pattern, asOf: number) =>
       Effect.gen(function* () {
         const scanPat = patternToScan(pattern);
-        const datoms = yield* Stream.runCollect(hexaStore.scanAsOf(scanPat, asOf));
+        const datoms = yield* Stream.runCollect(
+          hexaStore.scanTemporal(scanPat, resolveTemporalBasis(basisFromAsOf(asOf), asOf)),
+        );
         return Array.from(datoms).map(datomToTriple);
       }).pipe(
         Effect.catch((e) =>
@@ -672,18 +719,19 @@ const makeKvTriplesService = Effect.gen(function* () {
 
     // === Datalog reads =====================================================
 
-    query: (q: DatalogQuery, options?: QueryOptions) => {
-      if (options?.asOf !== undefined && (!Number.isFinite(options.asOf) || options.asOf < 0)) {
-        return Effect.fail(
-          new ReadError({ message: "Datalog asOf must be a non-negative finite timestamp" }),
+    query: (q: DatalogQuery, options?: QueryOptions) =>
+      Effect.gen(function* () {
+        if (options?.basis !== undefined && options.asOf !== undefined) {
+          return yield* Effect.fail(
+            new ReadError({ message: "Use either basis or asOf, not both" }),
+          );
+        }
+        const basis = resolveTemporalBasis(
+          options?.basis ?? (options?.asOf === undefined ? undefined : basisFromAsOf(options.asOf)),
+          yield* runtime.now,
         );
-      }
-      return executeQuery(
-        hexaStore,
-        q,
-        q.rules ?? [],
-        options?.asOf === undefined ? {} : { asOf: options.asOf },
-      ).pipe(
+        return yield* executeQuery(hexaStore, q, q.rules ?? [], { basis });
+      }).pipe(
         Effect.map((result) => {
           const results = result.results as unknown as QueryResult;
           if (options?.debug) {
@@ -699,21 +747,21 @@ const makeKvTriplesService = Effect.gen(function* () {
         Effect.mapError(
           (e) => new ReadError({ message: `Query execution failed: ${String(e)}`, cause: e }),
         ),
-      );
-    },
+      ),
 
-    queryPage: (q: WrappedQuery, options?: QueryOptions) => {
-      if (options?.asOf !== undefined && (!Number.isFinite(options.asOf) || options.asOf < 0)) {
-        return Effect.fail(
-          new ReadError({ message: "Datalog asOf must be a non-negative finite timestamp" }),
+    queryPage: (q: WrappedQuery, options?: QueryOptions) =>
+      Effect.gen(function* () {
+        if (options?.basis !== undefined && options.asOf !== undefined) {
+          return yield* Effect.fail(
+            new ReadError({ message: "Use either basis or asOf, not both" }),
+          );
+        }
+        const basis = resolveTemporalBasis(
+          options?.basis ?? (options?.asOf === undefined ? undefined : basisFromAsOf(options.asOf)),
+          yield* runtime.now,
         );
-      }
-      return executeWrappedQuery(
-        hexaStore,
-        q,
-        q.inner.rules ?? [],
-        options?.asOf === undefined ? {} : { asOf: options.asOf },
-      ).pipe(
+        return yield* executeWrappedQuery(hexaStore, q, q.inner.rules ?? [], { basis });
+      }).pipe(
         Effect.map((result) => ({
           results: result.results as unknown as QueryResult,
           ...(result.totalCount !== undefined ? { totalCount: result.totalCount } : {}),
@@ -722,8 +770,7 @@ const makeKvTriplesService = Effect.gen(function* () {
         Effect.mapError(
           (e) => new ReadError({ message: `Wrapped query failed: ${String(e)}`, cause: e }),
         ),
-      );
-    },
+      ),
 
     explain: (q: DatalogQuery) =>
       Effect.succeed({

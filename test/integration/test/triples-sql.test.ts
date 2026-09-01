@@ -287,7 +287,9 @@ describe("Triples", () => {
           const retracted = history.find((triple) => triple.id === batch[0]!.id);
           expect(retracted).toBeDefined();
           expect(Option.getOrNull(retracted!.retractTxId)).toBe("tx:det-3");
-          expect(Option.getOrNull(retracted!.retractedAt)).toBe(1030);
+          // The two current-state reads resolve business time through the
+          // injected clock before the retraction allocates its own instant.
+          expect(Option.getOrNull(retracted!.retractedAt)).toBe(1050);
         }).pipe(Effect.provide(makeRuntimeTestLayer(RuntimeLayer))),
       );
 
