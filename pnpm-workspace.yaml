@@ -11,14 +11,19 @@ overrides:
   "better-sqlite3": "12.10.0"
 
 catalog:
-  effect: 4.0.0-rc.112
   "@effect/platform-node": 4.0.0-rc.112
   "@effect/sql-pg": 4.0.0-rc.112
   "@effect/sql-sqlite-node": 4.0.0-rc.112
   "@effect/vitest": 4.0.0-rc.112
+  "@types/node": 25.9.1
+  effect: 4.0.0-rc.112
+  foundationdb: 2.0.1
+  oxfmt: 0.44.0
+  oxlint: 1.59.0
+  testcontainers: 11.14.0
   tsdown: 0.21.7
   tsx: 4.19.0
+  turbo: 2.8.20
   typescript: 6.0.2
-  vitest: 4.1.11
-  "@types/node": 25.9.1
   ulidx: 2.4.1
+  vitest: 4.1.11

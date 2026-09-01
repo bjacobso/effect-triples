@@ -49,7 +49,7 @@
   "devDependencies": {
     "@types/node": "catalog:",
     "effect": "catalog:",
-    "testcontainers": "^11.12.0",
+    "testcontainers": "catalog:",
     "vitest": "catalog:"
   },
   "peerDependencies": {

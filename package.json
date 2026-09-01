@@ -22,11 +22,11 @@
   },
   "devDependencies": {
     "@types/node": "catalog:",
-    "oxfmt": "0.44.0",
-    "oxlint": "1.59.0",
+    "oxfmt": "catalog:",
+    "oxlint": "catalog:",
     "tsdown": "catalog:",
     "tsx": "catalog:",
-    "turbo": "2.8.20",
+    "turbo": "catalog:",
     "typescript": "catalog:",
     "vitest": "catalog:"
   },

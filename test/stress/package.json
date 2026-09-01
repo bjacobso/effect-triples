@@ -26,7 +26,7 @@
   },
   "devDependencies": {
     "@types/node": "catalog:",
-    "testcontainers": "^11.12.0",
+    "testcontainers": "catalog:",
     "tsx": "catalog:",
     "vitest": "catalog:"
   }
