@@ -8,8 +8,8 @@ import type {
   Attribute,
   TripleValue,
   ValueType,
-} from "@bjacobso/triplex";
-import { ReadError, WriteError } from "@bjacobso/triplex";
+} from "@bjacobso/triplex/internal";
+import { ReadError, WriteError } from "@bjacobso/triplex/internal";
 
 // Convert TripleValue to database columns
 export const packValue = (

@@ -27,6 +27,7 @@
     "README.md"
   ],
   "type": "module",
+  "sideEffects": false,
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "exports": {
@@ -35,65 +36,25 @@
       "import": "./dist/index.js",
       "default": "./dist/index.js"
     },
-    "./Datalog": {
-      "types": "./dist/Datalog.d.ts",
-      "import": "./dist/Datalog.js",
-      "default": "./dist/Datalog.js"
-    },
     "./datalog": {
-      "types": "./dist/Datalog.d.ts",
-      "import": "./dist/Datalog.js",
-      "default": "./dist/Datalog.js"
-    },
-    "./DatalogRpc": {
-      "types": "./dist/DatalogRpc.d.ts",
-      "import": "./dist/DatalogRpc.js",
-      "default": "./dist/DatalogRpc.js"
-    },
-    "./DatalogApi": {
-      "types": "./dist/DatalogApi.d.ts",
-      "import": "./dist/DatalogApi.js",
-      "default": "./dist/DatalogApi.js"
+      "types": "./dist/datalog/index.d.ts",
+      "import": "./dist/datalog/index.js",
+      "default": "./dist/datalog/index.js"
     },
     "./Database": {
       "types": "./dist/Database.d.ts",
       "import": "./dist/Database.js",
       "default": "./dist/Database.js"
     },
-    "./DatabaseApi": {
-      "types": "./dist/DatabaseApi.d.ts",
-      "import": "./dist/DatabaseApi.js",
-      "default": "./dist/DatabaseApi.js"
-    },
-    "./DatabaseRpc": {
-      "types": "./dist/DatabaseRpc.d.ts",
-      "import": "./dist/DatabaseRpc.js",
-      "default": "./dist/DatabaseRpc.js"
-    },
     "./Snapshot": {
       "types": "./dist/Snapshot.d.ts",
       "import": "./dist/Snapshot.js",
       "default": "./dist/Snapshot.js"
     },
-    "./SnapshotApi": {
-      "types": "./dist/SnapshotApi.d.ts",
-      "import": "./dist/SnapshotApi.js",
-      "default": "./dist/SnapshotApi.js"
-    },
     "./Triple": {
       "types": "./dist/Triple.d.ts",
       "import": "./dist/Triple.js",
       "default": "./dist/Triple.js"
-    },
-    "./TripleRpc": {
-      "types": "./dist/TripleRpc.d.ts",
-      "import": "./dist/TripleRpc.js",
-      "default": "./dist/TripleRpc.js"
-    },
-    "./TripleApi": {
-      "types": "./dist/TripleApi.d.ts",
-      "import": "./dist/TripleApi.js",
-      "default": "./dist/TripleApi.js"
     },
     "./subscriptions": {
       "types": "./dist/subscriptions/index.d.ts",
@@ -109,6 +70,11 @@
       "types": "./dist/content/index.d.ts",
       "import": "./dist/content/index.js",
       "default": "./dist/content/index.js"
+    },
+    "./internal": {
+      "types": "./dist/internal.d.ts",
+      "import": "./dist/internal.js",
+      "default": "./dist/internal.js"
     },
     "./types/Pattern": {
       "types": "./dist/types/Pattern.d.ts",

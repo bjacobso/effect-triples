@@ -2,7 +2,7 @@ import { describe, it, expect } from "vitest";
 import { checkInvalidation, isAffectedByChange } from "../../src/subscriptions/invalidation.js";
 import { extractDependencies } from "../../src/subscriptions/extract-dependencies.js";
 import type { QueryDependencies, TripleChange } from "../../src/subscriptions/types.js";
-import type { DatalogQuery } from "../../src/Datalog.js";
+import type { DatalogQuery } from "../../src/datalog/schema.js";
 
 // Helper to create dependencies from a query
 const depsFrom = (query: DatalogQuery) => extractDependencies(query);
@@ -36,7 +36,7 @@ describe("checkInvalidation", () => {
         entityTypes: new Set(),
         boundEntityIds: new Set(),
         boundEntityTypes: new Set(),
-        linkTypes: new Set(),
+        unboundEntityTypes: new Set(),
         ruleNames: new Set(),
       };
 
@@ -53,7 +53,7 @@ describe("checkInvalidation", () => {
         entityTypes: new Set(["employee"]),
         boundEntityIds: new Set(),
         boundEntityTypes: new Set(),
-        linkTypes: new Set(),
+        unboundEntityTypes: new Set(),
         ruleNames: new Set(),
       };
 
@@ -281,19 +281,16 @@ describe("checkInvalidation", () => {
     });
   });
 
-  describe("link queries", () => {
-    it("should invalidate when _link attributes change", () => {
-      // Query: finding who manages who
-      const deps = depsFrom({
-        find: ["?manager", "?employee"],
-        where: [["link", "manages", "?manager", "?employee"]],
-      });
-
-      // Change: a link was created
-      const result = checkInvalidation(deps, [change("link:123", ":_link/source")]);
-
-      expect(result.affected).toBe(true);
+  it("does not let a bound pattern hide an unbound pattern of the same type", () => {
+    const deps = depsFrom({
+      find: ["?name", "?age"],
+      where: [
+        ["emp:alice", ":employee/name", "?name"],
+        ["?employee", ":employee/age", "?age"],
+      ],
     });
+
+    expect(checkInvalidation(deps, [change("emp:bob", ":employee/age")]).affected).toBe(true);
   });
 });
 

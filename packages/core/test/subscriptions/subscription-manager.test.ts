@@ -3,7 +3,7 @@ import { Effect } from "effect";
 import { makeSubscriptionManager } from "../../src/subscriptions/SubscriptionManager.js";
 import type { SubscriptionManagerService } from "../../src/subscriptions/SubscriptionManager.js";
 import type { TripleChange } from "../../src/subscriptions/types.js";
-import type { DatalogQuery } from "../../src/Datalog.js";
+import type { DatalogQuery } from "../../src/datalog/schema.js";
 import { hashQuery } from "../../src/subscriptions/query-hash.js";
 
 // Helper to create a change

@@ -17,7 +17,7 @@ import {
   CurrentDialect,
   TripleStoreRuntimeLayer,
   RuntimeServicesLive,
-} from "@bjacobso/triplex";
+} from "@bjacobso/triplex/internal";
 import { SqlQueryExecutorLive } from "@bjacobso/triplex-sql";
 import { PostgresqlAdapterLive } from "./PostgresqlAdapter.js";
 import { PostgresqlDialect } from "./dialect.js";

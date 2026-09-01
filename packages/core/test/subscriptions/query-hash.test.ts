@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { hashQuery } from "../../src/subscriptions/query-hash.js";
-import type { DatalogQuery } from "../../src/Datalog.js";
+import type { DatalogQuery } from "../../src/datalog/schema.js";
 
 describe("hashQuery", () => {
   describe("consistency", () => {
@@ -199,17 +199,6 @@ describe("hashQuery", () => {
             ],
           ],
         ],
-      };
-
-      const hash = hashQuery(query);
-      expect(typeof hash).toBe("number");
-      expect(hashQuery(query)).toBe(hash);
-    });
-
-    it("handles link clauses", () => {
-      const query: DatalogQuery = {
-        find: ["?manager", "?employee"],
-        where: [["link", "manages", "?manager", "?employee"]],
       };
 
       const hash = hashQuery(query);

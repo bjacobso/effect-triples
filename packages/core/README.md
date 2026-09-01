@@ -54,7 +54,14 @@ import {
 `ConfigStore.layer` stores typed configuration graphs, immutable `ConfigSnapshot`
 releases, revisions, dependency closures, and movable refs through the `Triples`
 transaction boundary. `InMemoryConfigStore` is the immutable semantic reference.
-`Evaluate` creates and verifies content-addressed decision proofs.
+`Evaluate` creates content-addressed decision proofs and verifies their internal
+tamper-evidence given a trusted decision root.
+
+`Attribute` and `EntityType` provide the ontology DSL. Attribute definitions own stable
+lowercase keyword identities and value types; `Attribute.use` adds requiredness and
+cardinality only where an entity type uses that attribute. `EntityType.make("Employer", …)`
+compiles ergonomic property handles such as `Employer.name` into independently addressed
+attribute nodes plus an `entity-schema` node consumed by `EntityValidation`.
 
 `ConfigRuntime.evaluate` joins the two storage-independent models: it resolves a deployed
 configuration ref, derives its rule catalog, reads the current or historical Triple facts
@@ -64,7 +71,9 @@ root, subject, and nested evaluation.
 `EntityValidation.define` deploys a `TypeExpr` for an ordinary Triple entity type.
 `EntityValidation.layer` explicitly revalidates live entities after a config or fact
 change. Results and individual error messages are immutable, content-addressed facts;
-movable per-ref heads make `currentInvalid("live")` distinct from `everInvalid()`, and
+the entity body is represented by a state content ID rather than duplicated. Per-ref
+checkpoints make `currentInvalid("live")` report current, stale, or unvalidated state,
+while `everInvalid()` retains historical subjects, and
 the exported Datalog query builders can be composed with application queries.
 
 `EntitySnapshot` is a temporal materialization of one triple entity. `ConfigSnapshot`
@@ -76,8 +85,8 @@ is a complete immutable configuration release; they have separate APIs and ident
 domain-separated SHA-256 `ContentId` values. IDs use the format
 `sha256-<64 lowercase hex characters>`.
 
-The pre-1.0 entity-snapshot hash changed from `fnv1a:<8 hex characters>`. SQL migrations
-remove legacy snapshot/blob rows; applications that need those historical derived
-materializations must rebuild them from temporal triples.
+The pre-1.0 entity-snapshot hash changed from `fnv1a:<8 hex characters>`. The unpublished
+SQL schema now has one canonical baseline; databases from earlier development builds must
+be recreated or have their derived snapshots rebuilt from temporal triples.
 
 MIT © 2026 Ben Jacobson.

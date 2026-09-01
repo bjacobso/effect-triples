@@ -24,7 +24,7 @@ import {
   type CompiledWrappedQuery,
   SqliteDialect,
   createPaginationCursor,
-} from "@bjacobso/triplex";
+} from "@bjacobso/triplex/internal";
 
 // =============================================================================
 // Result Row Type
@@ -175,14 +175,14 @@ export const SqlQueryExecutorLive = Layer.effect(
     const dialectOpt = yield* Effect.serviceOption(CurrentDialect);
     const dialect = dialectOpt._tag === "Some" ? dialectOpt.value : SqliteDialect;
 
-    const execute: QueryExecutorService["execute"] = (q, debug = false) =>
+    const execute: QueryExecutorService["execute"] = (q, debug = false, asOf) =>
       Effect.gen(function* () {
         // 1. Compile to SQL. Recursive rules go through the CTE compiler.
         let compiled: CompiledQuery;
         try {
           compiled = q.rules?.length
-            ? compileWithRules(q, dialect, debug)
-            : compile(q, dialect, debug);
+            ? compileWithRules(q, dialect, debug, asOf === undefined ? {} : { asOf })
+            : compile(q, dialect, debug, asOf === undefined ? {} : { asOf });
         } catch (error) {
           return yield* Effect.fail(
             new ReadError({
@@ -226,12 +226,12 @@ export const SqlQueryExecutorLive = Layer.effect(
         return { results: results as QueryResult };
       });
 
-    const executePage: QueryExecutorService["executePage"] = (q, debug = false) =>
+    const executePage: QueryExecutorService["executePage"] = (q, debug = false, asOf) =>
       Effect.gen(function* () {
         // 1. Compile to SQL with CTE wrapper
         let compiled: CompiledWrappedQuery;
         try {
-          compiled = compileWrapped(q, dialect);
+          compiled = compileWrapped(q, dialect, asOf === undefined ? {} : { asOf });
         } catch (error) {
           return yield* Effect.fail(
             new ReadError({
@@ -300,7 +300,6 @@ export const SqlQueryExecutorLive = Layer.effect(
                 predicateCount: 0,
                 notClauseCount: 0,
                 orClauseCount: 0,
-                linkClauseCount: 0,
                 hasAggregation: false,
                 isRecursive: false,
                 aggregateOps: [],

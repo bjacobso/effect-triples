@@ -6,6 +6,7 @@
   "type": "module",
   "scripts": {
     "build": "turbo run build",
+    "changeset": "changeset",
     "clean": "turbo run clean",
     "check": "pnpm format:check && pnpm lint && pnpm typecheck && pnpm test && pnpm build",
     "dev": "turbo watch build",
@@ -14,6 +15,8 @@
     "format:check": "oxfmt --check .",
     "lint": "oxlint .",
     "pack:check": "node scripts/check-packages.mjs",
+    "release:publish": "pnpm build && pnpm pack:check && changeset publish",
+    "release:version": "changeset version && pnpm install --lockfile-only",
     "test": "turbo run test",
     "test:foundationdb:integration": "pnpm --filter @bjacobso/triplex-foundationdb test:integration",
     "test:postgres:integration": "pnpm --filter @bjacobso/triplex-postgres test:integration",
@@ -21,6 +24,7 @@
     "typecheck": "turbo run typecheck"
   },
   "devDependencies": {
+    "@changesets/cli": "catalog:",
     "@types/node": "catalog:",
     "oxfmt": "catalog:",
     "oxlint": "catalog:",

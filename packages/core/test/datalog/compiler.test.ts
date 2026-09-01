@@ -1381,12 +1381,6 @@ describe("Compiler Internals", () => {
       }
     });
 
-    it("should parse a link clause", () => {
-      const clause: Clause = ["link", "?source", ":manages", "?target"];
-      const result = parseClause(clause, { allowRuleApplications: false });
-      expect(result._tag).toBe("Link");
-    });
-
     it("should parse a rule application when allowed", () => {
       const clause: Clause = ["ancestor", "?x", "?y"];
       const result = parseClause(clause, { allowRuleApplications: true });
@@ -1421,13 +1415,6 @@ describe("Compiler Internals", () => {
       );
     });
 
-    it("should throw for link clause with wrong arity", () => {
-      const clause = ["link", "?x", ":rel"] as unknown as Clause;
-      expect(() => parseClause(clause, { allowRuleApplications: false })).toThrow(
-        "Invalid link clause arity",
-      );
-    });
-
     it("should throw for clause with too few elements", () => {
       const clause = ["?x", ":a"] as unknown as Clause;
       expect(() => parseClause(clause, { allowRuleApplications: false })).toThrow(
@@ -1457,7 +1444,6 @@ describe("Compiler Internals", () => {
             ["?person", ":role", "mod"],
           ],
         ],
-        ["link", "?person", ":manages", "?team"],
       ];
 
       const result = classifyClauses(where, { allowRuleApplications: false });
@@ -1466,7 +1452,6 @@ describe("Compiler Internals", () => {
       expect(result.predicates).toHaveLength(1);
       expect(result.notClauses).toHaveLength(1);
       expect(result.orClauses).toHaveLength(1);
-      expect(result.linkClauses).toHaveLength(1);
       expect(result.ruleApplications).toHaveLength(0);
     });
 
@@ -1489,7 +1474,6 @@ describe("Compiler Internals", () => {
       expect(result.predicates).toHaveLength(0);
       expect(result.notClauses).toHaveLength(0);
       expect(result.orClauses).toHaveLength(0);
-      expect(result.linkClauses).toHaveLength(0);
       expect(result.ruleApplications).toHaveLength(0);
     });
   });

@@ -15,6 +15,10 @@ hosts typed configuration as a modular layer over the same core.
 - Core's `config` subpath owns `TypeExpr`, config nodes, catalogs, evaluation proofs, reactors,
   immutable `ConfigSnapshot` release roots, the pure `InMemoryConfigStore` reference semantics,
   and the Effect-native `ConfigStore` persisted through `Triples`.
+- The ontology DSL compiles `Attribute` and `EntityType` declarations onto that same graph.
+  Attribute keyword identity and value type live in independently addressed nodes; entity-schema
+  nodes reference them and own usage-local requiredness/cardinality. TypeScript aliases are
+  ergonomic handles only and do not become global attribute identity.
 - `ConfigStore` records reserved `_triplex/config/*` entities and `:triplex/*` attributes through
   the `Triples` transaction boundary. Release creation and an optional ref move are atomic;
   reverse-dependency and impact-candidate discovery use Datalog, while content identity and proof
@@ -26,9 +30,11 @@ hosts typed configuration as a modular layer over the same core.
   verification.
 - `EntityValidation` is the schema-to-facts bridge. Runtime entity schemas are deployed as config
   nodes; explicit revalidation writes immutable content-addressed results and individual violation
-  facts, then atomically moves per-ref heads. Datalog can therefore query current invalid entities,
-  ever-invalid entities, and historical messages without confusing an old observation for a
-  current one.
+  facts, then atomically moves per-ref heads and a projection checkpoint. The checkpoint records
+  the latest non-validation transaction position observed, so convenience reads distinguish
+  current, stale, and unvalidated state while Datalog can still query last-known invalid entities,
+  ever-invalid entities, and historical messages. Materialized entity bodies are committed by a
+  domain-separated state CID rather than copied into validation facts.
 - The `Triples` transaction boundary owns portable operational guarantees. KV implementations run
   `transact` through `KvBackend.transact`, SQL implementations use their native transaction, and
   compare-and-retract preconditions turn moving facts such as config refs and validation heads
@@ -42,6 +48,9 @@ hosts typed configuration as a modular layer over the same core.
 - `EntitySnapshot` and `ConfigSnapshot` are deliberately separate models: the former materializes
   one fact entity at a transaction/time; the latter pins an immutable release graph, revision
   stamps, dependency closures, and movable refs.
+- Entity snapshots are post-commit projections. Their reads are pinned to the source transaction
+  time so a later writer cannot be mislabeled as part of an earlier snapshot; projection failure
+  is reported to the caller but cannot roll back the already-committed source transaction.
 - `@bjacobso/triplex-sql` is now migrations and `SqlQueryExecutor` (the SQL implementation of the
   `QueryExecutor` SPI) shared by SQLite and PostgreSQL. Datalog SQL projections retain hidden
   value-tag columns until result decoding, and

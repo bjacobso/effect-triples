@@ -90,8 +90,9 @@ const node = (input: {
   const observed = dedupe([...input.observed, ...children.flatMap((c) => c.observed)]);
   const expr = BoolExpr.id(input.expr);
 
-  // The node's identity covers the answer, the expression that produced it, and
-  // the children by id - so provenance is a merkle DAG, not a log.
+  // The node's identity covers every field presented as evidence, including
+  // the human-readable reason. Provenance is therefore a Merkle DAG, not a
+  // partially mutable display record.
   const cid = ContentId.hash(
     ContentId.Domain.evaluation,
     CanonicalJson.encodeOrThrow({
@@ -100,6 +101,7 @@ const node = (input: {
       truth: input.truth,
       closure: World.closureId(observed),
       children: children.map((c) => c.cid),
+      reason: input.reason ?? null,
     }),
   );
 
@@ -577,7 +579,7 @@ export interface Tampered {
 }
 
 /**
- * Recompute every id in a decision from its own contents.
+ * Recompute every id in an evaluation from its own contents.
  *
  * This is the auditor's check, and it needs nothing but the tree: no database,
  * no catalog, no trust in whoever handed it over. Each node's id is derived
@@ -586,8 +588,10 @@ export interface Tampered {
  * breaks the root. A decision that verifies is a decision nobody edited after
  * the fact.
  *
- * What it deliberately does not check is whether the answer *follows* from the
- * inputs; that is `replay`, and it needs the rule.
+ * This is an internal-consistency and tamper-evidence check. It deliberately
+ * does not check whether the answer follows from an authoritative deployed
+ * rule or whether observed configuration ids belong to a release; that is a
+ * replay/attestation check and needs trusted external inputs.
  */
 export const verify = (evaluation: Evaluation, path = "root"): ReadonlyArray<Tampered> => {
   const found = evaluation.children.flatMap((child, i) => verify(child, `${path}.${i}`));
@@ -600,6 +604,7 @@ export const verify = (evaluation: Evaluation, path = "root"): ReadonlyArray<Tam
       truth: evaluation.truth,
       closure: World.closureId(evaluation.observed),
       children: evaluation.children.map((c) => c.cid),
+      reason: evaluation.reason ?? null,
     }),
   );
 

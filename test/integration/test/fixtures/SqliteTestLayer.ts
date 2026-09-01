@@ -47,7 +47,7 @@ import {
   SqliteDialect,
   TriplesLive,
   TripleStoreRuntimeLayer,
-} from "@bjacobso/triplex";
+} from "@bjacobso/triplex/internal";
 import { SqlQueryExecutorLive } from "@bjacobso/triplex-sql";
 import { SqliteAdapterLive } from "@bjacobso/triplex-sqlite";
 

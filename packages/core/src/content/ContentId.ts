@@ -29,6 +29,8 @@ export type ContentId = string & Brand.Brand<"ContentId">;
 export const Domain = {
   entitySnapshot: "triplex/entity-snapshot",
   configNode: "triplex/config-node",
+  configRevision: "triplex/config-revision",
+  configSnapshot: "triplex/config-snapshot",
   configClosure: "triplex/config-closure",
   configStamp: "triplex/config-stamp",
   typeExpr: "triplex/type",
@@ -38,6 +40,7 @@ export const Domain = {
   validationResult: "triplex/validation-result",
   validationViolation: "triplex/validation-violation",
   validationRun: "triplex/validation-run",
+  validationState: "triplex/validation-state",
   observationClosure: "triplex/observation-closure",
   observationValue: "triplex/observation-value",
 } as const;

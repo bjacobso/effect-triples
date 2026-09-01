@@ -10,10 +10,10 @@
  * rolling back is moving it back.
  *
  * Everything here is pure. `commit` returns a new store rather than mutating
- * one, and ids come from a sequence counter rather than a clock, so a scenario
- * replays to byte-identical hashes every run. That is not a testing
- * convenience: a versioning system whose ids depend on when it ran cannot tell
- * you whether two deploys shipped the same configuration.
+ * one, and immutable ids are derived from canonical contents rather than a
+ * sequence or a clock. The sequence remains ordering metadata only. This is
+ * not a testing convenience: concurrent writers must never be able to assign
+ * the same entity id to different revision or release bodies.
  *
  * Three behaviours are worth knowing before reading the code.
  *
@@ -69,7 +69,7 @@ export interface ObjectKey {
 }
 
 export interface Revision {
-  readonly id: string;
+  readonly id: ContentId.ContentId;
   readonly seq: number;
   readonly kind: string;
   readonly key: string;
@@ -83,18 +83,18 @@ export interface Revision {
   readonly closureCid: ContentId.ContentId;
   readonly deps: ReadonlyArray<ObjectKey>;
   /** The revision this one superseded, or null for the first. */
-  readonly parentId: string | null;
+  readonly parentId: ContentId.ContentId | null;
 }
 
 export interface ConfigSnapshot {
-  readonly id: string;
+  readonly id: ContentId.ContentId;
   readonly seq: number;
   readonly label: string;
   readonly rootCid: ContentId.ContentId;
   /** Retained so `ConfigNode.diff` can walk two snapshots directly. */
   readonly root: ConfigNode.ConfigNode;
-  readonly revisionIds: ReadonlyArray<string>;
-  readonly parentId: string | null;
+  readonly revisionIds: ReadonlyArray<ContentId.ContentId>;
+  readonly parentId: ContentId.ContentId | null;
 }
 
 export interface InMemoryConfigStore {
@@ -104,7 +104,7 @@ export interface InMemoryConfigStore {
   readonly revisions: ReadonlyArray<Revision>;
   readonly snapshots: ReadonlyArray<ConfigSnapshot>;
   /** Ref name (`live`, `test`) to snapshot id. */
-  readonly refs: ReadonlyMap<string, string>;
+  readonly refs: ReadonlyMap<string, ContentId.ContentId>;
   readonly seq: number;
 }
 
@@ -145,7 +145,7 @@ export const empty = (): InMemoryConfigStore => ({
 export const historyOf = (store: InMemoryConfigStore, object: ObjectKey): ReadonlyArray<Revision> =>
   store.revisions
     .filter((rev) => rev.kind === object.kind && rev.key === object.key)
-    .sort((a, b) => b.seq - a.seq);
+    .sort((a, b) => b.seq - a.seq || cmp(b.id, a.id));
 
 export const tipOf = (store: InMemoryConfigStore, object: ObjectKey): Revision | undefined =>
   historyOf(store, object)[0];
@@ -172,7 +172,7 @@ export const resolveRef = (
 export const setRef = (
   store: InMemoryConfigStore,
   name: string,
-  snapshotId: string,
+  snapshotId: ContentId.ContentId,
 ): Effect.Effect<InMemoryConfigStore, UnknownSnapshotError> =>
   Effect.gen(function* () {
     if (!snapshotById(store, snapshotId)) {
@@ -274,7 +274,7 @@ export const commit = (
     const created: Revision[] = [];
     let seq = store.seq;
 
-    const revisionIds: string[] = [];
+    const revisionIds: ContentId.ContentId[] = [];
 
     for (const object of ordered) {
       // Whether the projector shapes this release introduced are ones the
@@ -344,8 +344,23 @@ export const commit = (
         revisionIds.push(tip.id);
       } else {
         seq += 1;
+        const parentId = tip?.id ?? null;
+        const revisionId = ContentId.hash(
+          ContentId.Domain.configRevision,
+          yield* CanonicalJson.encode({
+            v: 1,
+            kind: object.kind,
+            key: object.key,
+            cid: object.cid,
+            schemaCids,
+            stamp,
+            closureCid,
+            deps: deps.map(({ kind, key }) => ({ kind, key })),
+            parentId,
+          }),
+        );
         const revision: Revision = {
-          id: `rev_${seq}`,
+          id: revisionId,
           seq,
           kind: object.kind,
           key: object.key,
@@ -354,7 +369,7 @@ export const commit = (
           stamp,
           closureCid,
           deps,
-          parentId: tip?.id ?? null,
+          parentId,
         };
         revisions.push(revision);
         created.push(revision);
@@ -380,16 +395,27 @@ export const commit = (
       validUnder: [],
     });
 
-    seq += 1;
     const parent = store.snapshots[store.snapshots.length - 1];
+    const parentId = parent?.id ?? null;
+    const snapshotId = ContentId.hash(
+      ContentId.Domain.configSnapshot,
+      yield* CanonicalJson.encode({
+        v: 1,
+        label: input.label,
+        rootCid: root.cid,
+        revisionIds,
+        parentId,
+      }),
+    );
+    seq += 1;
     const snapshot: ConfigSnapshot = {
-      id: `snap_${seq}`,
+      id: snapshotId,
       seq,
       label: input.label,
       rootCid: root.cid,
       root,
       revisionIds,
-      parentId: parent?.id ?? null,
+      parentId,
     };
 
     return {

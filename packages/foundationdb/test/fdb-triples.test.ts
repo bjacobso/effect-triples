@@ -14,7 +14,8 @@
 import { Effect, Layer } from "effect";
 import { describe, expect, layer } from "@effect/vitest";
 import { createRequire } from "node:module";
-import { Triples, KvTriplesLive, TripleStoreRuntimeLayer } from "@bjacobso/triplex";
+import { Triples } from "@bjacobso/triplex";
+import { KvTriplesLive, TripleStoreRuntimeLayer } from "@bjacobso/triplex/internal";
 import { FdbTestLayer } from "./fixtures/FdbTestLayer.js";
 
 // ─── Helpers ───────────────────────────────────────────────────────────────

@@ -23,7 +23,7 @@ import {
   INDEX_DDLS,
   migrations,
 } from "../adapter-support.js";
-import type { TripleRow } from "@bjacobso/triplex";
+import type { TripleRow } from "@bjacobso/triplex/internal";
 
 // =============================================================================
 // Durable Object Types
@@ -483,12 +483,8 @@ export function makeCloudflareAdapter(ctx: DOState): StorageAdapterService {
 
         for (const migration of migrations) {
           if (applied.has(migration.version)) continue;
-          try {
-            sqlStorage.exec(migration.up);
-          } catch (e) {
-            // Ignore "duplicate column" errors from ALTER TABLE migrations
-            // on fresh databases where the DDL already includes the column
-            if (!String(e).includes("duplicate column name")) throw e;
+          for (const statement of migration.up) {
+            sqlStorage.exec(statement);
           }
           sqlStorage.exec(
             "INSERT INTO schema_migrations (version, name, applied_at) VALUES (?, ?, ?)",

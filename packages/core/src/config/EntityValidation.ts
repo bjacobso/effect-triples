@@ -37,6 +37,7 @@ export const System = {
     violation: "triplex.validation-violation",
     head: "triplex.validation-head",
     run: "triplex.validation-run",
+    checkpoint: "triplex.validation-checkpoint",
   },
   attribute: {
     contentId: ":triplex/content-id",
@@ -50,7 +51,8 @@ export const System = {
     snapshot: ":triplex/validation-snapshot",
     snapshotRoot: ":triplex/validation-snapshot-root",
     valid: ":triplex/validation-valid",
-    state: ":triplex/validation-state",
+    stateContentId: ":triplex/validation-state-content-id",
+    sourcePosition: ":triplex/validation-source-position",
     code: ":triplex/validation-code",
     path: ":triplex/validation-path",
     message: ":triplex/validation-message",
@@ -63,6 +65,7 @@ export const entityId = {
   result: (cid: ContentId.ContentId) => `${System.prefix}result/${cid}`,
   violation: (cid: ContentId.ContentId) => `${System.prefix}violation/${cid}`,
   run: (cid: ContentId.ContentId) => `${System.prefix}run/${cid}`,
+  checkpoint: (ref: string) => `${System.prefix}checkpoint/${encodePart(ref)}`,
   head: (ref: string, entityType: string, subject: string) =>
     `${System.prefix}head/${encodePart(ref)}/${encodePart(entityType)}/${encodePart(subject)}`,
 };
@@ -106,6 +109,8 @@ export interface ValidationResult {
   readonly snapshotId: string;
   readonly snapshotRootCid: ContentId.ContentId;
   readonly valid: boolean;
+  /** Commitment to `state`; the materialized state itself is not persisted. */
+  readonly stateCid: ContentId.ContentId;
   readonly state: CanonicalJson.CanonicalValue;
   readonly violations: ReadonlyArray<ValidationViolation>;
 }
@@ -115,6 +120,8 @@ export interface ValidationRun {
   readonly ref: string;
   readonly snapshotId: string;
   readonly snapshotRootCid: ContentId.ContentId;
+  /** Last non-validation transaction visible when this projection began. */
+  readonly sourcePosition: number;
   readonly results: ReadonlyArray<ValidationResult>;
   /** Undefined when an identical run was already materialized. */
   readonly transaction: TransactionResult | undefined;
@@ -125,6 +132,16 @@ export interface InvalidEntity {
   readonly resultEntityId: string;
   readonly schemaId: ContentId.ContentId;
   readonly snapshotEntityId: string;
+}
+
+export interface CurrentValidation {
+  readonly status: "current" | "stale" | "unvalidated";
+  /** Last non-validation transaction incorporated by the projection. */
+  readonly sourcePosition?: number;
+  /** Latest non-validation transaction currently present in the store. */
+  readonly currentPosition: number;
+  /** Last known invalid entities. Stale results are never presented as current. */
+  readonly invalid: ReadonlyArray<InvalidEntity>;
 }
 
 export interface StoredViolation {
@@ -160,7 +177,7 @@ export interface EntityValidationService {
   }) => Effect.Effect<ValidationRun, RevalidateError>;
   readonly currentInvalid: (
     ref: string,
-  ) => Effect.Effect<ReadonlyArray<InvalidEntity>, ReadError | DatalogError>;
+  ) => Effect.Effect<CurrentValidation, ReadError | DatalogError>;
   readonly everInvalid: () => Effect.Effect<ReadonlyArray<string>, ReadError | DatalogError>;
   readonly violations: (input?: {
     readonly subject?: string;
@@ -215,6 +232,7 @@ const nativeValue = (value: TripleValue): CanonicalJson.CanonicalValue => {
 
 const materialize = (
   triples: ReadonlyArray<Triple>,
+  type: TypeExpr.TypeExpr,
 ): Effect.Effect<CanonicalJson.CanonicalValue, CanonicalJson.CanonicalEncodingError> =>
   Effect.gen(function* () {
     const byAttribute = new Map<string, CanonicalJson.CanonicalValue[]>();
@@ -232,7 +250,15 @@ const materialize = (
       const values = [...encoded]
         .sort((a, b) => a.canonical.localeCompare(b.canonical))
         .map(({ value }) => value);
-      state[attribute] = values.length === 1 ? values[0]! : values;
+      const fieldType = type._tag === "Struct" ? type.fields[attribute]?.type : undefined;
+      const expectsList = (expr: TypeExpr.TypeExpr | undefined): boolean => {
+        if (!expr) return false;
+        if (expr._tag === "List") return true;
+        if (expr._tag === "Constrained") return expectsList(expr.base);
+        if (expr._tag === "Union") return expr.members.some(expectsList);
+        return false;
+      };
+      state[attribute] = expectsList(fieldType) || values.length !== 1 ? values : values[0]!;
     }
     return state;
   });
@@ -279,10 +305,26 @@ const stringValue = (triple: Triple | undefined): string | undefined =>
 const rowsAt = (rows: ReadonlyArray<Triple>, attribute: string): ReadonlyArray<Triple> =>
   rows.filter((row) => row.attribute === attribute);
 
+const numberValue = (triple: Triple | undefined): number | undefined =>
+  triple?.value.type === "number" ? triple.value.value : undefined;
+
 export const currentInvalidQuery = (ref: string): DatalogQuery => ({
   find: ["?subject", "?result", "?schema", "?snapshot"],
   where: [
     [ConfigStore.entityId.ref(ref), ConfigStore.System.attribute.target, "?snapshot"],
+    ["?head", System.attribute.ref, ref],
+    ["?head", System.attribute.result, "?result"],
+    ["?result", System.attribute.snapshot, "?snapshot"],
+    ["?result", System.attribute.valid, false],
+    ["?result", System.attribute.subject, "?subject"],
+    ["?result", System.attribute.schema, "?schema"],
+  ],
+});
+
+/** Last materialized invalid observations for a ref, even when now stale. */
+export const lastInvalidQuery = (ref: string): DatalogQuery => ({
+  find: ["?subject", "?result", "?schema", "?snapshot"],
+  where: [
     ["?head", System.attribute.ref, ref],
     ["?head", System.attribute.result, "?result"],
     ["?result", System.attribute.snapshot, "?snapshot"],
@@ -359,6 +401,23 @@ const makeService = Effect.gen(function* () {
   const triples = yield* Triples;
   const config = yield* ConfigStore.ConfigStore;
 
+  const latestSourcePosition = Effect.gen(function* () {
+    let after = 0;
+    let latest = 0;
+    while (true) {
+      const page = yield* triples.transactions({ after, limit: 1_000 });
+      for (const transaction of page.transactions) {
+        if (transaction.actor !== "triplex/entity-validation") {
+          latest = transaction.position;
+        }
+      }
+      if (page.next === undefined || page.next <= after || page.transactions.length < 1_000) {
+        return latest;
+      }
+      after = page.next;
+    }
+  });
+
   const revalidate: EntityValidationService["revalidate"] = ({ ref }) =>
     Effect.gen(function* () {
       const snapshot = yield* config.resolveRef(ref);
@@ -368,6 +427,7 @@ const makeService = Effect.gen(function* () {
           message: `Cannot validate entities because config ref ${ref} does not exist`,
         });
       }
+      const sourcePosition = yield* latestSourcePosition;
 
       const definitions: EntitySchemaDefinition[] = [];
       const definedEntityTypes = new Set<string>();
@@ -384,11 +444,13 @@ const makeService = Effect.gen(function* () {
         definitions.push(definition);
       }
 
-      const [resultRows, violationRows, headRows, runRows] = yield* Effect.all([
+      const checkpointEntity = entityId.checkpoint(ref);
+      const [resultRows, violationRows, headRows, runRows, checkpointRows] = yield* Effect.all([
         triples.match({ entityType: System.entityType.result }),
         triples.match({ entityType: System.entityType.violation }),
         triples.match({ entityType: System.entityType.head }),
         triples.match({ entityType: System.entityType.run }),
+        triples.match({ entityId: checkpointEntity }),
       ]);
       const knownResults = new Set<string>(resultRows.map((row) => row.entityId));
       const knownViolations = new Set<string>(violationRows.map((row) => row.entityId));
@@ -414,7 +476,11 @@ const makeService = Effect.gen(function* () {
         const subjects = [...new Set(matching.map((row) => row.entityId))].sort();
 
         for (const subject of subjects) {
-          const state = yield* materialize(yield* triples.entity(subject));
+          const state = yield* materialize(yield* triples.entity(subject), definition.type);
+          const stateCid = ContentId.hash(
+            ContentId.Domain.validationState,
+            yield* CanonicalJson.encode(state),
+          );
           const issues = validationIssues(definition.type, state);
           const resultEncoded = yield* CanonicalJson.encode({
             v: 1,
@@ -423,7 +489,7 @@ const makeService = Effect.gen(function* () {
             schemaId,
             snapshotId: snapshot.id,
             snapshotRootCid: snapshot.rootCid,
-            state,
+            stateCid,
             issues,
           });
           const resultId = ContentId.hash(ContentId.Domain.validationResult, resultEncoded);
@@ -493,6 +559,7 @@ const makeService = Effect.gen(function* () {
             snapshotId: snapshot.id,
             snapshotRootCid: snapshot.rootCid,
             valid: issues.length === 0,
+            stateCid,
             state,
             violations,
           };
@@ -528,9 +595,9 @@ const makeService = Effect.gen(function* () {
                 type: "boolean",
                 value: result.valid,
               }),
-              assertOp(resultEntity, System.entityType.result, System.attribute.state, {
-                type: "json",
-                value: state,
+              assertOp(resultEntity, System.entityType.result, System.attribute.stateContentId, {
+                type: "string",
+                value: stateCid,
               }),
             );
             knownResults.add(resultEntity);
@@ -592,6 +659,7 @@ const makeService = Effect.gen(function* () {
         v: 1,
         ref,
         snapshotRootCid: snapshot.rootCid,
+        sourcePosition,
         results: results.map((result) => result.id),
       });
       const runId = ContentId.hash(ContentId.Domain.validationRun, runEncoded);
@@ -610,11 +678,63 @@ const makeService = Effect.gen(function* () {
             type: "ref",
             value: snapshotEntity,
           }),
+          assertOp(runEntity, System.entityType.run, System.attribute.sourcePosition, {
+            type: "number",
+            value: sourcePosition,
+          }),
           ...results.map((result) =>
             assertOp(runEntity, System.entityType.run, System.attribute.runResult, {
               type: "ref",
               value: entityId.result(result.id),
             }),
+          ),
+        );
+      }
+
+      const oldCheckpointRun = rowsAt(checkpointRows, System.attribute.result);
+      const oldCheckpointSnapshot = rowsAt(checkpointRows, System.attribute.snapshot);
+      const oldCheckpointPosition = rowsAt(checkpointRows, System.attribute.sourcePosition);
+      const checkpointIsCurrent =
+        oldCheckpointRun.some((row) => stringValue(row) === runEntity) &&
+        oldCheckpointSnapshot.some((row) => stringValue(row) === snapshotEntity) &&
+        oldCheckpointPosition.some((row) => numberValue(row) === sourcePosition);
+      if (!checkpointIsCurrent) {
+        const movingCheckpointFacts = [
+          ...oldCheckpointRun,
+          ...oldCheckpointSnapshot,
+          ...oldCheckpointPosition,
+        ];
+        preconditions.push(
+          ...movingCheckpointFacts.map((row) => ({
+            _tag: "TripleLive" as const,
+            id: row.id as string,
+          })),
+        );
+        operations.push(
+          ...movingCheckpointFacts.map((row) => ({ op: "retract", id: row.id }) as const),
+        );
+        if (checkpointRows.length === 0) {
+          operations.push(
+            assertOp(checkpointEntity, System.entityType.checkpoint, System.attribute.ref, {
+              type: "string",
+              value: ref,
+            }),
+          );
+        }
+        operations.push(
+          assertOp(checkpointEntity, System.entityType.checkpoint, System.attribute.result, {
+            type: "ref",
+            value: runEntity,
+          }),
+          assertOp(checkpointEntity, System.entityType.checkpoint, System.attribute.snapshot, {
+            type: "ref",
+            value: snapshotEntity,
+          }),
+          assertOp(
+            checkpointEntity,
+            System.entityType.checkpoint,
+            System.attribute.sourcePosition,
+            { type: "number", value: sourcePosition },
           ),
         );
       }
@@ -632,6 +752,7 @@ const makeService = Effect.gen(function* () {
         ref,
         snapshotId: snapshot.id,
         snapshotRootCid: snapshot.rootCid,
+        sourcePosition,
         results,
         transaction,
       };
@@ -640,17 +761,36 @@ const makeService = Effect.gen(function* () {
   const service: EntityValidationService = {
     revalidate,
     currentInvalid: (ref: string) =>
-      triples
-        .query(currentInvalidQuery(ref))
-        .pipe(
-          Effect.map((response) =>
-            [...invalidFromRows(response.results)].sort(
-              (a, b) =>
-                a.subject.localeCompare(b.subject) ||
-                a.resultEntityId.localeCompare(b.resultEntityId),
-            ),
-          ),
-        ),
+      Effect.gen(function* () {
+        const checkpointEntity = entityId.checkpoint(ref);
+        const [checkpointRows, refRows, invalidResponse, currentPosition] = yield* Effect.all([
+          triples.match({ entityId: checkpointEntity }),
+          triples.match({ entityId: ConfigStore.entityId.ref(ref) }),
+          triples.query(lastInvalidQuery(ref)),
+          latestSourcePosition,
+        ]);
+        const sourcePosition = numberValue(
+          rowsAt(checkpointRows, System.attribute.sourcePosition)[0],
+        );
+        const checkpointSnapshot = stringValue(
+          rowsAt(checkpointRows, System.attribute.snapshot)[0],
+        );
+        const currentSnapshot = stringValue(
+          rowsAt(refRows, ConfigStore.System.attribute.target)[0],
+        );
+        const invalid = [...invalidFromRows(invalidResponse.results)].sort(
+          (a, b) =>
+            a.subject.localeCompare(b.subject) || a.resultEntityId.localeCompare(b.resultEntityId),
+        );
+        if (sourcePosition === undefined || checkpointSnapshot === undefined) {
+          return { status: "unvalidated" as const, currentPosition, invalid: [] };
+        }
+        const status =
+          checkpointSnapshot === currentSnapshot && sourcePosition === currentPosition
+            ? ("current" as const)
+            : ("stale" as const);
+        return { status, sourcePosition, currentPosition, invalid };
+      }),
     everInvalid: () =>
       triples.query(everInvalidQuery()).pipe(
         Effect.map((response) =>

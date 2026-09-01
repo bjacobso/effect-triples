@@ -76,11 +76,15 @@ export function checkInvalidation(
       continue;
     }
 
-    // Level 3: Check specific entity (if subscription is scoped for THIS entity type)
-    // Only apply entity ID filtering if the change's entity type has bound IDs
+    // Level 3: Check a specific entity only when every pattern for this type is
+    // bound. A query may contain both ["alice", :employee/name, ?name] and
+    // [?employee, :employee/age, ?age]; filtering the second pattern through
+    // Alice would create a silent false negative.
     if (deps.boundEntityIds.size > 0 && changeEntityType !== null) {
-      // Check if this entity type has any bound IDs
-      if (deps.boundEntityTypes.has(changeEntityType)) {
+      if (
+        deps.boundEntityTypes.has(changeEntityType) &&
+        !deps.unboundEntityTypes.has(changeEntityType)
+      ) {
         // This entity type is scoped - check if the specific entity is bound
         if (!deps.boundEntityIds.has(change.entityId)) {
           // Query only reads specific entities of this type, this isn't one, skip

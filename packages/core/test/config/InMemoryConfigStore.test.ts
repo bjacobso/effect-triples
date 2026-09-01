@@ -23,7 +23,7 @@ import {
   FieldAttrsV2,
   release,
   type AccountConfig,
-} from "../../src/config/domain/OnboardingConfig";
+} from "./fixtures/OnboardingConfig";
 
 describe("InMemoryConfigStore invariants", () => {
   it.effect("refuses a snapshot missing something it depends on", () =>
@@ -61,8 +61,29 @@ describe("InMemoryConfigStore invariants", () => {
       });
 
       expect(second.snapshot.rootCid).toEqual(first.snapshot.rootCid);
+      expect(second.snapshot.id).toEqual(first.snapshot.id);
+      expect(second.created.map((rev) => rev.id).sort()).toEqual(
+        first.created.map((rev) => rev.id).sort(),
+      );
       expect(second.created.map((rev) => rev.closureCid).sort()).toEqual(
         first.created.map((rev) => rev.closureCid).sort(),
+      );
+    }),
+  );
+
+  it.effect("never reuses an immutable id for different concurrent bodies", () =>
+    Effect.gen(function* () {
+      const base = InMemoryConfigStore.empty();
+      const first = yield* release(base, "branch-a", BASELINE);
+      const second = yield* release(base, "branch-b", {
+        ...BASELINE,
+        ssnLabel: "Social Security Number",
+      });
+
+      expect(first.snapshot.seq).toBe(second.snapshot.seq);
+      expect(first.snapshot.id).not.toBe(second.snapshot.id);
+      expect(new Set(first.created.map((revision) => revision.id))).not.toEqual(
+        new Set(second.created.map((revision) => revision.id)),
       );
     }),
   );

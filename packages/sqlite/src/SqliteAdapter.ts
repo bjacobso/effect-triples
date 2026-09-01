@@ -16,7 +16,7 @@ import {
   WriteError,
   ReadError,
   MigrationError,
-} from "@bjacobso/triplex";
+} from "@bjacobso/triplex/internal";
 import { packValue, runMigrations, INDEX_DDLS, INDEX_NAMES } from "@bjacobso/triplex-sql";
 import { isVariable } from "@bjacobso/triplex/types/Pattern";
 

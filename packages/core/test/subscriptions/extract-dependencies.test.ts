@@ -3,7 +3,7 @@ import {
   extractDependencies,
   extractEntityType,
 } from "../../src/subscriptions/extract-dependencies.js";
-import type { DatalogQuery } from "../../src/Datalog.js";
+import type { DatalogQuery } from "../../src/datalog/schema.js";
 
 describe("extractEntityType", () => {
   it("extracts entity type from standard attribute", () => {
@@ -39,7 +39,7 @@ describe("extractDependencies", () => {
       expect(deps.boundEntityIds.size).toBe(0);
       expect(deps.boundEntityTypes.size).toBe(0);
       expect(deps.hasDynamicAttributes).toBe(false);
-      expect(deps.linkTypes.size).toBe(0);
+      expect(deps.unboundEntityTypes).toEqual(new Set(["employee"]));
       expect(deps.ruleNames.size).toBe(0);
     });
 
@@ -188,33 +188,6 @@ describe("extractDependencies", () => {
     });
   });
 
-  describe("link clauses", () => {
-    it("extracts link type and _link attributes from link clause", () => {
-      const query: DatalogQuery = {
-        find: ["?manager", "?employee"],
-        where: [["link", "manages", "?manager", "?employee"]],
-      };
-
-      const deps = extractDependencies(query);
-
-      expect(deps.linkTypes).toEqual(new Set(["manages"]));
-      expect(deps.entityTypes).toEqual(new Set(["_link"]));
-      expect(deps.attributes).toEqual(new Set([":_link/type", ":_link/source", ":_link/target"]));
-    });
-
-    it("extracts bound entity IDs from link clause source/target", () => {
-      const query: DatalogQuery = {
-        find: ["?employee"],
-        where: [["link", "manages", "emp:alice", "?employee"]],
-      };
-
-      const deps = extractDependencies(query);
-
-      expect(deps.boundEntityIds).toEqual(new Set(["emp:alice"]));
-      expect(deps.linkTypes).toEqual(new Set(["manages"]));
-    });
-  });
-
   describe("rule applications", () => {
     it("extracts rule name from rule application", () => {
       const query: DatalogQuery = {
@@ -226,6 +199,31 @@ describe("extractDependencies", () => {
 
       expect(deps.ruleNames).toEqual(new Set(["ancestor"]));
       expect(deps.boundEntityIds).toEqual(new Set(["emp:alice"]));
+    });
+
+    it("walks invoked rule bodies, including recursive definitions", () => {
+      const query: DatalogQuery = {
+        find: ["?ancestor"],
+        where: [["ancestor", "emp:alice", "?ancestor"]],
+        rules: [
+          {
+            name: "ancestor",
+            body: [["?person", ":employee/parent", "?ancestor"]],
+          },
+          {
+            name: "ancestor",
+            body: [
+              ["?person", ":employee/parent", "?parent"],
+              ["ancestor", "?parent", "?ancestor"],
+            ],
+          },
+        ],
+      };
+
+      const deps = extractDependencies(query);
+      expect(deps.attributes).toEqual(new Set([":employee/parent"]));
+      expect(deps.entityTypes).toEqual(new Set(["employee"]));
+      expect(deps.unboundEntityTypes).toEqual(new Set(["employee"]));
     });
 
     it("extracts multiple rule names", () => {
@@ -304,7 +302,7 @@ describe("extractDependencies", () => {
       expect(deps.entityTypes.size).toBe(0);
       expect(deps.boundEntityIds.size).toBe(0);
       expect(deps.boundEntityTypes.size).toBe(0);
-      expect(deps.linkTypes.size).toBe(0);
+      expect(deps.unboundEntityTypes.size).toBe(0);
       expect(deps.ruleNames.size).toBe(0);
     });
   });

@@ -97,13 +97,48 @@ immutable Merkle graphs; commits produce `ConfigSnapshot` release roots containi
 revisions, schema stamps, and dependency closures. Git-style refs such as `live` and
 `test` can move between releases without copying configuration.
 
+The ontology DSL keeps three identities separate: PascalCase entity types, lowercase
+namespaced attribute keywords, and ergonomic TypeScript property aliases. Attribute
+requiredness and cardinality belong to an entity's use of a global attribute—not to the
+attribute definition itself:
+
+```ts
+import { Attribute, EntityType } from "@bjacobso/triplex/config";
+
+export const EmployerName = Attribute.text(":employer/name");
+
+export const Employer = EntityType.make("Employer", {
+  attributes: {
+    name: Attribute.use(EmployerName, { required: true }),
+  },
+});
+
+export const EmployerSummary = EntityType.make("EmployerSummary", {
+  attributes: {
+    name: Attribute.use(EmployerName, { required: false }),
+  },
+});
+
+export const EmploymentEmployer = Attribute.ref(":employment/employer", Employer);
+
+Employer.name.key; // ":employer/name"
+Employer.name.assertion("Acme", { validFrom });
+```
+
+`Employer.nodes` yields the independently addressed attribute definitions followed by the
+entity-schema node for committing into a release. That schema node references each attribute
+with usage-local constraints, while reference attributes also point to their target entity type.
+An assertion is a typed command descriptor (`attribute`, encoded Triple value, and optional
+domain `validFrom`); an application command decides how domain-valid time maps onto its fact
+model, while raw `Triples.transact` continues to record transaction time.
+
 `ConfigStore.layer` persists those objects through any `Triples` implementation and
 commits a release plus an optional ref move in one Triples transaction. It preserves
 deduplication, structural sharing, schema compatibility, and `validUnder` history while
 using Datalog for reverse-dependency and deploy-impact candidates. The immutable
 `InMemoryConfigStore` remains available as the reference implementation. `Evaluate`
-produces reproducible decision proofs, and `Evaluate.verify` detects altered decisions
-or observations without replacing Merkle verification with database queries.
+produces reproducible decision proofs, and `Evaluate.verify` checks their internal
+content-addressed integrity without replacing Merkle verification with database queries.
 
 `ConfigRuntime.evaluate` is the storage-to-proof bridge: it resolves a release ref, builds
 the rule catalog from that exact `ConfigSnapshot`, reads only the temporal Triple facts
@@ -122,8 +157,10 @@ const decision =
 ConfigRuntime.verify(decision); // []
 ```
 
-The decision ID binds the selected release root, subject, and nested evaluation; changing
-either the configuration pin or the proof breaks `ConfigRuntime.verify`. Passing `asOf`
+The decision ID binds the selected release root, subject, reason, and nested evaluation;
+changing the configuration pin or proof breaks `ConfigRuntime.verify`. This is tamper
+evidence given a trusted decision root, not independent proof that the pinned rule was
+authorized or semantically correct. Passing `asOf`
 evaluates the same deployed rule against historical facts. Cardinality is
 explicit: a rule read with multiple live Triple values fails instead of selecting one
 arbitrarily, and non-scalar JSON facts are rejected at the bridge.
@@ -155,23 +192,30 @@ yield *
 const validation = yield * EntityValidation.EntityValidation;
 yield * validation.revalidate({ ref: "live" });
 
-const invalidNow = yield * validation.currentInvalid("live");
+const validationState = yield * validation.currentInvalid("live");
+if (validationState.status === "stale") {
+  console.log(`validation is stale as of ${validationState.sourcePosition}`);
+}
+const invalidNow = validationState.invalid;
 const invalidAtLeastOnce = yield * validation.everInvalid();
 const messages = yield * validation.violations({ subject: "employee:alice" });
 ```
 
-Every result is bound to the exact `ConfigSnapshot`, schema `ContentId`, subject, and
-materialized entity state. Results and individual violations are immutable,
+Every result is bound to the exact `ConfigSnapshot`, schema `ContentId`, subject, and a
+domain-separated content ID for the materialized entity state. The entity body itself is
+not copied into validation storage. Results and individual violations are immutable,
 content-addressed entities under reserved Triplex attributes. Revalidation atomically
 moves a `(ref, entity type, subject)` head; fixing an entity removes it from the current
 invalid query without erasing that it was invalid before. `currentInvalidQuery`,
-`everInvalidQuery`, and `violationsQuery` return ordinary Datalog queries for composing
+`lastInvalidQuery`, `everInvalidQuery`, and `violationsQuery` return ordinary Datalog queries for composing
 validation state with the rest of an application's graph.
 
-Revalidation is explicit in this release: call it after relevant fact writes and after
-moving or committing the selected config ref. These are observations, not write guards: after
-a ref move, old results do not match the new snapshot; after a fact-only change, the previous
-observation remains current until revalidation moves its head. Applications that require
+Revalidation is an explicit checkpointed projection in this release. Each run records the
+latest causal transaction position it observed. `currentInvalid` reports `unvalidated`,
+`current`, or `stale`, and stale responses retain the last known errors instead of silently
+returning an empty set. Use `transact` for operational writes so they participate in this
+freshness boundary; standalone low-level writes do not create causal envelopes. These
+observations are not write guards. Applications that require
 synchronous write validation should place the write and follow-up workflow behind their own
 command boundary.
 
@@ -365,6 +409,13 @@ triples.query({
 // results => [{ "?name": "Alice", "?age": 30 }, ...]
 ```
 
+Pass one temporal basis for the complete query—including joins, negation, optional
+projection, and recursive rules:
+
+```ts
+yield * triples.query(query, { asOf: someEpochMillis });
+```
+
 A pattern is `[entity, attribute, value]`. Any position may be a variable (`"?x"`) or a
 constant. To match a `ref` value, use a typed constant:
 
@@ -442,7 +493,7 @@ Recursive rules (e.g. ancestor/descendant closures) run through `triples.query` 
 other query — provide `rules` alongside `find`/`where`. Each rule is
 `{ name, body, maxDepth? }`, and same-named rules union together. A rule-application
 clause `["ancestor", "person:alice", "?ancestor"]` invokes a rule. SQL backends compile
-rules to recursive CTEs; KV backends evaluate them with semi-naive evaluation.
+rules to recursive CTEs; KV backends evaluate them to a fixpoint with deduplication.
 
 ```ts
 triples.query({
@@ -550,18 +601,17 @@ transport surface:
 
 ```ts
 import { TripleInput, TransactOp } from "@bjacobso/triplex/Triple";
-import { DatalogQuery } from "@bjacobso/triplex/Datalog";
+import { DatalogQuery } from "@bjacobso/triplex/datalog";
 import { SubscriptionManager } from "@bjacobso/triplex/subscriptions";
 import { Pattern } from "@bjacobso/triplex/types/Pattern";
 import { ConfigStore, TypeExpr } from "@bjacobso/triplex/config";
 import { ContentId } from "@bjacobso/triplex/content";
 ```
 
-Note that `./Datalog` and `./Snapshot` contain query/response **schemas**, not the
-runtime service tags — import `Triples` and `SnapshotService` from the root. The
-HTTP/RPC surface is exposed under `./DatalogApi`,
-`./DatalogRpc`, `./Database`, `./DatabaseApi`, `./DatabaseRpc`, `./SnapshotApi`,
-`./TripleApi`, and `./TripleRpc`.
+Note that `./datalog` and `./Snapshot` contain query/response **schemas**, not the
+runtime service tags—import `Triples` and `SnapshotService` from the root. Triplex does
+not impose an HTTP or RPC transport contract; applications expose the core services
+through the transport that fits their runtime.
 
 ## Content IDs and pre-1.0 migration
 
@@ -570,10 +620,11 @@ encoding followed by domain-separated SHA-256. A `ContentId` is formatted as
 `sha256-<64 lowercase hex characters>`, with distinct domains for entity snapshots,
 config nodes, closures, stamps, types, evaluations, release-pinned decisions, and observations.
 
-This replaces the earlier `fnv1a:<8 hex characters>` entity-snapshot hash. SQL
-migrations 20 and 21 remove legacy entity-snapshot pointers and their derived blobs;
-applications that need those historical materializations must rebuild them from the
-temporal triples. Triplex intentionally does not retain a dual-format shim before 1.0.
+This replaces the earlier `fnv1a:<8 hex characters>` entity-snapshot hash. Because the
+package is unpublished and pre-1.0, SQL now starts from one canonical baseline migration.
+Any database created by an earlier development build must be recreated, or its derived
+entity snapshots rebuilt from temporal triples. Triplex intentionally does not retain a
+dual-format shim before 1.0.
 
 ## Development
 

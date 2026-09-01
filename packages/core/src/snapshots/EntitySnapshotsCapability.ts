@@ -3,7 +3,7 @@
  * on every write operation.
  *
  * This is a proper `StoreCapability` wrapping the snapshot materialization logic
- * from `wrapStoreWithSnapshots`. Write operations trigger synchronous snapshot
+ * from `wrapStoreWithSnapshots`. Write operations trigger post-commit snapshot
  * materialization for all touched entities. The `getEntity` method is enhanced
  * with a snapshot fast-path when a reader is available.
  *
@@ -108,10 +108,8 @@ const resolveRetractionMeta = (
  * Map snapshot errors to WriteError.
  *
  * Unlike ChangeEmission and ReactiveConstraints (which swallow errors), snapshot
- * materialization errors are intentionally propagated as WriteError. This is
- * because snapshots are written inside the same database transaction as the
- * triples — if materialization fails, the transaction should be rolled back
- * to maintain consistency between triples and their snapshots.
+ * projection errors are propagated so callers know the derived state is stale.
+ * The source fact transaction has already committed and is not rolled back.
  */
 const mapMaterializeError = (cause: unknown): WriteError =>
   new WriteError({

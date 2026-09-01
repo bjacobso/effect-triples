@@ -16,7 +16,6 @@ import type {
   NotClause,
   OrAlternative,
   OrClause,
-  LinkClause,
   RuleApplication,
   Rule,
   Clause,
@@ -27,7 +26,7 @@ import type {
   DatalogQuery,
   WrapperFilter,
   WrappedQuery,
-} from "../../Datalog.js";
+} from "../../datalog/schema.js";
 
 // Re-export domain types used by the executor
 export type {
@@ -39,7 +38,6 @@ export type {
   NotClause,
   OrAlternative,
   OrClause,
-  LinkClause,
   RuleApplication,
   Rule,
   Clause,
@@ -96,13 +94,9 @@ export const isNotClause = (clause: Clause): clause is NotClause =>
 export const isOrClause = (clause: Clause): clause is OrClause =>
   Array.isArray(clause) && clause[0] === "or";
 
-/** Check if a clause is a link clause (first element is "link") */
-export const isLinkClause = (clause: Clause): clause is LinkClause =>
-  Array.isArray(clause) && clause[0] === "link";
-
 /**
  * Check if a clause is a rule application.
- * First element is alphanumeric rule name (not "not"/"or"/"link"),
+ * First element is alphanumeric rule name (not "not"/"or"),
  * second element is NOT an attribute (distinguishes from patterns).
  */
 export const isRuleApplication = (clause: Clause): clause is RuleApplication => {
@@ -113,7 +107,7 @@ export const isRuleApplication = (clause: Clause): clause is RuleApplication => 
   const isRuleName =
     typeof first === "string" &&
     /^[a-zA-Z_][a-zA-Z0-9_-]*$/.test(first) &&
-    !["not", "or", "link"].includes(first);
+    !["not", "or"].includes(first);
 
   if (!isRuleName) return false;
 
@@ -123,7 +117,7 @@ export const isRuleApplication = (clause: Clause): clause is RuleApplication => 
 
 /**
  * Check if a clause is a pattern clause (3 or 4 tuple that isn't
- * a predicate, not, or, link, or rule application).
+ * a predicate, not, or, or rule application).
  */
 export const isPatternClause = (clause: Clause): clause is PatternClause => {
   if (!Array.isArray(clause)) return false;
@@ -132,7 +126,6 @@ export const isPatternClause = (clause: Clause): clause is PatternClause => {
     !isPredicateClause(clause) &&
     !isNotClause(clause) &&
     !isOrClause(clause) &&
-    !isLinkClause(clause) &&
     !isRuleApplication(clause)
   );
 };

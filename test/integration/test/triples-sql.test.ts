@@ -13,7 +13,7 @@ import {
   number,
   boolean,
   ref,
-} from "@bjacobso/triplex";
+} from "@bjacobso/triplex/internal";
 import { SqlQueryExecutorLive } from "@bjacobso/triplex-sql";
 import { SqliteAdapterLive } from "@bjacobso/triplex-sqlite";
 import type { EntityId, TripleId } from "@bjacobso/triplex";

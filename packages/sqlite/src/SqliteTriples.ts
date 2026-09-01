@@ -20,7 +20,7 @@ import {
   CurrentDialect,
   TripleStoreRuntimeLayer,
   RuntimeServicesLive,
-} from "@bjacobso/triplex";
+} from "@bjacobso/triplex/internal";
 import { SqlQueryExecutorLive } from "@bjacobso/triplex-sql";
 import { SqliteAdapterLive } from "./SqliteAdapter.js";
 import { SqliteDialect } from "./dialect.js";

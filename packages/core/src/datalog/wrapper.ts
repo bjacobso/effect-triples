@@ -7,7 +7,12 @@
  * - Total count retrieval for pagination UI
  */
 
-import { compile, type CompiledQuery, type CompiledValueColumns } from "./compiler.js";
+import {
+  compile,
+  type CompileOptions,
+  type CompiledQuery,
+  type CompiledValueColumns,
+} from "./compiler.js";
 import { isVariable } from "./schema.js";
 import type { SqlDialect } from "../dialects/index.js";
 import { SqliteDialect } from "../dialects/sqlite.js";
@@ -215,11 +220,12 @@ const compileKeysetClause = (
 export const compileWrapped = (
   query: WrappedQuery,
   dialect: SqlDialect = SqliteDialect,
+  options: CompileOptions = {},
 ): CompiledWrappedQuery => {
   const { inner, filters, orderBy, limit, cursor, includeCount } = query;
 
   // 1. Compile inner query (without wrapper's orderBy/limit/cursor)
-  const innerCompiled: CompiledQuery = compile(inner, dialect);
+  const innerCompiled: CompiledQuery = compile(inner, dialect, false, options);
 
   // 2. Build CTE
   const cteName = "inner_results";

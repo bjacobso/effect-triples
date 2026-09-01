@@ -11,10 +11,10 @@ import {
   ConfigNode,
   Evaluate,
   InMemoryConfigStore,
-  OnboardingConfig,
   Reactor,
   World,
 } from "@bjacobso/triplex/config";
+import * as OnboardingConfig from "./OnboardingConfig.js";
 
 const { BASELINE, releaseWithRules, ruleSet } = OnboardingConfig;
 type AccountConfig = OnboardingConfig.AccountConfig;

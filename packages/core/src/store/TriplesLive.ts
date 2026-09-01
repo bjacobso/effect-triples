@@ -679,10 +679,14 @@ export const TriplesLive = Layer.effect(
     // =========================================================================
 
     const query = (q: DatalogQuery, options?: QueryOptions) =>
-      executor.execute(q, options?.debug ?? false).pipe(Effect.withSpan("triples.query"));
+      executor
+        .execute(q, options?.debug ?? false, options?.asOf)
+        .pipe(Effect.withSpan("triples.query"));
 
     const queryPage = (q: WrappedQuery, options?: QueryOptions) =>
-      executor.executePage(q, options?.debug ?? false).pipe(Effect.withSpan("triples.queryPage"));
+      executor
+        .executePage(q, options?.debug ?? false, options?.asOf)
+        .pipe(Effect.withSpan("triples.queryPage"));
 
     const explain = (q: DatalogQuery) =>
       executor.explain(q).pipe(

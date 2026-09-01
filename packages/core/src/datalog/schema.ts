@@ -201,33 +201,12 @@ export const RuleApplication = Schema.Tuple([
 });
 
 /**
- * Link clause: ["link", relationshipType, source, target, properties?]
- * Used to query link instances between entities
- *
- * Examples:
- * - ["link", "manages", "?manager", "?employee"]
- * - ["link", "manages", "?manager", "?employee", { since: "?since" }]
- */
-export const LinkClause = Schema.Tuple([
-  Schema.Literal("link"),
-  Schema.String, // Link type name
-  Term, // Source entity variable/constant
-  Term, // Target entity variable/constant
-  // Note: Properties are optional and handled at runtime by the compiler
-  // The 5th element (properties) is optional, so we don't include it in the tuple schema
-]).annotate({
-  identifier: "LinkClause",
-  description: 'A link clause ["link", relationshipType, source, target] for querying links',
-});
-
-/**
- * Clause: pattern, predicate, not, or, rule application, or link
+ * Clause: pattern, predicate, not, or, or rule application.
  *
  * We distinguish by checking the first element:
  * - If it's an operator (>, >=, <, <=, =, !=), it's a predicate
  * - If it's "not", it's a negation
  * - If it's "or", it's a disjunction
- * - If it's "link", it's a link clause
  * - If it's a plain identifier (no ? or :), it's a rule application
  * - Otherwise, it's a pattern
  */
@@ -235,12 +214,11 @@ export const Clause = Schema.Union([
   PredicateClause,
   NotClause,
   OrClause,
-  LinkClause,
   RuleApplication,
   PatternClause,
 ]).annotate({
   identifier: "Clause",
-  description: "A clause that is a pattern, predicate, not, or, link, or rule application",
+  description: "A clause that is a pattern, predicate, not, or, or rule application",
 });
 
 // =============================================================================
@@ -402,7 +380,7 @@ export const DatalogQuery = Schema.Struct({
   /**
    * Recursive rule definitions applied by rule-application clauses in `where`.
    * SQL backends compile these to recursive CTEs; KV backends evaluate them
-   * with semi-naive evaluation.
+   * with fixpoint evaluation.
    */
   rules: Schema.optional(Schema.Array(Rule)),
   optionalProjection: Schema.optional(
@@ -546,7 +524,6 @@ export type NotClause = typeof NotClause.Type;
 export type OrAlternative = typeof OrAlternative.Type;
 export type OrClause = typeof OrClause.Type;
 export type RuleApplication = typeof RuleApplication.Type;
-export type LinkClause = typeof LinkClause.Type;
 export type RuleBodyClause = typeof RuleBodyClause.Type;
 export type Rule = typeof Rule.Type;
 export type Clause = typeof Clause.Type;
@@ -628,13 +605,6 @@ export const normalizeOrAlternatives = (
 };
 
 /**
- * Check if a clause is a link clause (first element is "link")
- */
-export const isLinkClause = (clause: Clause): clause is LinkClause => {
-  return Array.isArray(clause) && clause[0] === "link";
-};
-
-/**
  * Check if a clause is a rule application (first element is alphanumeric, no ? or :,
  * and second element is NOT an attribute - this distinguishes from patterns)
  *
@@ -651,7 +621,7 @@ export const isRuleApplication = (clause: Clause): clause is RuleApplication => 
   const isRuleName =
     typeof first === "string" &&
     /^[a-zA-Z_][a-zA-Z0-9_-]*$/.test(first) &&
-    !["not", "or", "link"].includes(first);
+    !["not", "or"].includes(first);
 
   if (!isRuleName) return false;
 
@@ -663,7 +633,7 @@ export const isRuleApplication = (clause: Clause): clause is RuleApplication => 
 };
 
 /**
- * Check if a clause is a pattern clause (not a predicate, not, or, link, or rule application)
+ * Check if a clause is a pattern clause (not a predicate, not, or, or rule application)
  * Accepts both 3-tuple and 4-tuple patterns
  */
 export const isPatternClause = (clause: Clause): clause is PatternClause => {
@@ -674,7 +644,6 @@ export const isPatternClause = (clause: Clause): clause is PatternClause => {
     !isPredicateClause(clause) &&
     !isNotClause(clause) &&
     !isOrClause(clause) &&
-    !isLinkClause(clause) &&
     !isRuleApplication(clause)
   );
 };
@@ -707,7 +676,6 @@ export const QueryMetrics = Schema.Struct({
   predicateCount: Schema.Number,
   notClauseCount: Schema.Number,
   orClauseCount: Schema.Number,
-  linkClauseCount: Schema.Number,
 
   // Features Used
   hasAggregation: Schema.Boolean,

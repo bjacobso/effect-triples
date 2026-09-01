@@ -9,7 +9,7 @@
  */
 
 import { Hash } from "effect";
-import type { DatalogQuery } from "../Datalog.js";
+import type { DatalogQuery } from "../datalog/schema.js";
 
 /**
  * Hash a Datalog query using Effect's Hash module.

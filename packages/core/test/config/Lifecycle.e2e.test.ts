@@ -51,7 +51,7 @@ import {
   releaseWithRules,
   ruleSet,
   type AccountConfig,
-} from "../../src/config/domain/OnboardingConfig";
+} from "./fixtures/OnboardingConfig";
 
 const DAY = 86_400_000;
 const MARCH_3 = 1772496000000;

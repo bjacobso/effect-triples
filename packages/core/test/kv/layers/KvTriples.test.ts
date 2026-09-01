@@ -258,7 +258,7 @@ describe("KvTriples (merged service)", () => {
     expect(seen).not.toContain("widget:1");
   });
 
-  it("evaluates recursive rules through the merged service (KV semi-naive)", async () => {
+  it("evaluates recursive rules through the merged service (KV fixpoint)", async () => {
     const ancestors = await run(
       Effect.gen(function* () {
         const t = yield* Triples;

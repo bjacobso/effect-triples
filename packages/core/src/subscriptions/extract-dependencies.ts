@@ -9,7 +9,6 @@ import {
   isPatternClause,
   isNotClause,
   isOrClause,
-  isLinkClause,
   isRuleApplication,
   isVariable,
   isPredicateClause,
@@ -19,10 +18,9 @@ import {
   type PatternClause,
   type NotClause,
   type OrClause,
-  type LinkClause,
   type RuleApplication,
   type Term,
-} from "../Datalog.js";
+} from "../datalog/schema.js";
 import type { QueryDependencies } from "./types.js";
 
 // =============================================================================
@@ -87,8 +85,7 @@ function inferEntityTypeFromId(entityId: string): string | null {
  * - Pattern clauses: extract attributes, entity types, bound entity IDs
  * - Not clauses: recursively process inner pattern
  * - Or clauses: process all patterns in the array
- * - Link clauses: add link type, add _link entity type attributes
- * - Rule applications: add rule name, extract bound args
+ * - Rule applications: add the rule name and walk every matching rule body
  * - Predicate clauses: ignored (they filter, don't add read dependencies)
  *
  * @param query The Datalog query to analyze
@@ -99,8 +96,14 @@ export function extractDependencies(query: DatalogQuery): QueryDependencies {
   const entityTypes = new Set<string>();
   const boundEntityIds = new Set<string>();
   const boundEntityTypes = new Set<string>();
-  const linkTypes = new Set<string>();
+  const unboundEntityTypes = new Set<string>();
   const ruleNames = new Set<string>();
+  const expandedRules = new Set<string>();
+  const rulesByName = new Map<string, NonNullable<DatalogQuery["rules"]>>();
+  for (const rule of query.rules ?? []) {
+    const definitions = rulesByName.get(rule.name) ?? [];
+    rulesByName.set(rule.name, [...definitions, rule]);
+  }
   let hasDynamicAttributes = false;
 
   function processClause(clause: Clause): void {
@@ -114,8 +117,6 @@ export function extractDependencies(query: DatalogQuery): QueryDependencies {
       processNotClause(clause);
     } else if (isOrClause(clause)) {
       processOrClause(clause);
-    } else if (isLinkClause(clause)) {
-      processLinkClause(clause);
     } else if (isRuleApplication(clause)) {
       processRuleApplication(clause);
     }
@@ -137,6 +138,8 @@ export function extractDependencies(query: DatalogQuery): QueryDependencies {
         if (entityType) {
           boundEntityTypes.add(entityType);
         }
+      } else if (entityType) {
+        unboundEntityTypes.add(entityType);
       }
     } else if (isVariable(attr)) {
       hasDynamicAttributes = true;
@@ -161,28 +164,6 @@ export function extractDependencies(query: DatalogQuery): QueryDependencies {
     }
   }
 
-  function processLinkClause(linkClause: LinkClause): void {
-    // ["link", relationshipType, source, target]
-    const [_link, relationshipType, source, target] = linkClause;
-    linkTypes.add(relationshipType);
-
-    // Links read the _link entity type's attributes
-    entityTypes.add("_link");
-    attributes.add(":_link/type");
-    attributes.add(":_link/source");
-    attributes.add(":_link/target");
-
-    // If source or target are constants, they're bound
-    if (isConstantString(source) && !isAttribute(source)) {
-      boundEntityIds.add(source);
-      boundEntityTypes.add("_link");
-    }
-    if (isConstantString(target) && !isAttribute(target)) {
-      boundEntityIds.add(target);
-      boundEntityTypes.add("_link");
-    }
-  }
-
   function processRuleApplication(rule: RuleApplication): void {
     // ["ruleName", arg1, arg2] — record the rule name
     const [ruleName, arg1, arg2] = rule;
@@ -200,6 +181,14 @@ export function extractDependencies(query: DatalogQuery): QueryDependencies {
       const inferredType = inferEntityTypeFromId(arg2);
       if (inferredType) boundEntityTypes.add(inferredType);
     }
+
+    if (expandedRules.has(ruleName)) return;
+    expandedRules.add(ruleName);
+    for (const definition of rulesByName.get(ruleName) ?? []) {
+      for (const bodyClause of definition.body) {
+        processClause(bodyClause as Clause);
+      }
+    }
   }
 
   // Process all where clauses
@@ -213,7 +202,7 @@ export function extractDependencies(query: DatalogQuery): QueryDependencies {
     entityTypes,
     boundEntityIds,
     boundEntityTypes,
-    linkTypes,
+    unboundEntityTypes,
     ruleNames,
   };
 }

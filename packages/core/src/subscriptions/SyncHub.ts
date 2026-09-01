@@ -1,5 +1,5 @@
 import { Effect, Layer } from "effect";
-import type { DatalogQuery } from "../Datalog.js";
+import type { DatalogQuery } from "../datalog/schema.js";
 import {
   ChangeEmitter,
   type ChangeEmitterService,

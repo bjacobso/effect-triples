@@ -5,15 +5,9 @@
  */
 import { describe, it, expect } from "vitest";
 import { Effect, Option } from "effect";
-import type {
-  TriplesService,
-  ChangeEmitterService,
-  ChangeEvent,
-  Triple,
-  TripleId,
-  EntityId,
-} from "../src/index.js";
-import { makeChangeEmissionCapability } from "../src/index.js";
+import type { TriplesService, Triple, TripleId, EntityId } from "../src/index.js";
+import type { ChangeEmitterService, ChangeEvent } from "../src/store/ChangeEmitter.js";
+import { makeChangeEmissionCapability } from "../src/store/ChangeEmissionCapability.js";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -42,17 +36,53 @@ function fakeTriple(overrides?: Partial<Triple>): Triple {
 }
 
 function stubStore(triple: Triple | null): TriplesService {
+  let lastOperations: ReadonlyArray<
+    | { readonly op: "assert"; readonly entityId: string; readonly attribute: string }
+    | { readonly op: "retract"; readonly id: string }
+  > = [];
   return {
     assert: () => Effect.succeed(triple ?? fakeTriple()),
     assertBatch: () => Effect.succeed([]),
     retract: () => Effect.void,
     retractByPattern: () => Effect.succeed(0),
-    transact: () => Effect.succeed({ txId: "tx-1", triples: [], retracted: 1 }),
+    transact: (operations) => {
+      lastOperations = operations as typeof lastOperations;
+      return Effect.succeed({ txId: "tx-1", position: 1, instant: 1, triples: [], retracted: 1 });
+    },
     get: () => Effect.succeed(triple),
     entity: () => Effect.succeed([]),
     match: () => Effect.succeed([]),
     matchAsOf: () => Effect.succeed([]),
     history: () => Effect.succeed([]),
+    transaction: () =>
+      Effect.succeed({
+        txId: "tx-1",
+        position: 1,
+        instant: 1,
+        changes: lastOperations.flatMap((operation) => {
+          if (operation.op === "assert") {
+            return [
+              {
+                op: "assert" as const,
+                tripleId: "asserted",
+                entityId: operation.entityId,
+                attribute: operation.attribute,
+              },
+            ];
+          }
+          return triple
+            ? [
+                {
+                  op: "retract" as const,
+                  tripleId: operation.id,
+                  entityId: triple.entityId,
+                  attribute: triple.attribute,
+                },
+              ]
+            : [];
+        }),
+      }),
+    transactions: () => Effect.succeed({ transactions: [] }),
     entities: () => Effect.succeed([]),
     query: () => Effect.succeed({ results: [] }),
     queryPage: () => Effect.succeed({ results: [] }),
@@ -104,7 +134,7 @@ describe("ChangeEmissionCapability", () => {
       });
     });
 
-    it("falls back to empty strings when triple is not found", async () => {
+    it("does not emit a wildcard invalidation when no triple was retracted", async () => {
       const store = stubStore(null);
       const { emitter, events } = spyEmitter();
       const wrapped = wrapStore(store, emitter, liveNow);
@@ -112,11 +142,7 @@ describe("ChangeEmissionCapability", () => {
       await Effect.runPromise(wrapped.retract(TRIPLE_ID));
 
       expect(events).toHaveLength(1);
-      expect(events[0].changes[0]).toMatchObject({
-        operation: "retract",
-        entityId: "",
-        attribute: "",
-      });
+      expect(events[0].changes).toEqual([]);
     });
   });
 
@@ -139,18 +165,14 @@ describe("ChangeEmissionCapability", () => {
       expect(events[0].txId).toBe("tx-1");
     });
 
-    it("falls back to empty strings when triple is not found", async () => {
+    it("uses the committed envelope and omits a retract that changed nothing", async () => {
       const store = stubStore(null);
       const { emitter, events } = spyEmitter();
       const wrapped = wrapStore(store, emitter, liveNow);
 
       await Effect.runPromise(wrapped.transact([{ op: "retract", id: TRIPLE_ID as string }]));
 
-      expect(events[0].changes[0]).toMatchObject({
-        operation: "retract",
-        entityId: "",
-        attribute: "",
-      });
+      expect(events[0].changes).toEqual([]);
     });
 
     it("handles mixed assert and retract operations", async () => {

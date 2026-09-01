@@ -23,7 +23,7 @@ import {
   describeCapabilities,
   TripleStoreRuntime,
   TripleStoreRuntimeLayer,
-} from "@bjacobso/triplex";
+} from "@bjacobso/triplex/internal";
 import type { EntityId, TripleId } from "@bjacobso/triplex";
 import { SqliteAdapterLive } from "@bjacobso/triplex-sqlite";
 import { SqlQueryExecutorLive } from "@bjacobso/triplex-sql";

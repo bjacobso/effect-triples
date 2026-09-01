@@ -6,7 +6,7 @@
  */
 
 import { Context, Effect, Ref, HashMap, HashSet, Option, Layer } from "effect";
-import type { DatalogQuery } from "../Datalog.js";
+import type { DatalogQuery } from "../datalog/schema.js";
 import { extractDependencies } from "./extract-dependencies.js";
 import { checkInvalidation } from "./invalidation.js";
 import { hashQuery } from "./query-hash.js";

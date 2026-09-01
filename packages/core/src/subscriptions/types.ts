@@ -4,7 +4,7 @@
  * Shared types for the subscription invalidation system.
  */
 
-import type { DatalogQuery } from "../Datalog.js";
+import type { DatalogQuery } from "../datalog/schema.js";
 import type { ChangeEvent, TripleChange } from "../store/ChangeEmitter.js";
 
 // =============================================================================
@@ -51,10 +51,11 @@ export interface QueryDependencies {
   readonly boundEntityTypes: ReadonlySet<string>;
 
   /**
-   * Link/relationship types the query traverses.
-   * e.g., {"manages", "reports-to"}
+   * Entity types that at least one pattern reads without a constant entity id.
+   * Bound-id filtering is unsafe for these types because another pattern in
+   * the same query may still read every entity of that type.
    */
-  readonly linkTypes: ReadonlySet<string>;
+  readonly unboundEntityTypes: ReadonlySet<string>;
 
   /**
    * Rule names the query invokes (for recursive queries).

@@ -5,18 +5,18 @@
  * Runtime-owned metadata and higher-level ID helpers live in the runtime layer.
  */
 
-import { ulid } from "ulidx";
+import { monotonicFactory } from "ulidx";
 import type { TripleId } from "../Branded.js";
 
 /**
  * Generate a new ULID (TripleId).
  */
-export const generateId = (): TripleId => ulid() as TripleId;
+export const generateId = (): TripleId => monotonicUlid() as TripleId;
 
 /**
  * Generate a transaction ID.
  */
-export const generateTransactionId = (): string => `_tx/${ulid()}`;
+export const generateTransactionId = (): string => `_tx/${monotonicUlid()}`;
 
 /**
  * Transaction metadata attributes.
@@ -48,3 +48,4 @@ export const TxAttributes = {
 export const SystemPrefixes = {
   TRANSACTION: "_tx",
 } as const;
+const monotonicUlid = monotonicFactory();

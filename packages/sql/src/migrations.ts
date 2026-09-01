@@ -1,9 +1,8 @@
 import { Effect } from "effect";
 import { SqlClient } from "effect/unstable/sql";
-import { MigrationError } from "@bjacobso/triplex";
+import { MigrationError } from "@bjacobso/triplex/internal";
 import {
   TRIPLES_TABLE_DDL,
-  MIGRATIONS_TABLE_DDL,
   INDEX_DDLS,
   ENTITY_BLOBS_TABLE_DDL,
   ENTITY_SNAPSHOTS_TABLE_DDL,
@@ -14,7 +13,7 @@ import {
 export interface Migration {
   readonly version: number;
   readonly name: string;
-  readonly up: string;
+  readonly up: ReadonlyArray<string>;
 }
 
 /**
@@ -26,120 +25,15 @@ export interface Migration {
 export const migrations: readonly Migration[] = [
   {
     version: 1,
-    name: "initial_schema",
-    up: TRIPLES_TABLE_DDL,
-  },
-  {
-    version: 2,
-    name: "create_migrations_table",
-    up: MIGRATIONS_TABLE_DDL,
-  },
-  {
-    version: 3,
-    name: "add_indexes",
-    up: INDEX_DDLS[0],
-  },
-  {
-    version: 4,
-    name: "add_attribute_index",
-    up: INDEX_DDLS[1],
-  },
-  {
-    version: 5,
-    name: "add_type_index",
-    up: INDEX_DDLS[2],
-  },
-  {
-    version: 6,
-    name: "add_attr_string_index",
-    up: INDEX_DDLS[3],
-  },
-  {
-    version: 7,
-    name: "add_attr_number_index",
-    up: INDEX_DDLS[4],
-  },
-  {
-    version: 8,
-    name: "add_ref_index",
-    up: INDEX_DDLS[5],
-  },
-  {
-    version: 9,
-    name: "add_temporal_index",
-    up: INDEX_DDLS[6],
-  },
-  {
-    version: 10,
-    name: "add_entity_attr_index",
-    up: INDEX_DDLS[7],
-  },
-  {
-    version: 11,
-    name: "add_tx_id_index",
-    up: INDEX_DDLS[8],
-  },
-  {
-    version: 12,
-    name: "add_blob_value_type",
-    // SQLite CHECK constraints are baked into CREATE TABLE. Existing tables
-    // silently accept new values. This migration is a version marker;
-    // the DDL in schema.ts already includes 'blob' for new databases.
-    up: `SELECT 1`,
-  },
-  {
-    version: 13,
-    name: "add_retract_tx_id",
-    up: `ALTER TABLE triples ADD COLUMN retract_tx_id TEXT`,
-  },
-  {
-    version: 14,
-    name: "create_entity_blobs",
-    up: ENTITY_BLOBS_TABLE_DDL,
-  },
-  {
-    version: 15,
-    name: "create_entity_snapshots",
-    up: ENTITY_SNAPSHOTS_TABLE_DDL,
-  },
-  {
-    version: 16,
-    name: "add_snapshot_entity_index",
-    up: SNAPSHOT_INDEX_DDLS[0],
-  },
-  {
-    version: 17,
-    name: "add_snapshot_tx_index",
-    up: SNAPSHOT_INDEX_DDLS[1],
-  },
-  {
-    version: 18,
-    name: "add_snapshot_hash_index",
-    up: SNAPSHOT_INDEX_DDLS[2],
-  },
-  {
-    version: 19,
-    name: "add_snapshot_type_index",
-    up: SNAPSHOT_INDEX_DDLS[3],
-  },
-  {
-    version: 20,
-    name: "remove_legacy_fnv_snapshot_pointers",
-    // Entity snapshots are derived materializations. The browser-safe SHA-256
-    // cutover intentionally keeps one ID format, so legacy pointers must be
-    // removed before their blobs. Applications that need historical
-    // materializations should rebuild them from the temporal triples.
-    up: `DELETE FROM entity_snapshots WHERE hash LIKE 'fnv1a:%'`,
-  },
-  {
-    version: 21,
-    name: "remove_legacy_fnv_snapshot_blobs",
-    up: `DELETE FROM entity_blobs WHERE hash LIKE 'fnv1a:%'`,
-  },
-  {
-    version: 22,
-    name: "create_commit_position",
-    up: COMMIT_POSITION_TABLE_DDL,
+    name: "triplex_baseline",
+    up: [
+      TRIPLES_TABLE_DDL,
+      ...INDEX_DDLS,
+      ENTITY_BLOBS_TABLE_DDL,
+      ENTITY_SNAPSHOTS_TABLE_DDL,
+      ...SNAPSHOT_INDEX_DDLS,
+      COMMIT_POSITION_TABLE_DDL,
+    ],
   },
 ];
 
@@ -167,36 +61,19 @@ export const runMigrations = Effect.gen(function* () {
       continue;
     }
 
-    // Execute the migration SQL (ignore "duplicate column" errors from ALTER TABLE
-    // migrations on fresh databases where the DDL already includes the column)
-    yield* sql.unsafe(migration.up).pipe(
-      Effect.catchIf(
-        (error) => {
-          const sqlError = error as {
-            readonly cause?: unknown;
-            readonly reason?: { readonly cause?: unknown };
-          };
-          const msg = [error, sqlError.cause, sqlError.reason, sqlError.reason?.cause]
-            .map(String)
-            .join(" ")
-            .toLowerCase();
-          return (
-            msg.includes("duplicate column name") ||
-            (msg.includes("column") && msg.includes("already exists"))
-          );
-        },
-        () => Effect.void,
-      ),
-      Effect.mapError(
-        (error) =>
-          new MigrationError({
-            version: migration.version,
-            name: migration.name,
-            message: `Failed to run migration: ${String(error)}`,
-            cause: error,
-          }),
-      ),
-    );
+    for (const statement of migration.up) {
+      yield* sql.unsafe(statement).pipe(
+        Effect.mapError(
+          (error) =>
+            new MigrationError({
+              version: migration.version,
+              name: migration.name,
+              message: `Failed to run migration: ${String(error)}`,
+              cause: error,
+            }),
+        ),
+      );
+    }
 
     // Record migration as applied
     const now = Date.now();

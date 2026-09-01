@@ -248,9 +248,10 @@ export const executePattern = (
   store: KvTripleStore,
   pattern: PatternClause,
   contexts: readonly Context[],
+  asOf?: number,
 ): Effect.Effect<Context[]> => {
   // Try synchronous fast path first (available with InMemoryKvBackend)
-  const syncResults = executePatternSync(store, pattern, contexts);
+  const syncResults = executePatternSync(store, pattern, contexts, asOf);
   if (syncResults !== null) return Effect.succeed(syncResults);
 
   // Async path: try hash join first for large context sets, then nested loop
@@ -259,7 +260,7 @@ export const executePattern = (
   return Effect.gen(function* () {
     // Try async hash join for large context sets
     if (contexts.length > 100) {
-      const hashResult = yield* executePatternHashJoinAsync(store, pattern, contexts);
+      const hashResult = yield* executePatternHashJoinAsync(store, pattern, contexts, asOf);
       if (hashResult !== null) return hashResult;
     }
 
@@ -267,7 +268,9 @@ export const executePattern = (
 
     for (const ctx of contexts) {
       for (const scanPattern of patternToScanPatterns(pattern, ctx)) {
-        const datoms = yield* store.scanCollectAsync(scanPattern);
+        const datoms = yield* asOf === undefined
+          ? store.scanCollectAsync(scanPattern)
+          : store.scanCollectAsOfAsync(scanPattern, asOf);
 
         for (let i = 0; i < datoms.length; i++) {
           const bound = bindDatom(pattern, datoms[i]!, ctx);
@@ -294,6 +297,7 @@ const executePatternSync = (
   store: KvTripleStore,
   pattern: PatternClause,
   contexts: readonly Context[],
+  asOf?: number,
 ): Context[] | null => {
   // Try hash join optimization for the common case:
   // - Many contexts (>100) to amortize the full attribute scan cost
@@ -301,7 +305,7 @@ const executePatternSync = (
   // - Attribute term is a constant
   // - Value term is unbound
   if (contexts.length > 100) {
-    const hashResult = executePatternHashJoin(store, pattern, contexts);
+    const hashResult = executePatternHashJoin(store, pattern, contexts, asOf);
     if (hashResult !== null) return hashResult;
   }
 
@@ -310,7 +314,10 @@ const executePatternSync = (
 
   for (const ctx of contexts) {
     for (const scanPattern of patternToScanPatterns(pattern, ctx)) {
-      const datoms = store.scanCollect(scanPattern);
+      const datoms =
+        asOf === undefined
+          ? store.scanCollect(scanPattern)
+          : store.scanCollectAsOf(scanPattern, asOf);
       if (datoms === null) return null; // Backend doesn't support sync
 
       for (let i = 0; i < datoms.length; i++) {
@@ -341,6 +348,7 @@ const executePatternHashJoin = (
   store: KvTripleStore,
   pattern: PatternClause,
   contexts: readonly Context[],
+  asOf?: number,
 ): Context[] | null => {
   const [entityTerm, attrTerm] = pattern;
 
@@ -355,7 +363,8 @@ const executePatternHashJoin = (
 
   // Do ONE scan of the attribute index
   const scanPattern: ScanPattern = { attribute: attrValue };
-  const allDatoms = store.scanCollect(scanPattern);
+  const allDatoms =
+    asOf === undefined ? store.scanCollect(scanPattern) : store.scanCollectAsOf(scanPattern, asOf);
   if (allDatoms === null) return null;
 
   // Build hash map: entity → Datom[]
@@ -398,6 +407,7 @@ const executePatternHashJoinAsync = (
   store: KvTripleStore,
   pattern: PatternClause,
   contexts: readonly Context[],
+  asOf?: number,
 ): Effect.Effect<Context[] | null> => {
   const [entityTerm, attrTerm] = pattern;
 
@@ -413,7 +423,9 @@ const executePatternHashJoinAsync = (
   const scanPattern: ScanPattern = { attribute: attrValue };
 
   return Effect.gen(function* () {
-    const allDatoms = yield* store.scanCollectAsync(scanPattern);
+    const allDatoms = yield* asOf === undefined
+      ? store.scanCollectAsync(scanPattern)
+      : store.scanCollectAsOfAsync(scanPattern, asOf);
 
     // Build hash map: entity → Datom[]
     const entityMap = new Map<string, Datom[]>();

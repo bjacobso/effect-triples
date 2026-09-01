@@ -4,13 +4,12 @@
  * Executes DatalogQuery objects against a KvTripleStore, producing
  * arrays of Context (variable binding) tuples as results.
  *
- * Supports all 6 clause types:
+ * Supports the standard clause types:
  * - Pattern: index scan + binding (via hexastore)
  * - Predicate: comparison filter
  * - Not: anti-semi-join (negation)
  * - Or: union of alternatives
- * - Link: transitive relationship traversal
- * - RuleApplication: recursive rules via semi-naive evaluation
+ * - RuleApplication: recursive rules via fixpoint evaluation
  *
  * Plus aggregation (5 ops), HAVING, ORDER BY, LIMIT/OFFSET,
  * and wrapper queries with cursor-based keyset pagination.
@@ -29,7 +28,6 @@ import {
   type NotClause,
   type OrAlternative,
   type OrClause,
-  type LinkClause,
   type RuleApplication,
   type Rule,
   type DatalogQuery,
@@ -42,7 +40,6 @@ import {
   isPredicateClause,
   isNotClause,
   isOrClause,
-  isLinkClause,
   isRuleApplication,
   isPatternClause,
   emptyContext,
@@ -62,6 +59,7 @@ const innerClausesMatchContext = (
   store: KvTripleStore,
   clauses: readonly (PatternClause | PredicateClause)[],
   context: Context,
+  asOf?: number,
 ): Effect.Effect<boolean> => {
   return Effect.gen(function* () {
     let current: Context[] = [context];
@@ -70,7 +68,7 @@ const innerClausesMatchContext = (
       if (isPredicateClause(clause as Clause)) {
         current = current.filter((ctx) => evaluatePredicate(clause as PredicateClause, ctx));
       } else {
-        current = yield* executePattern(store, clause as PatternClause, current);
+        current = yield* executePattern(store, clause as PatternClause, current, asOf);
       }
 
       if (current.length === 0) return false;
@@ -84,8 +82,9 @@ const patternAlternativeMatchesContext = (
   store: KvTripleStore,
   pattern: PatternClause,
   context: Context,
+  asOf?: number,
 ): Effect.Effect<boolean> =>
-  Effect.map(executePattern(store, pattern, [context]), (matches) => matches.length > 0);
+  Effect.map(executePattern(store, pattern, [context], asOf), (matches) => matches.length > 0);
 
 const notClauseInnerClauses = (clause: NotClause): (PatternClause | PredicateClause)[] =>
   clause.slice(1) as (PatternClause | PredicateClause)[];
@@ -94,13 +93,15 @@ const notClauseMatchesContext = (
   store: KvTripleStore,
   clause: NotClause,
   context: Context,
+  asOf?: number,
 ): Effect.Effect<boolean> =>
-  innerClausesMatchContext(store, notClauseInnerClauses(clause), context);
+  innerClausesMatchContext(store, notClauseInnerClauses(clause), context, asOf);
 
 const orAlternativeMatchesContext = (
   store: KvTripleStore,
   alternative: OrAlternative,
   context: Context,
+  asOf?: number,
 ): Effect.Effect<boolean> => {
   if (isPredicateClause(alternative as Clause)) {
     return Effect.succeed(evaluatePredicate(alternative as PredicateClause, context));
@@ -108,12 +109,12 @@ const orAlternativeMatchesContext = (
 
   if (isNotClause(alternative as Clause)) {
     return Effect.map(
-      notClauseMatchesContext(store, alternative as NotClause, context),
+      notClauseMatchesContext(store, alternative as NotClause, context, asOf),
       (matches) => !matches,
     );
   }
 
-  return patternAlternativeMatchesContext(store, alternative as PatternClause, context);
+  return patternAlternativeMatchesContext(store, alternative as PatternClause, context, asOf);
 };
 
 /**
@@ -126,12 +127,13 @@ const executeNot = (
   store: KvTripleStore,
   clause: NotClause,
   contexts: readonly Context[],
+  asOf?: number,
 ): Effect.Effect<Context[]> => {
   return Effect.gen(function* () {
     const results: Context[] = [];
 
     for (const ctx of contexts) {
-      const hasMatch = yield* notClauseMatchesContext(store, clause, ctx);
+      const hasMatch = yield* notClauseMatchesContext(store, clause, ctx, asOf);
       if (!hasMatch) results.push(ctx);
     }
 
@@ -149,6 +151,7 @@ const executeOr = (
   store: KvTripleStore,
   clause: OrClause,
   contexts: readonly Context[],
+  asOf?: number,
 ): Effect.Effect<Context[]> => {
   const alternatives = normalizeOrAlternatives(clause) as OrAlternative[];
 
@@ -157,7 +160,7 @@ const executeOr = (
 
     for (const ctx of contexts) {
       for (const alt of alternatives) {
-        if (yield* orAlternativeMatchesContext(store, alt, ctx)) {
+        if (yield* orAlternativeMatchesContext(store, alt, ctx, asOf)) {
           results.push(ctx);
           break;
         }
@@ -168,133 +171,12 @@ const executeOr = (
   });
 };
 
-/**
- * Execute a link clause (transitive relationship traversal).
- *
- * ["link", linkName, source, target] — follows a named link pattern
- * transitively. The link name maps to an attribute pattern.
- * Equivalent to recursive ancestor/descendant queries.
- *
- * Implementation: BFS traversal following the attribute, collecting
- * all reachable entities up to a maximum depth.
- */
-const executeLink = (
-  store: KvTripleStore,
-  clause: LinkClause,
-  contexts: readonly Context[],
-  maxDepth: number = 100,
-): Effect.Effect<Context[]> => {
-  const [, linkAttr, sourceTerm, targetTerm] = clause;
-
-  return Effect.gen(function* () {
-    const results: Context[] = [];
-
-    for (const ctx of contexts) {
-      const sourceResolved = isVariable(sourceTerm)
-        ? (ctx[sourceTerm] as string | undefined)
-        : String(sourceTerm);
-      const targetResolved = isVariable(targetTerm)
-        ? (ctx[targetTerm] as string | undefined)
-        : undefined;
-
-      if (sourceResolved !== undefined) {
-        // Forward traversal: source is bound, find all reachable targets
-        const reachable = yield* bfsTraverse(store, linkAttr, sourceResolved, maxDepth);
-
-        for (const target of reachable) {
-          if (targetResolved !== undefined) {
-            // Target is also bound — check if reachable
-            if (target === targetResolved) {
-              results.push(ctx);
-            }
-          } else if (isVariable(targetTerm)) {
-            // Target is unbound variable — bind it
-            results.push({ ...ctx, [targetTerm]: target });
-          }
-        }
-      } else if (targetResolved !== undefined && isVariable(sourceTerm)) {
-        // Reverse traversal: target is bound, find all sources
-        // This is more expensive — scan all entities with the attribute
-        // and check reachability
-        const allWithAttr = yield* store.scanCollectAsync({ attribute: linkAttr });
-
-        const sources = new Set<string>();
-        for (const datom of allWithAttr) {
-          if (datom.value.type === "ref" || datom.value.type === "string") {
-            const reachable = yield* bfsTraverse(store, linkAttr, datom.entity, maxDepth);
-            if (reachable.has(targetResolved)) {
-              sources.add(datom.entity);
-            }
-          }
-        }
-
-        for (const source of sources) {
-          results.push({ ...ctx, [sourceTerm]: source });
-        }
-      }
-    }
-
-    return results;
-  });
-};
+// ─── Rule execution (naive fixpoint evaluation) ────────────────────────────
 
 /**
- * BFS traversal following a ref attribute.
- * Returns the set of all reachable entity IDs (not including the source).
- */
-const bfsTraverse = (
-  store: KvTripleStore,
-  attribute: string,
-  startEntity: string,
-  maxDepth: number,
-): Effect.Effect<Set<string>> => {
-  return Effect.gen(function* () {
-    const visited = new Set<string>();
-    let frontier = [startEntity];
-    let depth = 0;
-
-    while (frontier.length > 0 && depth < maxDepth) {
-      const nextFrontier: string[] = [];
-      for (const entity of frontier) {
-        const datoms = yield* store.scanCollectAsync({ entity, attribute });
-        for (const datom of datoms) {
-          const target =
-            datom.value.type === "ref"
-              ? datom.value.value
-              : datom.value.type === "string"
-                ? datom.value.value
-                : null;
-
-          if (target !== null && !visited.has(target)) {
-            visited.add(target);
-            nextFrontier.push(target);
-          }
-        }
-      }
-      frontier = nextFrontier;
-      depth++;
-    }
-
-    return visited;
-  });
-};
-
-// ─── Rule execution (semi-naive evaluation) ────────────────────────────────
-
-/**
- * Execute recursive rules using semi-naive evaluation.
- *
- * Semi-naive evaluation maintains a "delta" relation of newly-derived facts
- * from each iteration. Each iteration only joins against the delta from
- * the previous iteration, avoiding redundant computation.
- *
- * Algorithm:
- * 1. Evaluate all rule bodies once to get initial facts (R^0)
- * 2. Compute delta = R^0
- * 3. Repeat until fixpoint (delta is empty):
- *    a. Evaluate rule bodies, substituting delta for one recursive occurrence
- *    b. New delta = new facts not in cumulative result
- *    c. Merge delta into cumulative result
+ * Execute recursive rules by repeatedly evaluating rule bodies against all
+ * pairs discovered so far. A seen set terminates at the fixpoint. This is
+ * intentionally the simple, correct algorithm; it is not semi-naive.
  */
 interface RulePair {
   readonly arg1: Constant | null;
@@ -353,6 +235,7 @@ const deriveRulePairs = (
   store: KvTripleStore,
   rules: readonly Rule[],
   ruleName: string,
+  asOf?: number,
 ): Effect.Effect<RulePair[]> =>
   Effect.gen(function* () {
     const definitions = rules.filter((rule) => rule.name === ruleName);
@@ -375,7 +258,7 @@ const deriveRulePairs = (
             ? clause[0] === ruleName
               ? applyRulePairs(current, clause, pairs)
               : []
-            : yield* executePattern(store, clause as PatternClause, current);
+            : yield* executePattern(store, clause as PatternClause, current, asOf);
           if (current.length === 0) break;
         }
         for (const context of current) {
@@ -398,8 +281,9 @@ const executeRules = (
   rules: readonly Rule[],
   contexts: readonly Context[],
   ruleApplication: RuleApplication,
+  asOf?: number,
 ): Effect.Effect<Context[]> =>
-  deriveRulePairs(store, rules, ruleApplication[0]).pipe(
+  deriveRulePairs(store, rules, ruleApplication[0], asOf).pipe(
     Effect.map((pairs) => applyRulePairs(contexts, ruleApplication, pairs)),
   );
 
@@ -413,6 +297,7 @@ const executeClause = (
   clause: Clause,
   contexts: readonly Context[],
   rules: readonly Rule[],
+  asOf?: number,
 ): Effect.Effect<Context[]> => {
   if (isPredicateClause(clause)) {
     return Effect.succeed(
@@ -421,23 +306,19 @@ const executeClause = (
   }
 
   if (isNotClause(clause)) {
-    return executeNot(store, clause as NotClause, contexts);
+    return executeNot(store, clause as NotClause, contexts, asOf);
   }
 
   if (isOrClause(clause)) {
-    return executeOr(store, clause as OrClause, contexts);
-  }
-
-  if (isLinkClause(clause)) {
-    return executeLink(store, clause as LinkClause, contexts);
+    return executeOr(store, clause as OrClause, contexts, asOf);
   }
 
   if (isRuleApplication(clause)) {
-    return executeRules(store, rules, contexts, clause as RuleApplication);
+    return executeRules(store, rules, contexts, clause as RuleApplication, asOf);
   }
 
   if (isPatternClause(clause)) {
-    return executePattern(store, clause as PatternClause, contexts);
+    return executePattern(store, clause as PatternClause, contexts, asOf);
   }
 
   // Unknown clause type — pass through
@@ -456,12 +337,13 @@ const executeWhere = (
   store: KvTripleStore,
   clauses: readonly Clause[],
   rules: readonly Rule[],
+  asOf?: number,
 ): Effect.Effect<Context[]> => {
   return Effect.gen(function* () {
     let contexts: Context[] = [emptyContext];
 
     for (const clause of clauses) {
-      contexts = yield* executeClause(store, clause, contexts, rules);
+      contexts = yield* executeClause(store, clause, contexts, rules, asOf);
       if (contexts.length === 0) break;
     }
 
@@ -524,6 +406,7 @@ const hydrateOptionalProjection = (
   store: KvTripleStore,
   query: DatalogQuery,
   rows: readonly Context[],
+  asOf?: number,
 ): Effect.Effect<Context[]> => {
   const projection = query.optionalProjection;
   if (!projection || projection.fields.length === 0) {
@@ -550,7 +433,9 @@ const hydrateOptionalProjection = (
         let entityFields = entityCache.get(entityId);
         if (!entityFields) {
           entityFields = new Map<string, Constant>();
-          const datoms = yield* store.getEntity(entityId).pipe(Stream.runCollect);
+          const datoms = yield* asOf === undefined
+            ? store.getEntity(entityId).pipe(Stream.runCollect)
+            : store.scanCollectAsOfAsync({ entity: entityId }, asOf);
           for (const datom of datoms) {
             if (!entityFields.has(datom.attribute)) {
               entityFields.set(datom.attribute, tripleValueToResultValue(datom.value));
@@ -749,10 +634,11 @@ export const executeQuery = (
   store: KvTripleStore,
   query: DatalogQuery,
   rules: readonly Rule[] = [],
+  options: { readonly asOf?: number } = {},
 ): Effect.Effect<QueryResult> => {
   return Effect.gen(function* () {
     // 1. Execute WHERE clauses
-    const contexts = yield* executeWhere(store, query.where, rules);
+    const contexts = yield* executeWhere(store, query.where, rules, options.asOf);
 
     // 2. Extract find variables (and aggregate input variables)
     // When aggregation is requested, we must preserve aggregate input variables
@@ -770,7 +656,7 @@ export const executeQuery = (
       results = actualize(contexts, query.find);
     }
 
-    results = yield* hydrateOptionalProjection(store, query, results);
+    results = yield* hydrateOptionalProjection(store, query, results, options.asOf);
 
     // 4. HAVING
     if (query.having && query.having.length > 0) {
@@ -817,10 +703,11 @@ export const executeWrappedQuery = (
   store: KvTripleStore,
   query: WrappedQuery,
   rules: readonly Rule[] = [],
+  options: { readonly asOf?: number } = {},
 ): Effect.Effect<WrappedQueryResult> => {
   return Effect.gen(function* () {
     // 1. Execute inner query
-    const innerResult = yield* executeQuery(store, query.inner, rules);
+    const innerResult = yield* executeQuery(store, query.inner, rules, options);
     let results = [...innerResult.results] as Context[];
 
     // 2. Apply wrapper filters

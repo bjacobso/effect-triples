@@ -11,6 +11,7 @@ overrides:
   "better-sqlite3": "12.10.0"
 
 catalog:
+  "@changesets/cli": 3.0.1
   "@effect/platform-node": 4.0.0-rc.112
   "@effect/sql-pg": 4.0.0-rc.112
   "@effect/sql-sqlite-node": 4.0.0-rc.112

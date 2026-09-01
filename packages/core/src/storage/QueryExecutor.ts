@@ -56,7 +56,6 @@ export interface QueryMetrics {
   readonly predicateCount: number;
   readonly notClauseCount: number;
   readonly orClauseCount: number;
-  readonly linkClauseCount: number;
   readonly hasAggregation: boolean;
   readonly isRecursive: boolean;
   readonly aggregateOps: readonly string[];
@@ -122,6 +121,7 @@ export interface QueryExecutorService {
   readonly execute: (
     query: DatalogQuery,
     debug?: boolean,
+    asOf?: number,
   ) => Effect.Effect<{ results: QueryResult; debug?: QueryDebugInfo }, ReadError>;
 
   /**
@@ -134,6 +134,7 @@ export interface QueryExecutorService {
   readonly executePage: (
     query: WrappedQuery,
     debug?: boolean,
+    asOf?: number,
   ) => Effect.Effect<WrappedQueryResult, ReadError>;
 
   /**

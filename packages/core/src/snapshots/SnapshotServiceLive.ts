@@ -6,6 +6,7 @@
  */
 
 import { Clock, Effect, Layer, Option } from "effect";
+import type { EntityId } from "../Branded.js";
 import { StorageAdapter } from "../storage/StorageAdapter.js";
 import { Triples } from "../store/Triples.js";
 import { TxAttributes } from "../utils/id.js";
@@ -27,7 +28,6 @@ import {
   EMPTY_ENTITY_HASH,
   FORMAT_VERSION,
 } from "./canonical.js";
-import type { EntityId } from "../Triple.js";
 import type { ContentId } from "../content/ContentId.js";
 import type {
   EntitySnapshotResponse,
@@ -164,10 +164,68 @@ const makeSnapshotWriter = Effect.gen(function* () {
   const materialize: SnapshotWriterShape["materialize"] = (txId, txTime, changedEntityIds) =>
     Effect.gen(function* () {
       const snapshots: EntitySnapshot[] = [];
+      const basis = yield* store.transaction(txId).pipe(
+        Effect.mapError(
+          (e) =>
+            new SnapshotError({
+              message: `Failed to resolve transaction ${txId}: ${e.message}`,
+              cause: e,
+            }),
+        ),
+      );
+      const positions = new Map<string, number | null>();
+      if (basis) positions.set(txId, basis.position);
+
+      const transactionPosition = (candidateTxId: string) =>
+        Effect.gen(function* () {
+          const cached = positions.get(candidateTxId);
+          if (cached !== undefined || positions.has(candidateTxId)) return cached ?? null;
+          const record = yield* store.transaction(candidateTxId);
+          const position = record?.position ?? null;
+          positions.set(candidateTxId, position);
+          return position;
+        });
 
       for (const entityId of changedEntityIds) {
-        // Read current active triples for this entity
-        const triples = yield* store.entity(entityId as EntityId).pipe(
+        // Projection runs after the source commit. When the transaction journal
+        // is available, reconstruct the exact commit basis by ordered position;
+        // wall-clock time alone cannot distinguish same-millisecond commits.
+        const triples = yield* (
+          basis
+            ? Effect.gen(function* () {
+                const history = yield* store.history(entityId as EntityId);
+                const result: Array<(typeof history)[number]> = [];
+                for (const triple of history) {
+                  const createdTxId = Option.getOrUndefined(triple.txId);
+                  const createdPosition = createdTxId
+                    ? yield* transactionPosition(createdTxId)
+                    : null;
+                  const createdByBasis =
+                    createdPosition !== null
+                      ? createdPosition <= basis.position
+                      : triple.createdAt < basis.instant ||
+                        (triple.createdAt === basis.instant &&
+                          (createdTxId === undefined || createdTxId <= basis.txId));
+                  if (!createdByBasis) continue;
+
+                  const retractedAt = Option.getOrUndefined(triple.retractedAt);
+                  const retractTxId = Option.getOrUndefined(triple.retractTxId);
+                  const retractPosition = retractTxId
+                    ? yield* transactionPosition(retractTxId)
+                    : null;
+                  const retractedByBasis =
+                    retractedAt !== undefined &&
+                    (retractPosition !== null
+                      ? retractPosition <= basis.position
+                      : retractedAt < basis.instant ||
+                        (retractedAt === basis.instant &&
+                          (retractTxId === undefined || retractTxId <= basis.txId)));
+                  if (!retractedByBasis) result.push(triple);
+                }
+                return result;
+              })
+            : store.matchAsOf({ entityId }, txTime)
+        ).pipe(
           Effect.mapError(
             (e) =>
               new SnapshotError({

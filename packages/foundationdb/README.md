@@ -8,4 +8,16 @@ npm install effect @bjacobso/triplex @bjacobso/triplex-foundationdb
 
 Requires Node.js 22 or newer and compatible FoundationDB client libraries.
 
+Triplex requires a non-empty FoundationDB subspace by default because clearing
+an unscoped backend would clear the entire cluster keyspace:
+
+```ts
+const backend = makeFdbKvBackend({
+  subspace: Buffer.from("triplex/my-database/"),
+});
+```
+
+An isolated disposable cluster can opt into root access with
+`allowUnsafeRootSubspace: true`.
+
 MIT © 2026 Ben Jacobson.

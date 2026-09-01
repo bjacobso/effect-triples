@@ -34,7 +34,7 @@ const deps = (overrides: Partial<QueryDependencies>): QueryDependencies => ({
   entityTypes: new Set(),
   boundEntityIds: new Set(),
   boundEntityTypes: new Set(),
-  linkTypes: new Set(),
+  unboundEntityTypes: new Set(),
   ruleNames: new Set(),
   ...overrides,
 });
@@ -166,12 +166,10 @@ describeFdb("FdbSubscriptions", (it) => {
       const suffix = `${Date.now()}_${Math.random().toString(36).slice(2)}`;
       const tenantA = yield* makeFdbSubscriptionService({
         clusterFile: clusterFilePath,
-        requireSubspace: true,
         subspace: Buffer.from(`__watch_tenant_a_${suffix}/`),
       });
       const tenantB = yield* makeFdbSubscriptionService({
         clusterFile: clusterFilePath,
-        requireSubspace: true,
         subspace: Buffer.from(`__watch_tenant_b_${suffix}/`),
       });
       const countA = yield* Ref.make(0);

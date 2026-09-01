@@ -7,7 +7,11 @@
  */
 
 import { Context, Effect, Layer } from "effect";
-import { ChangeEmitter, type ChangeEmitterService, type ChangeEvent } from "@bjacobso/triplex";
+import {
+  ChangeEmitter,
+  type ChangeEmitterService,
+  type ChangeEvent,
+} from "@bjacobso/triplex/internal";
 import { extractEntityType, type QueryDependencies } from "@bjacobso/triplex/subscriptions";
 import type FdbDatabase from "foundationdb/dist/lib/database.js";
 import type FdbTransaction from "foundationdb/dist/lib/transaction.js";
@@ -114,9 +118,6 @@ export const fdbSubscriptionEntityKey = (entityId: string): Uint8Array =>
 export const fdbSubscriptionEntityTypeKey = (entityType: string): Uint8Array =>
   textKey("type", entityType);
 
-export const fdbSubscriptionLinkTypeKey = (linkType: string): Uint8Array =>
-  textKey("link", linkType);
-
 export const fdbSubscriptionKeysForEvent = (event: ChangeEvent): ReadonlyArray<Uint8Array> => {
   const keys: Buffer[] = [WATCH_GLOBAL];
   for (const change of event.changes) {
@@ -148,15 +149,6 @@ export const fdbSubscriptionKeysForDependencies = (
   }
   for (const entityId of dependencies.boundEntityIds) {
     keys.push(toBuffer(fdbSubscriptionEntityKey(entityId)));
-  }
-
-  if (dependencies.linkTypes.size > 0) {
-    // ChangeEvent currently omits values, so we cannot signal a concrete
-    // relationship type. Link queries are conservatively invalidated by the
-    // attributes that define link records.
-    keys.push(toBuffer(fdbSubscriptionAttributeKey(":_link/type")));
-    keys.push(toBuffer(fdbSubscriptionAttributeKey(":_link/source")));
-    keys.push(toBuffer(fdbSubscriptionAttributeKey(":_link/target")));
   }
 
   if (keys.length === 0) {

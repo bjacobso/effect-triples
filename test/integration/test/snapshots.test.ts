@@ -13,7 +13,7 @@ import {
   triplesToAttributeMap,
   diffAttributes,
   EMPTY_ENTITY_HASH,
-} from "@bjacobso/triplex";
+} from "@bjacobso/triplex/internal";
 import type { EntityId } from "@bjacobso/triplex";
 import { SqliteTestLayer } from "./fixtures/SqliteTestLayer.js";
 

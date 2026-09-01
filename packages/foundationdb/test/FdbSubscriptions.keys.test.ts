@@ -17,7 +17,7 @@ const deps = (overrides: Partial<QueryDependencies>): QueryDependencies => ({
   entityTypes: new Set(),
   boundEntityIds: new Set(),
   boundEntityTypes: new Set(),
-  linkTypes: new Set(),
+  unboundEntityTypes: new Set(),
   ruleNames: new Set(),
   ...overrides,
 });
@@ -75,19 +75,5 @@ describe("FdbSubscriptions watch key mapping", () => {
     ).map(dec);
 
     expect(keys).toEqual(["__oo_subscriptions__/global"]);
-  });
-
-  it("maps link dependencies to link record attributes", () => {
-    const keys = fdbSubscriptionKeysForDependencies(
-      deps({
-        linkTypes: new Set(["manages"]),
-      }),
-    ).map(dec);
-
-    expect(keys).toEqual([
-      "__oo_subscriptions__/attr/:_link/type",
-      "__oo_subscriptions__/attr/:_link/source",
-      "__oo_subscriptions__/attr/:_link/target",
-    ]);
   });
 });

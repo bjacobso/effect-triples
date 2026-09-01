@@ -22,6 +22,36 @@ const employeeType = (minimumAge?: number) =>
   });
 
 describe("entity validation observations", () => {
+  it.effect("preserves a list containing one fact value", () =>
+    Effect.gen(function* () {
+      const config = yield* ConfigStore.ConfigStore;
+      const validation = yield* EntityValidation.EntityValidation;
+      const triples = yield* Triples;
+      const schema = yield* EntityValidation.define(
+        "Team",
+        TypeExpr.struct({
+          ":team/member": TypeExpr.required(TypeExpr.list(TypeExpr.ref("Employee"))),
+        }),
+      );
+      yield* config.commit({ label: "team schema", objects: [schema], ref: "live" });
+      yield* triples.assert({
+        entityId: "team:one",
+        entityType: "Team",
+        attribute: ":team/member",
+        value: { type: "ref", value: "employee:alice" },
+      });
+
+      const run = yield* validation.revalidate({ ref: "live" });
+      expect(run.results).toEqual([
+        expect.objectContaining({
+          subject: "team:one",
+          valid: true,
+          state: { ":team/member": ["employee:alice"] },
+        }),
+      ]);
+    }).pipe(Effect.provide(TriplexLayer)),
+  );
+
   it.effect("revalidates after schema changes and keeps queryable error history", () =>
     Effect.gen(function* () {
       const config = yield* ConfigStore.ConfigStore;
@@ -58,14 +88,22 @@ describe("entity validation observations", () => {
         },
       ]);
 
+      expect(yield* validation.currentInvalid("live")).toEqual(
+        expect.objectContaining({ status: "unvalidated", invalid: [] }),
+      );
+
       const firstRun = yield* validation.revalidate({ ref: "live" });
       expect(firstRun.results).toHaveLength(2);
       expect(firstRun.results.find((result) => result.subject === "employee:alice")?.valid).toBe(
         true,
       );
-      expect((yield* validation.currentInvalid("live")).map((row) => row.subject)).toEqual([
-        "employee:bob",
-      ]);
+      expect(yield* validation.currentInvalid("live")).toEqual(
+        expect.objectContaining({
+          status: "current",
+          sourcePosition: firstRun.sourcePosition,
+          invalid: [expect.objectContaining({ subject: "employee:bob" })],
+        }),
+      );
 
       const bobMessages = yield* validation.violations({ subject: "employee:bob" });
       expect(bobMessages).toEqual([
@@ -81,12 +119,17 @@ describe("entity validation observations", () => {
       // atomically moves the `live` heads to them.
       const schemaV2 = yield* EntityValidation.define("Employee", employeeType(21));
       yield* config.commit({ label: "employee schema v2", objects: [schemaV2], ref: "live" });
+      expect(yield* validation.currentInvalid("live")).toEqual(
+        expect.objectContaining({
+          status: "stale",
+          invalid: [expect.objectContaining({ subject: "employee:bob" })],
+        }),
+      );
       const secondRun = yield* validation.revalidate({ ref: "live" });
       expect(secondRun.id).not.toBe(firstRun.id);
-      expect((yield* validation.currentInvalid("live")).map((row) => row.subject).sort()).toEqual([
-        "employee:alice",
-        "employee:bob",
-      ]);
+      expect(
+        (yield* validation.currentInvalid("live")).invalid.map((row) => row.subject).sort(),
+      ).toEqual(["employee:alice", "employee:bob"]);
 
       const aliceAge = facts.find(
         (fact) => fact.entityId === "employee:alice" && fact.attribute === ":employee/age",
@@ -112,6 +155,10 @@ describe("entity validation observations", () => {
           value: number(30),
         },
       ]);
+
+      expect(yield* validation.currentInvalid("live")).toEqual(
+        expect.objectContaining({ status: "stale" }),
+      );
 
       const thirdRun = yield* validation.revalidate({ ref: "live" });
       expect(thirdRun.transaction).toBeDefined();
@@ -155,7 +202,7 @@ describe("entity validation observations", () => {
           .sort((a, b) => a.value.localeCompare(b.value)),
       );
       const currentInvalid = yield* validation.currentInvalid("live");
-      expect(currentInvalid).toEqual([]);
+      expect(currentInvalid).toEqual(expect.objectContaining({ status: "current", invalid: [] }));
       const repeatedRun = yield* validation.revalidate({ ref: "live" });
       expect(repeatedRun.id).toBe(thirdRun.id);
       expect(repeatedRun.transaction).toBeUndefined();

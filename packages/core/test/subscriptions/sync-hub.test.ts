@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { TopicFilteredSyncHub } from "../../src/subscriptions/SyncHub.js";
-import type { DatalogQuery } from "../../src/Datalog.js";
+import type { DatalogQuery } from "../../src/datalog/schema.js";
 import type { ChangeEvent } from "../../src/store/ChangeEmitter.js";
 import type { SyncServerMessage } from "../../src/subscriptions/types.js";
 

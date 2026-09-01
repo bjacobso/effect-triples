@@ -7,7 +7,7 @@
  * that touched no configuration; did it churn anything? I undid last week's
  * edit - is the form now what we shipped in 2026.1?
  *
- * The declaration this exercises lives in `domain/OnboardingConfig.ts`. What
+ * The declaration this exercises lives in the adjacent test fixture. What
  * remains here is the release story.
  *
  * NOTE (altitude): these assertions still reach for `cid`, `closureCid` and
@@ -31,7 +31,7 @@ import {
   FieldAttrs,
   FieldAttrsV2,
   release,
-} from "../../src/config/domain/OnboardingConfig";
+} from "./fixtures/OnboardingConfig";
 
 describe("config graph end to end", () => {
   it.effect("versions five releases and keeps a verifiable history", () =>

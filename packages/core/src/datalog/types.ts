@@ -11,7 +11,6 @@ import type {
   NotClause,
   OrAlternative,
   OrClause,
-  LinkClause,
   RuleApplication,
   RuleBodyClause,
   Rule,
@@ -37,7 +36,6 @@ export type {
   NotClause,
   OrAlternative,
   OrClause,
-  LinkClause,
   RuleApplication,
   RuleBodyClause,
   Rule,
@@ -75,18 +73,3 @@ export const emptyContext: Context = {};
  * Each context represents one result row
  */
 export type QueryResult = readonly Context[];
-
-/**
- * A simplified triple representation for pattern matching
- * [entityId, attribute, value, txId?]
- * The 4th element (txId) is optional for backward compatibility
- */
-export type SimplifiedTriple =
-  | readonly [string, string, Constant, string | null]
-  | readonly [string, string, Constant];
-
-/**
- * Binding: the result of actualizing a query (extracting find values)
- * Maps variable names to their resolved values
- */
-export type Binding = Context;

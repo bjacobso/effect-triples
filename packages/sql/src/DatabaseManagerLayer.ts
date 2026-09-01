@@ -34,7 +34,7 @@ import {
   DatabaseAlreadyExists,
   getTripleStoreRuntime,
   IdGenerator,
-} from "@bjacobso/triplex";
+} from "@bjacobso/triplex/internal";
 import { SqlQueryExecutorLive } from "./SqlQueryExecutor.js";
 import { StorageBackend } from "./StorageBackend.js";
 

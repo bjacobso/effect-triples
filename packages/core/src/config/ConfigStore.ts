@@ -100,7 +100,7 @@ export interface ConfigStoreService {
   readonly commit: (input: CommitInput) => Effect.Effect<CommitResult, CommitError>;
   readonly setRef: (
     name: string,
-    snapshotId: string,
+    snapshotId: InMemoryConfigStore.ConfigSnapshot["id"],
   ) => Effect.Effect<
     InMemoryConfigStore.ConfigSnapshot,
     LoadError | WriteError | TransactionConflictError | InMemoryConfigStore.UnknownSnapshotError
@@ -109,7 +109,7 @@ export interface ConfigStoreService {
     name: string,
   ) => Effect.Effect<InMemoryConfigStore.ConfigSnapshot | undefined, LoadError>;
   readonly snapshotById: (
-    id: string,
+    id: InMemoryConfigStore.ConfigSnapshot["id"],
   ) => Effect.Effect<InMemoryConfigStore.ConfigSnapshot | undefined, LoadError>;
   /** Revisions transitively depending on a logical config object. */
   readonly reverseDependencies: (
@@ -226,7 +226,7 @@ const makeService = Effect.gen(function* () {
         if (!revision) return yield* corrupt(id, "missing revision data");
         revisions.push(revision);
       }
-      revisions.sort((a, b) => a.seq - b.seq);
+      revisions.sort((a, b) => a.seq - b.seq || a.id.localeCompare(b.id));
 
       const buildNode = (
         cid: import("../content/ContentId.js").ContentId,
@@ -274,9 +274,9 @@ const makeService = Effect.gen(function* () {
         if (error instanceof CorruptConfigStoreError) return yield* error;
         return yield* corrupt("<snapshot>", String(error));
       }
-      snapshots.sort((a, b) => a.seq - b.seq);
+      snapshots.sort((a, b) => a.seq - b.seq || a.id.localeCompare(b.id));
 
-      const refs = new Map<string, string>();
+      const refs = new Map<string, InMemoryConfigStore.ConfigSnapshot["id"]>();
       for (const [id, rows] of groupByEntity(refRows)) {
         const name = stringValue(latest(rows, System.attribute.key));
         const target = stringValue(latest(rows, System.attribute.target));

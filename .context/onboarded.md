@@ -112,6 +112,13 @@ proofs establish what was evaluated; database queries do not replace their verif
 ### Ontology facts
 
 - Model business objects as stable entities with namespaced attributes.
+- Use PascalCase entity type identities (`Employer`), lowercase namespaced attribute identities
+  (`:employer/name`), and ergonomic TypeScript aliases (`name`). Define an attribute's value type
+  globally, but attach requiredness and cardinality to each entity type's use of it. This allows
+  `Employer` to require `:employer/name` while `EmployerSummary` uses the same attribute optionally.
+- Model relationship attributes with the same definition/use split. A ref attribute identifies its
+  target entity type globally; an entity type decides whether that relationship is required or
+  many-valued when it uses the attribute.
 - Represent relationships as `ref` values so Datalog can traverse them.
 - Treat changes as new assertions and retractions rather than in-place mutation.
 - Pin materializations and derived facts to their source transaction or observation time.

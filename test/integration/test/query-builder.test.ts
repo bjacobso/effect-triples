@@ -12,7 +12,7 @@ import {
   TripleStoreRuntimeLayer,
   string,
   number,
-} from "@bjacobso/triplex";
+} from "@bjacobso/triplex/internal";
 import { SqliteTestLayer } from "./fixtures/SqliteTestLayer.js";
 import { SqliteAdapterLive } from "@bjacobso/triplex-sqlite";
 import { SqlQueryExecutorLive } from "@bjacobso/triplex-sql";

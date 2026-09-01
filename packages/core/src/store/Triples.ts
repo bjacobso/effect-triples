@@ -134,6 +134,8 @@ export interface BulkInsertOptions {
 export interface QueryOptions {
   /** Include debug metrics (generated SQL, timings, plan) in the response. */
   readonly debug?: boolean;
+  /** Evaluate the complete query against facts valid at this epoch-millisecond instant. */
+  readonly asOf?: number;
 }
 
 /**

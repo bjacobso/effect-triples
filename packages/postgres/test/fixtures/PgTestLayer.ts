@@ -34,7 +34,7 @@
 import { Context, Effect, Layer } from "effect";
 import { GenericContainer, Wait } from "testcontainers";
 import type { StartedTestContainer } from "testcontainers";
-import { CurrentDialect, TriplesLive, TripleStoreRuntimeLayer } from "@bjacobso/triplex";
+import { CurrentDialect, TriplesLive, TripleStoreRuntimeLayer } from "@bjacobso/triplex/internal";
 import { SqlQueryExecutorLive } from "@bjacobso/triplex-sql";
 import {
   makePostgresqlLayerFromUrl,

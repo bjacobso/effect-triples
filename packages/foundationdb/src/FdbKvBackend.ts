@@ -14,12 +14,9 @@
  *
  * @example
  * ```typescript
- * // Default: connects to local FDB, no subspace prefix
- * const layer = makeFdbKvBackend();
- *
- * // With subspace isolation (e.g., per-tenant)
+ * // A non-empty subspace is required by default.
  * const layer = makeFdbKvBackend({
- *   subspace: Buffer.from("ontology/tenant-123/"),
+ *   subspace: Buffer.from("triplex/tenant-123/"),
  * });
  *
  * // Wire into the KV-backed Triples service
@@ -37,7 +34,7 @@ import {
   type KvEntry,
   type KvTransaction,
   type RangeOptions,
-} from "@bjacobso/triplex";
+} from "@bjacobso/triplex/internal";
 
 // ─── FDB imports (dynamic to allow graceful failure) ───────────────────────
 
@@ -69,13 +66,12 @@ export interface FdbKvBackendConfig {
   readonly subspace?: Buffer;
 
   /**
-   * Require a non-empty subspace before opening the FDB provider.
+   * Explicitly permit using the cluster root as the Triplex keyspace.
    *
-   * Local single-tenant development can leave this disabled. Hosted and
-   * multi-tenant deployments should enable it so application data and
-   * subscription watch keys cannot accidentally share the cluster root.
+   * This is unsafe on a shared cluster because `clear()` clears the configured
+   * keyspace. Omit this option in normal use and provide a non-empty `subspace`.
    */
-  readonly requireSubspace?: boolean;
+  readonly allowUnsafeRootSubspace?: boolean;
 
   /**
    * FDB API version to use. Defaults to 720 (latest supported by the npm package).
@@ -347,12 +343,12 @@ export const assertFdbSubspaceConfigured = (
   operation: string,
 ): void => {
   if (
-    config.requireSubspace === true &&
+    config.allowUnsafeRootSubspace !== true &&
     (config.subspace === undefined || config.subspace.length === 0)
   ) {
     throw makeConstraintError(
       operation,
-      `FDB ${operation} requires a non-empty subspace when requireSubspace is enabled`,
+      `FDB ${operation} requires a non-empty subspace; set allowUnsafeRootSubspace only for an isolated cluster`,
     );
   }
 };
@@ -750,9 +746,6 @@ export const makeFdbKvBackendService = (
  *
  * @example
  * ```typescript
- * // Default local FDB
- * const layer = makeFdbKvBackend();
- *
  * // With subspace isolation
  * const layer = makeFdbKvBackend({
  *   subspace: Buffer.from("ontology/db1/"),
@@ -769,7 +762,7 @@ export const makeFdbKvBackend = (config?: FdbKvBackendConfig): Layer.Layer<KvBac
   Layer.effect(KvBackend, makeFdbKvBackendService(config));
 
 /**
- * Default FDB KV backend layer.
- * Connects to the local FDB cluster with no subspace prefix.
+ * Default FDB KV backend layer. Acquisition fails until callers configure a
+ * subspace, preventing accidental cluster-root access.
  */
 export const FdbKvBackendLive: Layer.Layer<KvBackend> = makeFdbKvBackend();

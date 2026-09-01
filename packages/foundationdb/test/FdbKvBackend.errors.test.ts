@@ -63,23 +63,21 @@ describe("FdbKvBackend error classification", () => {
     expect(error.code).toBe(2203);
   });
 
-  it("requires a non-empty subspace when configured", () => {
+  it("requires a non-empty subspace by default", () => {
+    expect(() => assertFdbSubspaceConfigured({}, "subscriptions.open")).toThrow(
+      /requires a non-empty subspace/,
+    );
+
     expect(() =>
-      assertFdbSubspaceConfigured({ requireSubspace: true }, "subscriptions.open"),
+      assertFdbSubspaceConfigured({ subspace: Buffer.alloc(0) }, "subscriptions.open"),
     ).toThrow(/requires a non-empty subspace/);
 
     expect(() =>
-      assertFdbSubspaceConfigured(
-        { requireSubspace: true, subspace: Buffer.alloc(0) },
-        "subscriptions.open",
-      ),
-    ).toThrow(/requires a non-empty subspace/);
+      assertFdbSubspaceConfigured({ subspace: Buffer.from("tenant-a/") }, "subscriptions.open"),
+    ).not.toThrow();
 
     expect(() =>
-      assertFdbSubspaceConfigured(
-        { requireSubspace: true, subspace: Buffer.from("tenant-a/") },
-        "subscriptions.open",
-      ),
+      assertFdbSubspaceConfigured({ allowUnsafeRootSubspace: true }, "subscriptions.open"),
     ).not.toThrow();
   });
 });

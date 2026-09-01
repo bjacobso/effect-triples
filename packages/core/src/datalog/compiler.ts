@@ -25,7 +25,6 @@ import type {
   NotClause,
   OrClause,
   RuleApplication,
-  LinkClause,
   Rule,
   Clause,
   DatalogQuery,
@@ -72,7 +71,6 @@ type InternalClause = Data.TaggedEnum<{
   Predicate: { readonly predicate: PredicateClause };
   Not: { readonly notClause: NotClause };
   Or: { readonly orClause: OrClause };
-  Link: { readonly linkClause: LinkClause };
   RuleCall: { readonly ruleApplication: RuleApplication };
 }>;
 
@@ -83,7 +81,6 @@ interface ClassifiedClauses {
   predicates: PredicateClause[];
   notClauses: NotClause[];
   orClauses: OrClause[];
-  linkClauses: LinkClause[];
   ruleApplications: RuleApplication[];
 }
 
@@ -124,7 +121,6 @@ export interface QueryMetrics {
   predicateCount: number;
   notClauseCount: number;
   orClauseCount: number;
-  linkClauseCount: number;
 
   // Features Used
   hasAggregation: boolean;
@@ -160,6 +156,24 @@ export interface CompiledValueColumns {
   readonly datetime: string;
   readonly json: string;
 }
+
+export interface CompileOptions {
+  /** Evaluate every triple alias at this transaction-time instant. */
+  readonly asOf?: number;
+}
+
+const applyTemporalBasis = (sql: string, asOf: number | undefined): string => {
+  if (asOf === undefined) return sql;
+  if (!Number.isFinite(asOf) || asOf < 0) {
+    throw new Error("Datalog asOf must be a non-negative finite timestamp");
+  }
+  const instant = String(asOf);
+  return sql.replace(
+    /\b([A-Za-z_][A-Za-z0-9_]*)\.retracted_at IS NULL/g,
+    (_condition, alias: string) =>
+      `${alias}.created_at <= ${instant} AND (${alias}.retracted_at IS NULL OR ${alias}.retracted_at > ${instant})`,
+  );
+};
 
 // =============================================================================
 // Helpers
@@ -373,13 +387,6 @@ const parseClause = (
     return InternalClause.Or({ orClause: ["or", alternatives] as OrClause });
   }
 
-  if (head === "link") {
-    if (clause.length !== 4) {
-      throw new Error(`Invalid link clause arity: ${JSON.stringify(clause)}`);
-    }
-    return InternalClause.Link({ linkClause: clause as LinkClause });
-  }
-
   if (clause.length < 3 || clause.length > 4) {
     throw new Error(`Invalid clause arity: ${JSON.stringify(clause)}`);
   }
@@ -405,7 +412,6 @@ const classifyClauses = (
     predicates: [],
     notClauses: [],
     orClauses: [],
-    linkClauses: [],
     ruleApplications: [],
   };
 
@@ -423,9 +429,6 @@ const classifyClauses = (
         break;
       case "Or":
         classified.orClauses.push(parsed.orClause);
-        break;
-      case "Link":
-        classified.linkClauses.push(parsed.linkClause);
         break;
       case "RuleCall":
         classified.ruleApplications.push(parsed.ruleApplication);
@@ -843,78 +846,6 @@ const compileOr = (orClause: OrClause, ctx: CompilerContext): void => {
 };
 
 // =============================================================================
-// Link Clause Compilation
-// =============================================================================
-
-/**
- * Compile a LINK clause to SQL JOINs and WHERE conditions
- *
- * LinkClause format: ["link", relationshipType, source, target, properties?]
- *
- * This expands to queries against the _rel/{relationshipType}/* entities:
- * - :_schema/type = "_Link"
- * - :_rel/type = relationshipType
- * - :_rel/source = source (ref)
- * - :_rel/target = target (ref)
- * - Plus any property bindings
- */
-const compileLinkClause = (linkClause: LinkClause, ctx: CompilerContext): void => {
-  const [, relationshipType, source, target] = linkClause;
-
-  // Create aliases for each link attribute we need to query
-  const typeAlias = nextAlias(ctx);
-  const sourceAlias = nextAlias(ctx);
-  const targetAlias = nextAlias(ctx);
-
-  // Join for :_rel/type = relationshipType (this anchors the link entity)
-  ctx.joins.push(`JOIN triples ${typeAlias} ON ${typeAlias}.retracted_at IS NULL`);
-  ctx.conditions.push(`${typeAlias}.attribute = ${formatValue(":_rel/type", ctx)}`);
-  ctx.conditions.push(`${typeAlias}.value_string = ${formatValue(String(relationshipType), ctx)}`);
-
-  // Join for :_rel/source
-  ctx.joins.push(
-    `JOIN triples ${sourceAlias} ON ${sourceAlias}.entity_id = ${typeAlias}.entity_id AND ${sourceAlias}.retracted_at IS NULL`,
-  );
-  ctx.conditions.push(`${sourceAlias}.attribute = ${formatValue(":_rel/source", ctx)}`);
-
-  // Handle source term
-  if (isVariable(source)) {
-    if (ctx.bindings.has(source)) {
-      // Source is already bound - add equality condition
-      const binding = ctx.bindings.get(source)!;
-      const boundCol = resolveBinding(binding, { valueMode: "string" });
-      ctx.conditions.push(`${sourceAlias}.value_string = ${boundCol}`);
-    } else {
-      // Bind the source variable
-      ctx.bindings.set(source, tripleBinding(sourceAlias, "value"));
-    }
-  } else {
-    ctx.conditions.push(`${sourceAlias}.value_string = ${formatValue(source, ctx)}`);
-  }
-
-  // Join for :_rel/target
-  ctx.joins.push(
-    `JOIN triples ${targetAlias} ON ${targetAlias}.entity_id = ${typeAlias}.entity_id AND ${targetAlias}.retracted_at IS NULL`,
-  );
-  ctx.conditions.push(`${targetAlias}.attribute = ${formatValue(":_rel/target", ctx)}`);
-
-  // Handle target term
-  if (isVariable(target)) {
-    if (ctx.bindings.has(target)) {
-      // Target is already bound - add equality condition
-      const binding = ctx.bindings.get(target)!;
-      const boundCol = resolveBinding(binding, { valueMode: "string" });
-      ctx.conditions.push(`${targetAlias}.value_string = ${boundCol}`);
-    } else {
-      // Bind the target variable
-      ctx.bindings.set(target, tripleBinding(targetAlias, "value"));
-    }
-  } else {
-    ctx.conditions.push(`${targetAlias}.value_string = ${formatValue(target, ctx)}`);
-  }
-};
-
-// =============================================================================
 // HAVING, ORDER BY, LIMIT/OFFSET Helpers
 // =============================================================================
 
@@ -1219,17 +1150,17 @@ export const compile = (
   query: DatalogQuery,
   dialect: SqlDialect = SqliteDialect,
   includeMetrics = false,
+  options: CompileOptions = {},
 ): CompiledQuery => {
   const startTime = includeMetrics ? performance.now() : 0;
   const ctx = createContext(dialect);
   const { find, where, aggregate, having, orderBy, limit, offset, optionalProjection } = query;
-  const { patterns, predicates, notClauses, orClauses, linkClauses } = classifyClauses(where, {
+  const { patterns, predicates, notClauses, orClauses } = classifyClauses(where, {
     allowRuleApplications: false,
   });
 
-  // Must have at least one pattern or link clause
-  if (patterns.length === 0 && linkClauses.length === 0) {
-    throw new Error("Datalog query must have at least one pattern clause or link clause");
+  if (patterns.length === 0) {
+    throw new Error("Datalog query must have at least one pattern clause");
   }
 
   // Compile patterns first (establishes bindings)
@@ -1237,11 +1168,6 @@ export const compile = (
     const alias = compilePattern(pattern, ctx, idx === 0);
     ctx.patternAliases.set(idx, alias);
   });
-
-  // Compile link clauses
-  for (const linkClause of linkClauses) {
-    compileLinkClause(linkClause, ctx);
-  }
 
   // Compile predicates (uses bindings)
   for (const predicate of predicates) {
@@ -1278,7 +1204,7 @@ export const compile = (
   const joinClause = ctx.joins.length > 0 ? ctx.joins.join("\n") : "";
   const whereClause = ctx.conditions.length > 0 ? `WHERE ${ctx.conditions.join(" AND ")}` : "";
 
-  const sql = [
+  const currentSql = [
     `SELECT DISTINCT`,
     `  ${selectParts.join(",\n  ")}`,
     `FROM ${fromTable}`,
@@ -1291,6 +1217,7 @@ export const compile = (
   ]
     .filter(Boolean)
     .join("\n");
+  const sql = applyTemporalBasis(currentSql, options.asOf);
 
   const result: CompiledQuery = {
     sql,
@@ -1313,7 +1240,6 @@ export const compile = (
       predicateCount: predicates.length,
       notClauseCount: notClauses.length,
       orClauseCount: orClauses.length,
-      linkClauseCount: linkClauses.length,
 
       hasAggregation: Boolean(hasAggregates),
       isRecursive: false, // Will be set in compileWithRules
@@ -1708,12 +1634,13 @@ export const compileWithRules = (
   query: DatalogQuery,
   dialect: SqlDialect = SqliteDialect,
   includeMetrics = false,
+  options: CompileOptions = {},
 ): CompiledQuery => {
   const { rules } = query;
 
   // If no rules, use the standard compiler
   if (!rules || rules.length === 0) {
-    return compile(query as DatalogQuery, dialect, includeMetrics);
+    return compile(query as DatalogQuery, dialect, includeMetrics, options);
   }
 
   const startTime = includeMetrics ? performance.now() : 0;
@@ -1735,16 +1662,12 @@ export const compileWithRules = (
     ctes.push(compileRecursiveCTE(ruleName, ruleList));
   }
 
-  const { patterns, predicates, notClauses, orClauses, linkClauses, ruleApplications } =
-    classifyClauses(where, {
-      allowRuleApplications: true,
-    });
+  const { patterns, predicates, notClauses, orClauses, ruleApplications } = classifyClauses(where, {
+    allowRuleApplications: true,
+  });
 
-  // Must have at least one pattern, link clause, or rule application
-  if (patterns.length === 0 && linkClauses.length === 0 && ruleApplications.length === 0) {
-    throw new Error(
-      "Datalog query must have at least one pattern clause, link clause, or rule application",
-    );
+  if (patterns.length === 0 && ruleApplications.length === 0) {
+    throw new Error("Datalog query must have at least one pattern clause or rule application");
   }
 
   // Compile patterns first (establishes bindings)
@@ -1752,11 +1675,6 @@ export const compileWithRules = (
     const alias = compilePattern(pattern, ctx, idx === 0);
     ctx.patternAliases.set(idx, alias);
   });
-
-  // Compile link clauses
-  for (const linkClause of linkClauses) {
-    compileLinkClause(linkClause, ctx);
-  }
 
   // Compile rule applications
   for (const ruleApp of ruleApplications) {
@@ -1822,7 +1740,7 @@ export const compileWithRules = (
   const joinClause = ctx.joins.length > 0 ? ctx.joins.join("\n") : "";
   const whereClause = ctx.conditions.length > 0 ? `WHERE ${ctx.conditions.join(" AND ")}` : "";
 
-  const sql = [
+  const currentSql = [
     cteClause + `SELECT DISTINCT`,
     `  ${selectParts.join(",\n  ")}`,
     `FROM ${fromTable}`,
@@ -1835,6 +1753,7 @@ export const compileWithRules = (
   ]
     .filter(Boolean)
     .join("\n");
+  const sql = applyTemporalBasis(currentSql, options.asOf);
 
   const result: CompiledQuery = {
     sql,
@@ -1857,7 +1776,6 @@ export const compileWithRules = (
       predicateCount: predicates.length,
       notClauseCount: notClauses.length,
       orClauseCount: orClauses.length,
-      linkClauseCount: linkClauses.length,
 
       hasAggregation: Boolean(hasAggregates),
       isRecursive: true, // This function is only called for recursive queries

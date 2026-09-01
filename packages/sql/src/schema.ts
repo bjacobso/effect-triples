@@ -31,7 +31,7 @@ export const TRIPLES_TABLE_DDL = `
     attribute TEXT NOT NULL,
     value_type TEXT NOT NULL CHECK (value_type IN ('string', 'number', 'boolean', 'datetime', 'ref', 'json', 'blob')),
     value_string TEXT,
-    value_number REAL,
+    value_number DOUBLE PRECISION,
     value_boolean INTEGER,
     value_datetime BIGINT,
     value_json TEXT,

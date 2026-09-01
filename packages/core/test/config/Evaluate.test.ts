@@ -74,6 +74,14 @@ describe("evaluation is content-addressed", () => {
     expect(mutated.cid).not.toEqual(evaluation.cid);
   });
 
+  it("treats explanation text as hashed evidence", () => {
+    const evaluation = Evaluate.evaluate(B.eq("ee_1", "role", "caregiver"), base, at(MARCH_3));
+    expect(Evaluate.verify(evaluation)).toEqual([]);
+    expect(Evaluate.verify({ ...evaluation, reason: "a rewritten explanation" })).toEqual([
+      expect.objectContaining({ path: "root" }),
+    ]);
+  });
+
   it("discovers its dependency set rather than being told one", () => {
     // `Any` is where the static and dynamic answers diverge, and why the cache
     // cannot key on `mentions`.

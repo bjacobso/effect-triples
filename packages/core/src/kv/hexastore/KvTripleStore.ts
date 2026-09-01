@@ -799,6 +799,29 @@ export class KvTripleStore {
     });
   }
 
+  /** Synchronous scan at one historical instant, when the backend supports it. */
+  scanCollectAsOf(pattern: ScanPattern, asOf: number): Datom[] | null {
+    const datoms = this.scanCollect(pattern, { includeRetracted: true });
+    return datoms === null
+      ? null
+      : datoms.filter(
+          (datom) =>
+            datom.createdAt <= asOf && (datom.retractedAt === null || datom.retractedAt > asOf),
+        );
+  }
+
+  /** Batched asynchronous scan at one historical instant. */
+  scanCollectAsOfAsync(pattern: ScanPattern, asOf: number): Effect.Effect<Datom[]> {
+    return this.scanCollectAsync(pattern, { includeRetracted: true }).pipe(
+      Effect.map((datoms) =>
+        datoms.filter(
+          (datom) =>
+            datom.createdAt <= asOf && (datom.retractedAt === null || datom.retractedAt > asOf),
+        ),
+      ),
+    );
+  }
+
   /**
    * Async version of getByEntityType using batched META fetches.
    * Scans the TYPE index, then batch-fetches all META records in one call.

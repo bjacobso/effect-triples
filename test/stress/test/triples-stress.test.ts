@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { Effect, Layer, Schedule } from "effect";
 import { SqlClient } from "effect/unstable/sql";
-import { generateId } from "@bjacobso/triplex";
+import { generateId } from "@bjacobso/triplex/internal";
 import { string, boolean, ref } from "@bjacobso/triplex";
 import type { EntityId } from "@bjacobso/triplex";
 import type { BulkInsertOptions } from "@bjacobso/triplex";

@@ -13,7 +13,8 @@
 
 import { describe, it, expect } from "vitest";
 import { Effect } from "effect";
-import { Triples, string, number, ref, compile } from "@bjacobso/triplex";
+import { Triples, string, number, ref } from "@bjacobso/triplex";
+import { compile } from "@bjacobso/triplex/datalog";
 import { PostgresqlDialect } from "@bjacobso/triplex-postgres";
 import { PgTestLayer, checkDockerAvailable } from "../fixtures/PgTestLayer.js";
 

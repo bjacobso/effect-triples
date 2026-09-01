@@ -254,7 +254,6 @@ const makeKvMetrics = (query: DatalogQuery): QueryMetrics => ({
   ).length,
   notClauseCount: query.where.filter((c) => Array.isArray(c) && c[0] === "not").length,
   orClauseCount: query.where.filter((c) => Array.isArray(c) && c[0] === "or").length,
-  linkClauseCount: query.where.filter((c) => Array.isArray(c) && c[0] === "link").length,
   hasAggregation: (query.aggregate?.length ?? 0) > 0,
   isRecursive: (query.rules?.length ?? 0) > 0,
   aggregateOps: (query.aggregate ?? []).map((a) => a[0]),
@@ -673,8 +672,18 @@ const makeKvTriplesService = Effect.gen(function* () {
 
     // === Datalog reads =====================================================
 
-    query: (q: DatalogQuery, options?: QueryOptions) =>
-      executeQuery(hexaStore, q, q.rules ?? []).pipe(
+    query: (q: DatalogQuery, options?: QueryOptions) => {
+      if (options?.asOf !== undefined && (!Number.isFinite(options.asOf) || options.asOf < 0)) {
+        return Effect.fail(
+          new ReadError({ message: "Datalog asOf must be a non-negative finite timestamp" }),
+        );
+      }
+      return executeQuery(
+        hexaStore,
+        q,
+        q.rules ?? [],
+        options?.asOf === undefined ? {} : { asOf: options.asOf },
+      ).pipe(
         Effect.map((result) => {
           const results = result.results as unknown as QueryResult;
           if (options?.debug) {
@@ -690,10 +699,21 @@ const makeKvTriplesService = Effect.gen(function* () {
         Effect.mapError(
           (e) => new ReadError({ message: `Query execution failed: ${String(e)}`, cause: e }),
         ),
-      ),
+      );
+    },
 
-    queryPage: (q: WrappedQuery, _options?: QueryOptions) =>
-      executeWrappedQuery(hexaStore, q, q.inner.rules ?? []).pipe(
+    queryPage: (q: WrappedQuery, options?: QueryOptions) => {
+      if (options?.asOf !== undefined && (!Number.isFinite(options.asOf) || options.asOf < 0)) {
+        return Effect.fail(
+          new ReadError({ message: "Datalog asOf must be a non-negative finite timestamp" }),
+        );
+      }
+      return executeWrappedQuery(
+        hexaStore,
+        q,
+        q.inner.rules ?? [],
+        options?.asOf === undefined ? {} : { asOf: options.asOf },
+      ).pipe(
         Effect.map((result) => ({
           results: result.results as unknown as QueryResult,
           ...(result.totalCount !== undefined ? { totalCount: result.totalCount } : {}),
@@ -702,7 +722,8 @@ const makeKvTriplesService = Effect.gen(function* () {
         Effect.mapError(
           (e) => new ReadError({ message: `Wrapped query failed: ${String(e)}`, cause: e }),
         ),
-      ),
+      );
+    },
 
     explain: (q: DatalogQuery) =>
       Effect.succeed({

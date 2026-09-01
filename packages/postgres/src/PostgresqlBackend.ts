@@ -9,7 +9,7 @@
 import { Context, Effect, Layer, Redacted } from "effect";
 import { SqlClient } from "effect/unstable/sql";
 import { PgClient } from "@effect/sql-pg";
-import { type SqlDialect } from "@bjacobso/triplex";
+import { type SqlDialect } from "@bjacobso/triplex/internal";
 import { StorageBackend, type StorageBackendService } from "@bjacobso/triplex-sql";
 import { PostgresqlDialect } from "./dialect.js";
 import { PostgresqlAdapterLive } from "./PostgresqlAdapter.js";
@@ -53,7 +53,40 @@ const createBaseLayer = (config: PostgresqlBackendConfig) =>
     ...(config.username && { username: config.username }),
     ...(config.password && { password: config.password }),
     ...(config.ssl !== undefined && { ssl: config.ssl }),
+    ...(config.pool?.min !== undefined && { minConnections: config.pool.min }),
+    ...(config.pool?.max !== undefined && { maxConnections: config.pool.max }),
+    ...(config.pool?.idleTimeout !== undefined && { idleTimeout: config.pool.idleTimeout }),
   });
+
+/**
+ * A session-local setting such as `search_path` cannot safely be installed on
+ * an Effect SQL pool: setup may run on a different connection from a later
+ * query. Database-scoped services therefore own one managed PostgreSQL client.
+ * Administrative operations can continue to use the pool above because their
+ * SQL is schema-qualified or does not rely on session state.
+ */
+const createSessionLayer = (config: PostgresqlBackendConfig) =>
+  PgClient.layerFrom(
+    PgClient.makeClient({
+      ...(config.host && { host: config.host }),
+      ...(config.port && { port: config.port }),
+      database: config.database,
+      ...(config.username && { username: config.username }),
+      ...(config.password && { password: config.password }),
+      ...(config.ssl !== undefined && { ssl: config.ssl }),
+    }),
+  );
+
+const createSchemaLayer = (config: PostgresqlBackendConfig, schema: string) =>
+  createSessionLayer(config).pipe(
+    Layer.tap((ctx) =>
+      Effect.gen(function* () {
+        const sql = Context.get(ctx, SqlClient.SqlClient);
+        yield* sql.unsafe(`CREATE SCHEMA IF NOT EXISTS ${schema}`);
+        yield* sql.unsafe(`SET search_path TO ${schema}`);
+      }),
+    ),
+  );
 
 // =============================================================================
 // Implementation
@@ -84,41 +117,19 @@ export const makePostgresqlBackend = (
 
     createDatabaseClient: (database: string) => {
       const schema = databaseToSchema(database);
-      const baseLayer = createBaseLayer(config);
-
-      // Wrap the base layer to create schema and set search_path
-      return baseLayer.pipe(
-        Layer.tap((ctx) =>
-          Effect.gen(function* () {
-            const sql = Context.get(ctx, SqlClient.SqlClient);
-            // Create schema if not exists
-            yield* sql.unsafe(`CREATE SCHEMA IF NOT EXISTS ${schema}`);
-            // Set search_path for this connection
-            yield* sql.unsafe(`SET search_path TO ${schema}`);
-          }),
-        ),
-      );
+      return createSchemaLayer(config, schema);
     },
 
     createAdapterLayer: (database: string) => {
       const schema = databaseToSchema(database);
-      const sqlLayer = createBaseLayer(config).pipe(
-        Layer.tap((ctx) =>
-          Effect.gen(function* () {
-            const sql = Context.get(ctx, SqlClient.SqlClient);
-            yield* sql.unsafe(`CREATE SCHEMA IF NOT EXISTS ${schema}`);
-            yield* sql.unsafe(`SET search_path TO ${schema}`);
-          }),
-        ),
-      );
+      const sqlLayer = createSchemaLayer(config, schema);
       return PostgresqlAdapterLive.pipe(Layer.provide(sqlLayer));
     },
 
     createRegistryClient: () => {
-      const baseLayer = createBaseLayer(config);
-
-      // Registry uses public schema
-      return baseLayer.pipe(
+      // Registry also owns a single session so its search path cannot leak or
+      // disappear as pooled connections are checked out.
+      return createSessionLayer(config).pipe(
         Layer.tap((ctx) =>
           Effect.gen(function* () {
             const sql = Context.get(ctx, SqlClient.SqlClient);

@@ -6,7 +6,7 @@
  */
 
 import { describe, it, expect } from "vitest";
-import { compile, compileWithRules } from "../../../src/index.js";
+import { compile, compileWithRules } from "../../../src/datalog/compiler.js";
 import type { DatalogQuery } from "../../../src/index.js";
 
 describe("SQL Injection Prevention", () => {

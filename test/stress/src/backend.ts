@@ -30,7 +30,11 @@ import {
   makePostgresqlBackendFromUrl,
   makePostgresqlLayerFromUrl,
 } from "@bjacobso/triplex-postgres";
-import { KvTriplesLive, InMemoryKvBackendLive, TripleStoreRuntimeLayer } from "@bjacobso/triplex";
+import {
+  InMemoryKvBackendLive,
+  KvTriplesLive,
+  TripleStoreRuntimeLayer,
+} from "@bjacobso/triplex/internal";
 import { makeFdbKvBackend, type FdbKvBackendConfig } from "@bjacobso/triplex-foundationdb";
 import { promises as fs } from "node:fs";
 

@@ -1,0 +1,132 @@
+/**
+ * Backend implementation surface.
+ *
+ * This entrypoint is for Triplex's adapter packages. Application code should
+ * use the root, `datalog`, `subscriptions`, `config`, and `content` exports.
+ * Internal exports may change between pre-1.0 releases.
+ */
+
+export * from "./index.js";
+
+export { StorageAdapter, type StorageAdapterService } from "./storage/StorageAdapter.js";
+export { type QueryPattern, type TransactionInfo } from "./storage/types.js";
+export {
+  QueryExecutor,
+  type QueryExecutorService,
+  type QueryContext,
+  type QueryPlan,
+  type QueryDebugInfo,
+  type WrappedQueryResult,
+  type QueryMetrics as QueryExecutorMetrics,
+} from "./storage/QueryExecutor.js";
+export { generateId, generateTransactionId, TxAttributes, SystemPrefixes } from "./utils/id.js";
+
+export { TriplesLive } from "./store/TriplesLive.js";
+export {
+  DatabaseRegistry,
+  type DatabaseRegistryService,
+  type DatabaseAccessEntry,
+} from "./store/DatabaseRegistry.js";
+export {
+  ChangeEmitter,
+  type ChangeEmitterService,
+  type ChangeEvent,
+  type TripleChange,
+  NoopChangeEmitter,
+  NoopChangeEmitterLive,
+} from "./store/ChangeEmitter.js";
+export {
+  CapabilityError,
+  type StoreCapability,
+  validateDependencies,
+  composeStore,
+  describeCapabilities,
+} from "./store/StoreCapability.js";
+export { makeWriteInterceptors, type WriteEventCallback } from "./store/writeEventUtils.js";
+export { makeChangeEmissionCapability } from "./store/ChangeEmissionCapability.js";
+export {
+  PostMutationHook,
+  type PostMutationHookService,
+  NoopPostMutationHook,
+  NoopPostMutationHookLive,
+} from "./store/PostMutationHook.js";
+export {
+  RuntimeClock,
+  type RuntimeClockService,
+  RuntimeClockLive,
+  DeterministicRuntimeClockLive,
+  IdGenerator,
+  type IdGeneratorService,
+  IdGeneratorLive,
+  DeterministicIdGeneratorLive,
+  RuntimeServicesLive,
+  DeterministicRuntimeServicesLive,
+  type DeterministicRuntimeOptions,
+} from "./store/RuntimeServices.js";
+export {
+  TripleStoreRuntime,
+  type TripleStoreRuntimeService,
+  TripleStoreRuntimeLive,
+  TripleStoreRuntimeFromServicesLive,
+  TripleStoreRuntimeLayer,
+  getTripleStoreRuntime,
+  DeterministicTripleStoreRuntimeLive,
+  type DeterministicTripleStoreRuntimeOptions,
+} from "./store/TripleStoreRuntime.js";
+export { DatabaseFeatures, type DatabaseFeature } from "./store/DatabaseFeatures.js";
+
+export { SnapshotWriter, type SnapshotWriterShape } from "./snapshots/SnapshotService.js";
+export { SnapshotServiceLive, SnapshotWriterLive } from "./snapshots/SnapshotServiceLive.js";
+export { makeEntitySnapshotsCapability } from "./snapshots/EntitySnapshotsCapability.js";
+export {
+  canonicalize,
+  hashCanonical,
+  triplesToAttributeMap,
+  tripleValueToSnapshotValue,
+  EMPTY_ENTITY_HASH,
+  diffAttributes,
+} from "./snapshots/canonical.js";
+export { wrapStoreWithSnapshots } from "./snapshots/wrapStoreWithSnapshots.js";
+
+export {
+  compile,
+  compileToSql,
+  compileWithRules,
+  compileWithRulesToSql,
+  type CompiledQuery,
+  type QueryMetrics,
+} from "./datalog/compiler.js";
+export { compileWrapped, type CompiledWrappedQuery } from "./datalog/wrapper.js";
+export { type SqlDialect, CurrentDialect, SqliteDialect } from "./dialects/index.js";
+export { createParamCollector, type ParamCollector } from "./params.js";
+
+export {
+  KvBackend,
+  type KvBackendService,
+  type KvEntry,
+  type KvTransaction,
+  type RangeOptions,
+} from "./kv/kv/KvBackend.js";
+export { InMemoryKvBackendLive, makeTestKvBackend } from "./kv/kv/InMemoryKvBackend.js";
+export { compare, increment, concat, fromHex, toHex, startsWith } from "./kv/kv/encoding.js";
+export * from "./kv/hexastore/index.js";
+export { type Relation, emptyContext } from "./kv/datalog/types.js";
+export {
+  tripleValueToConstant,
+  constantToTripleValue,
+  bindDatom,
+  executePattern,
+  patternToScanPattern,
+} from "./kv/datalog/pattern.js";
+export {
+  evaluatePredicate as kvEvaluatePredicate,
+  filterByPredicate,
+  resolveTerm as kvResolveTerm,
+} from "./kv/datalog/predicate.js";
+export {
+  type QueryResult as KvQueryResult,
+  type WrappedQueryResult as KvWrappedQueryResult,
+  executeQuery as executeKvQuery,
+  executeWrappedQuery as executeKvWrappedQuery,
+} from "./kv/datalog/executor.js";
+export { KvTriplesLive } from "./kv/layers/KvTriplesLive.js";

@@ -1,4 +1,5 @@
 export * as BoolExpr from "./BoolExpr";
+export * as Attribute from "./Attribute";
 export * as CanonicalJson from "../content/CanonicalJson";
 export * as Catalog from "./Catalog";
 export * as ConfigNode from "./ConfigNode";
@@ -7,6 +8,7 @@ export * as ConfigStore from "./ConfigStore";
 export * as InMemoryConfigStore from "./InMemoryConfigStore";
 export * as ContentId from "../content/ContentId";
 export * as Entity from "./Entity";
+export * as EntityType from "./EntityType";
 export * as EntityValidation from "./EntityValidation";
 export * as Evaluate from "./Evaluate";
 export * as Reactor from "./Reactor";
@@ -14,4 +16,3 @@ export * as TypeExpr from "./TypeExpr";
 export * as TypeSchema from "./TypeSchema";
 export * as TypeSubsumption from "./TypeSubsumption";
 export * as World from "./World";
-export * as OnboardingConfig from "./domain/OnboardingConfig";

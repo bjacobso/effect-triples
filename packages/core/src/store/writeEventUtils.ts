@@ -87,13 +87,15 @@ export const makeWriteInterceptors = (
               return yield* onEvent({
                 txId: "",
                 timestamp: yield* now,
-                changes: [
-                  {
-                    operation: "retract" as const,
-                    entityId: triple?.entityId ?? "",
-                    attribute: triple?.attribute ?? "",
-                  },
-                ],
+                changes: triple
+                  ? [
+                      {
+                        operation: "retract" as const,
+                        entityId: triple.entityId,
+                        attribute: triple.attribute,
+                      },
+                    ]
+                  : [],
               });
             }),
           ),
@@ -102,28 +104,28 @@ export const makeWriteInterceptors = (
     ),
 
   retractByPattern: (pattern) =>
-    pipe(
-      inner.retractByPattern(pattern),
-      Effect.tap(() =>
-        Effect.gen(function* () {
-          return yield* onEvent({
-            txId: "",
-            timestamp: yield* now,
-            changes: [
-              {
-                operation: "retract" as const,
-                entityId: typeof pattern.entityId === "string" ? pattern.entityId : "",
-                attribute: typeof pattern.attribute === "string" ? pattern.attribute : "",
-              },
-            ],
-          });
-        }),
-      ),
-    ),
+    Effect.gen(function* () {
+      const matched = yield* inner.match(pattern);
+      const count = yield* inner.retractByPattern(pattern);
+      if (count > 0) {
+        yield* onEvent({
+          txId: "",
+          timestamp: yield* now,
+          changes: matched.map((triple) => ({
+            operation: "retract" as const,
+            entityId: triple.entityId,
+            attribute: triple.attribute,
+          })),
+        });
+      }
+      return count;
+    }),
 
   transact: (operations, meta) =>
     Effect.gen(function* () {
-      // Pre-fetch triples for retract-by-ID ops to resolve entityId/attribute
+      // Pre-fetch triples for low-level fallbacks. The committed transaction
+      // envelope below is authoritative and includes exact retract-pattern
+      // matches from inside the atomic boundary.
       const tripleMap = new Map<string, { entityId: string; attribute: string }>();
       for (const op of operations) {
         if (op.op === "retract") {
@@ -138,29 +140,23 @@ export const makeWriteInterceptors = (
 
       const result = yield* inner.transact(operations, meta);
 
-      const changes: TripleChange[] = [];
-      for (const op of operations) {
-        if (op.op === "assert") {
-          changes.push({
-            operation: "assert" as const,
-            entityId: op.entityId,
-            attribute: op.attribute,
+      const record = yield* inner.transaction(result.txId);
+      const changes: TripleChange[] = record
+        ? record.changes.map((change) => ({
+            operation: change.op,
+            entityId: change.entityId,
+            attribute: change.attribute,
+          }))
+        : operations.flatMap((op): TripleChange[] => {
+            if (op.op === "assert") {
+              return [{ operation: "assert", entityId: op.entityId, attribute: op.attribute }];
+            }
+            if (op.op === "retract") {
+              const info = tripleMap.get(op.id);
+              return info ? [{ operation: "retract", ...info }] : [];
+            }
+            return [];
           });
-        } else if (op.op === "retract") {
-          const info = tripleMap.get(op.id);
-          changes.push({
-            operation: "retract" as const,
-            entityId: info?.entityId ?? "",
-            attribute: info?.attribute ?? "",
-          });
-        } else if (op.op === "retract-pattern") {
-          changes.push({
-            operation: "retract" as const,
-            entityId: typeof op.pattern.entityId === "string" ? op.pattern.entityId : "",
-            attribute: typeof op.pattern.attribute === "string" ? op.pattern.attribute : "",
-          });
-        }
-      }
 
       const event: ChangeEvent = { txId: result.txId, timestamp: yield* now, changes };
       yield* onEvent(event);

@@ -24,7 +24,6 @@ export {
   fdbSubscriptionGlobalKey,
   fdbSubscriptionKeysForDependencies,
   fdbSubscriptionKeysForEvent,
-  fdbSubscriptionLinkTypeKey,
   makeFdbChangeEmitter,
   makeFdbChangeEmitterService,
   makeFdbSubscriptionService,

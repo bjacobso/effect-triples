@@ -15,7 +15,7 @@ function deps(overrides: Partial<QueryDependencies> = {}): QueryDependencies {
     entityTypes: new Set<string>(),
     boundEntityIds: new Set<string>(),
     boundEntityTypes: new Set<string>(),
-    linkTypes: new Set<string>(),
+    unboundEntityTypes: new Set<string>(),
     ruleNames: new Set<string>(),
     ...overrides,
   };

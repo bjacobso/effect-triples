@@ -2,8 +2,8 @@
  * Triples snapshot wrapper
  *
  * Decorates a TriplesService to automatically materialize entity snapshots
- * on every write operation. Snapshots are written synchronously within the same
- * database transaction to guarantee consistency.
+ * on every write operation. Snapshots are post-commit derived state pinned to
+ * the source transaction time.
  *
  * Also provides an enhanced `getEntity` that reads from the snapshot fast path
  * when available, falling back to the triple-scan path otherwise.
@@ -103,10 +103,8 @@ const resolveRetractionMeta = (
  * Map snapshot errors to WriteError.
  *
  * Unlike ChangeEmission and ReactiveConstraints (which swallow errors), snapshot
- * materialization errors are intentionally propagated as WriteError. This is
- * because snapshots are written inside the same database transaction as the
- * triples — if materialization fails, the transaction should be rolled back
- * to maintain consistency between triples and their snapshots.
+ * projection errors are propagated so callers know the derived state is stale.
+ * The source fact transaction has already committed and is not rolled back.
  */
 const mapMaterializeError = (cause: unknown): WriteError =>
   new WriteError({
@@ -119,7 +117,7 @@ const mapMaterializeError = (cause: unknown): WriteError =>
  *
  * Write operations (assert, assertBatch, retract, retractByPattern, transact)
  * are intercepted. After the write succeeds, snapshots are materialized for all
- * touched entities within the same transaction.
+ * touched entities at the source transaction's temporal basis.
  *
  * `getEntity` is enhanced with a snapshot fast path when available.
  */

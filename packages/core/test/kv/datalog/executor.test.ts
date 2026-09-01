@@ -684,36 +684,6 @@ describe("wrapped query", () => {
   });
 });
 
-// ─── Link clause (transitive) ──────────────────────────────────────────────
-
-describe("link clause", () => {
-  beforeEach(async () => {
-    // Create a management hierarchy: Alice -> Bob -> Charlie
-    const datoms = [
-      makeDatom({ entity: "p:alice", attribute: ":person/name", value: str("Alice") }),
-      makeDatom({ entity: "p:bob", attribute: ":person/name", value: str("Bob") }),
-      makeDatom({ entity: "p:charlie", attribute: ":person/name", value: str("Charlie") }),
-      makeDatom({ entity: "p:alice", attribute: ":manages", value: ref("p:bob") }),
-      makeDatom({ entity: "p:bob", attribute: ":manages", value: ref("p:charlie") }),
-    ];
-    await run(store.assertBatch(datoms));
-  });
-
-  it("follows transitive links", async () => {
-    const query: DatalogQuery = {
-      find: ["?managed"],
-      where: [["link", ":manages", "p:alice", "?managed"]],
-    };
-
-    const { results } = await run(executeQuery(store, query));
-    // Alice manages Bob directly, and Bob manages Charlie
-    // So Alice transitively manages both Bob and Charlie
-    expect(results.length).toBe(2);
-    const managed = results.map((r) => r["?managed"]).sort();
-    expect(managed).toEqual(["p:bob", "p:charlie"]);
-  });
-});
-
 // ─── Complex queries ───────────────────────────────────────────────────────
 
 describe("complex queries", () => {

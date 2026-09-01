@@ -5,7 +5,7 @@ import {
   StorageAdapter,
   type StorageAdapterService,
   WriteError,
-} from "@bjacobso/triplex";
+} from "@bjacobso/triplex/internal";
 
 export { StorageAdapter, type StorageAdapterService, MigrationError, ReadError, WriteError };
 

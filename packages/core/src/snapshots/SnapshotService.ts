@@ -93,8 +93,12 @@ export interface SnapshotServiceShape {
 
 export interface SnapshotWriterShape {
   /**
-   * Materialize snapshots for the given entities within the current transaction.
-   * Called synchronously inside the database transaction.
+   * Materialize a derived snapshot at the supplied transaction time.
+   *
+   * This is a post-commit projection. Implementations must reconstruct the
+   * entity at `txId`'s ordered commit position (falling back to `txTime` only
+   * for an unjournaled source), so a later writer cannot be mislabeled as part
+   * of this snapshot.
    */
   readonly materialize: (
     txId: string,
@@ -113,9 +117,9 @@ export interface SnapshotWriterShape {
 // ---------------------------------------------------------------------------
 
 export class SnapshotService extends Context.Service<SnapshotService, SnapshotServiceShape>()(
-  "SnapshotService",
+  "triplex/SnapshotService",
 ) {}
 
 export class SnapshotWriter extends Context.Service<SnapshotWriter, SnapshotWriterShape>()(
-  "SnapshotWriter",
+  "triplex/SnapshotWriter",
 ) {}

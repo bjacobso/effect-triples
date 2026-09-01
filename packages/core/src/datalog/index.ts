@@ -33,7 +33,6 @@ export {
   NotClause,
   OrAlternative,
   OrClause,
-  LinkClause,
   Clause,
   AggregateOp,
   AggregateSpec,
@@ -47,30 +46,24 @@ export {
   isPatternClause,
   isNotClause,
   isOrClause,
-  isLinkClause,
   normalizeOrAlternatives,
 } from "./schema.js";
 
 // Types
-export type { Context, QueryResult, SimplifiedTriple, Binding } from "./types.js";
-export { emptyContext } from "./types.js";
+export type { Context, QueryResult } from "./types.js";
 
 // SQL Compiler
-export { compile, compileToSql, type CompiledQuery } from "./compiler.js";
+export {
+  compile,
+  compileToSql,
+  compileWithRules,
+  compileWithRulesToSql,
+  type CompiledQuery,
+  type QueryMetrics,
+} from "./compiler.js";
 
 // Wrapper Compiler (CTE-based subquery pagination)
 export { compileWrapped, type CompiledWrappedQuery } from "./wrapper.js";
-
-// Legacy: Engine functions (kept for testing, may be deprecated)
-export { matchPattern, querySingle, queryWhere, actualize, query, querySync } from "./engine.js";
-
-// Legacy: Predicate evaluation (kept for testing)
-export {
-  resolveTerm,
-  resolveTermSync,
-  evaluatePredicate,
-  evaluatePredicateSync,
-} from "./predicates.js";
 
 // NOTE: QueryPlan translation (toDatalogQuery) and type checker (typeCheckDatalogQuery)
 // live in the compiler layer — they depend on compiler/lisp infrastructure.

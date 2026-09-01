@@ -8,7 +8,7 @@ import {
   ref,
   compileWithRules,
   type DatalogQuery,
-} from "@bjacobso/triplex";
+} from "@bjacobso/triplex/internal";
 import { SqliteTestLayer } from "./fixtures/SqliteTestLayer.js";
 
 const TestLayer = SqliteTestLayer;

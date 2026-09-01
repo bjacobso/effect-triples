@@ -16,7 +16,7 @@ import {
   ReadError,
   MigrationError,
   createParamCollector,
-} from "@bjacobso/triplex";
+} from "@bjacobso/triplex/internal";
 import { packValue, runMigrations } from "@bjacobso/triplex-sql";
 import { isVariable } from "@bjacobso/triplex/types/Pattern";
 import { PostgresqlDialect } from "./dialect.js";

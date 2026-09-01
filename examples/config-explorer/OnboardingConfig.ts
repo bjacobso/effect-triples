@@ -38,12 +38,14 @@
 
 import { Effect } from "effect";
 
-import * as InMemoryConfigStore from "../InMemoryConfigStore";
-import * as B from "../BoolExpr";
-import * as World from "../World";
-import * as Catalog from "../Catalog";
-import * as Entity from "../Entity";
-import * as T from "../TypeExpr";
+import {
+  BoolExpr as B,
+  Catalog,
+  Entity,
+  InMemoryConfigStore,
+  TypeExpr as T,
+  World,
+} from "@bjacobso/triplex/config";
 
 // ---------------------------------------------------------------------------
 // The graph of schemas. One per node kind; this is the whole type system the
