@@ -41,12 +41,15 @@
     "clean": "rm -rf dist"
   },
   "dependencies": {
-    "@bjacobso/triplex": "workspace:^",
-    "effect": "catalog:"
+    "@bjacobso/triplex": "workspace:^"
   },
   "devDependencies": {
     "@types/node": "catalog:",
+    "effect": "catalog:",
     "vitest": "catalog:"
+  },
+  "peerDependencies": {
+    "effect": "catalog:"
   },
   "engines": {
     "node": ">=22"

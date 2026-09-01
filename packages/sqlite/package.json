@@ -43,12 +43,15 @@
   "dependencies": {
     "@bjacobso/triplex": "workspace:^",
     "@bjacobso/triplex-sql": "workspace:^",
-    "@effect/sql-sqlite-node": "catalog:",
-    "effect": "catalog:"
+    "@effect/sql-sqlite-node": "catalog:"
   },
   "devDependencies": {
     "@types/node": "catalog:",
+    "effect": "catalog:",
     "vitest": "catalog:"
+  },
+  "peerDependencies": {
+    "effect": "catalog:"
   },
   "engines": {
     "node": ">=22"

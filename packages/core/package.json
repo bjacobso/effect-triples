@@ -126,13 +126,16 @@
     "bench:config:typecheck": "node bench/config/typecheck-budget.mjs"
   },
   "dependencies": {
-    "effect": "catalog:",
     "ulidx": "catalog:"
   },
   "devDependencies": {
     "@effect/vitest": "catalog:",
     "@types/node": "catalog:",
+    "effect": "catalog:",
     "vitest": "catalog:"
+  },
+  "peerDependencies": {
+    "effect": "catalog:"
   },
   "engines": {
     "node": ">=22"

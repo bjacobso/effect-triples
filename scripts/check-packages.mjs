@@ -17,6 +17,7 @@ const packageNames = [
 const workDir = mkdtempSync(join(tmpdir(), "triplex-pack-"));
 const tarDir = join(workDir, "tarballs");
 const consumerDir = join(workDir, "consumer");
+const packedManifests = [];
 mkdirSync(tarDir);
 mkdirSync(consumerDir);
 
@@ -61,6 +62,15 @@ try {
     if (unexpected.length > 0) {
       throw new Error(`${tarball} contains unexpected files:\n${unexpected.join("\n")}`);
     }
+
+    const manifest = JSON.parse(run("tar", ["-xOzf", tarball, "package/package.json"]));
+    packedManifests.push(manifest);
+    if (manifest.dependencies?.effect !== undefined) {
+      throw new Error(`${manifest.name} must not install a private Effect runtime`);
+    }
+    if (manifest.peerDependencies?.effect === undefined) {
+      throw new Error(`${manifest.name} must declare Effect as a peer dependency`);
+    }
   }
 
   const dependencies = Object.fromEntries(
@@ -71,14 +81,15 @@ try {
       return [name, `file:${tarball}`];
     }),
   );
-  const coreManifest = JSON.parse(
-    run("tar", [
-      "-xOzf",
-      dependencies["@bjacobso/triplex"].slice("file:".length),
-      "package/package.json",
-    ]),
+  const coreManifest = packedManifests.find((manifest) => manifest.name === "@bjacobso/triplex");
+  if (!coreManifest) throw new Error("Could not locate the packed core manifest");
+  const effectVersion = coreManifest.peerDependencies.effect;
+  const effectPeerVersions = new Set(
+    packedManifests.map((manifest) => manifest.peerDependencies.effect),
   );
-  const effectVersion = coreManifest.dependencies.effect;
+  if (effectPeerVersions.size !== 1) {
+    throw new Error(`Effect peer versions are not aligned: ${[...effectPeerVersions].join(", ")}`);
+  }
 
   writeFileSync(
     join(consumerDir, "package.json"),

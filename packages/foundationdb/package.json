@@ -43,14 +43,17 @@
   },
   "dependencies": {
     "@bjacobso/triplex": "workspace:^",
-    "effect": "catalog:",
     "foundationdb": "^2.0.1"
   },
   "devDependencies": {
     "@effect/vitest": "catalog:",
     "@types/node": "catalog:",
+    "effect": "catalog:",
     "testcontainers": "^11.12.0",
     "vitest": "catalog:"
+  },
+  "peerDependencies": {
+    "effect": "catalog:"
   },
   "engines": {
     "node": ">=22"
