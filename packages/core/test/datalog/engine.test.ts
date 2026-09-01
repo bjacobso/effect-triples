@@ -338,6 +338,37 @@ describe("Datalog Engine", () => {
   });
 
   describe("querySync", () => {
+    it("uses scalar equality for untyped ref joins and exact equality for typed refs", () => {
+      const triples: SimplifiedTriple[] = [
+        ["mid", ":child", { type: "ref", value: "leaf" }],
+        ["other", ":child", { type: "ref", value: "leaf" }],
+        ["string", ":child", "leaf"],
+      ];
+
+      expect(
+        querySync(
+          {
+            find: ["?parent"],
+            where: [
+              ["mid", ":child", "?leaf"],
+              ["?parent", ":child", "?leaf"],
+            ],
+          },
+          triples,
+        ),
+      ).toEqual([{ "?parent": "mid" }, { "?parent": "other" }, { "?parent": "string" }]);
+
+      expect(
+        querySync(
+          {
+            find: ["?parent"],
+            where: [["?parent", ":child", { type: "ref", value: "leaf" }]],
+          },
+          triples,
+        ),
+      ).toEqual([{ "?parent": "mid" }, { "?parent": "other" }]);
+    });
+
     it("should execute a simple query", () => {
       const result = querySync(
         {

@@ -348,6 +348,32 @@ const inferValueType = (value: Constant): string => {
   return "string";
 };
 
+/** Stored value tags compatible with a Datalog constant. */
+const compatibleValueTypes = (value: Constant): readonly string[] => {
+  if (isTypedConstant(value)) return [value.type];
+  if (typeof value === "string") return ["string", "ref", "blob"];
+  if (typeof value === "number") return ["number", "datetime"];
+  return [inferValueType(value)];
+};
+
+const compileValueTypeCondition = (
+  alias: string,
+  value: Constant,
+  ctx: CompilerContext,
+): string => {
+  const types = compatibleValueTypes(value);
+  if (types.length === 1) {
+    return `${alias}.value_type = ${formatValue(types[0]!, ctx)}`;
+  }
+  return `${alias}.value_type IN (${types.map((type) => formatValue(type, ctx)).join(", ")})`;
+};
+
+const compileValueTypeConditionForRules = (alias: string, value: Constant): string => {
+  const types = compatibleValueTypes(value);
+  if (types.length === 1) return `${alias}.value_type = '${types[0]}'`;
+  return `${alias}.value_type IN (${types.map((type) => `'${type}'`).join(", ")})`;
+};
+
 /**
  * Create a new compiler context
  */
@@ -407,16 +433,6 @@ const compilePattern = (
       joinCondition = `${alias}.entity_id = ${boundCol} AND ${joinCondition}`;
     }
 
-    // Check if value is a bound variable (for ref joins)
-    if (isVariable(value) && ctx.bindings.has(value)) {
-      const binding = ctx.bindings.get(value)!;
-      const boundCol = resolveBinding(binding, { valueMode: "string" });
-      // If the bound variable is value-like, it could be a reference
-      if (isValueLikeBinding(binding)) {
-        joinCondition = `${alias}.entity_id = ${boundCol} AND ${joinCondition}`;
-      }
-    }
-
     ctx.joins.push(`JOIN triples ${alias} ON ${joinCondition}`);
   }
 
@@ -461,9 +477,8 @@ const compilePattern = (
     }
   } else {
     const valueCol = getValueColumn(value);
-    const valueType = inferValueType(value);
     ctx.conditions.push(`${alias}.${valueCol} = ${formatValue(value, ctx)}`);
-    ctx.conditions.push(`${alias}.value_type = ${formatValue(valueType, ctx)}`);
+    ctx.conditions.push(compileValueTypeCondition(alias, value, ctx));
   }
 
   // Process tx term (optional 4th element)
@@ -599,6 +614,7 @@ const compileNotPattern = (
   } else {
     const valueCol = getValueColumn(value);
     conditions.push(`${alias}.${valueCol} = ${formatValue(value, ctx)}`);
+    conditions.push(compileValueTypeCondition(alias, value, ctx));
   }
 
   if (tx !== undefined) {
@@ -1282,7 +1298,7 @@ const compileRuleDefinition = (rule: Rule): string => {
         } else {
           const valueCol = getValueColumn(value);
           allConditions.push(`${alias}.${valueCol} = ${formatValueForRules(value)}`);
-          allConditions.push(`${alias}.value_type = '${inferValueType(value)}'`);
+          allConditions.push(compileValueTypeConditionForRules(alias, value));
         }
       } else {
         // JOIN to the triples table
@@ -1320,7 +1336,7 @@ const compileRuleDefinition = (rule: Rule): string => {
         } else {
           const valueCol = getValueColumn(value);
           joinConditions.push(`${alias}.${valueCol} = ${formatValueForRules(value)}`);
-          joinConditions.push(`${alias}.value_type = '${inferValueType(value)}'`);
+          joinConditions.push(compileValueTypeConditionForRules(alias, value));
         }
 
         allJoins.push(`JOIN triples ${alias} ON ${joinConditions.join(" AND ")}`);

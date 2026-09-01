@@ -339,13 +339,13 @@ describe("Datalog Integration", () => {
       expect(result.results).toContainEqual({ "?title": "Predator" });
     });
 
-    it("should not match ref values with plain string constants", async () => {
+    it("should match ref values with plain string constants", async () => {
       const result = await Effect.runPromise(
         Effect.gen(function* () {
           yield* setupTestData;
           const datalog = yield* Triples;
 
-          // A plain string "p4" should NOT match ref("p4") — value_type mismatch
+          // Untyped constants match stored values with the same scalar.
           return yield* datalog.query({
             find: ["?title"],
             where: [
@@ -356,8 +356,7 @@ describe("Datalog Integration", () => {
         }).pipe(Effect.provide(TestLayer)),
       );
 
-      // Should find nothing because the triple is stored as ref, not string
-      expect(result.results).toHaveLength(0);
+      expect(result.results).toEqual([{ "?title": "The Terminator" }]);
     });
   });
 
