@@ -1,6 +1,6 @@
 import { Schema } from "effect";
 
-export const ValueType = Schema.Literal(
+export const ValueType = Schema.Literals([
   "string",
   "number",
   "boolean",
@@ -8,7 +8,7 @@ export const ValueType = Schema.Literal(
   "ref",
   "json",
   "blob",
-);
+]);
 export type ValueType = typeof ValueType.Type;
 
 export const StringValue = Schema.Struct({ type: Schema.Literal("string"), value: Schema.String });
@@ -44,7 +44,7 @@ export const BlobValue = Schema.Struct({
 });
 export type BlobValue = typeof BlobValue.Type;
 
-export const TripleValue = Schema.Union(
+export const TripleValue = Schema.Union([
   StringValue,
   NumberValue,
   BooleanValue,
@@ -52,7 +52,7 @@ export const TripleValue = Schema.Union(
   RefValue,
   JsonValue,
   BlobValue,
-);
+]);
 export type TripleValue = typeof TripleValue.Type;
 
 export const string = (value: string): StringValue => ({ type: "string", value });

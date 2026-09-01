@@ -71,7 +71,6 @@ export interface DatabaseManagerService {
 /**
  * DatabaseManager service tag for dependency injection
  */
-export class DatabaseManager extends Context.Tag("DatabaseManager")<
-  DatabaseManager,
-  DatabaseManagerService
->() {}
+export class DatabaseManager extends Context.Service<DatabaseManager, DatabaseManagerService>()(
+  "DatabaseManager",
+) {}

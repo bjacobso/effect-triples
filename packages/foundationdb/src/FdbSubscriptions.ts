@@ -70,10 +70,9 @@ export interface FdbSubscriptionService {
   ) => Effect.Effect<FdbSubscriptionHandle, FdbKvBackendError>;
 }
 
-export class FdbSubscriptions extends Context.Tag("FdbSubscriptions")<
-  FdbSubscriptions,
-  FdbSubscriptionService
->() {}
+export class FdbSubscriptions extends Context.Service<FdbSubscriptions, FdbSubscriptionService>()(
+  "FdbSubscriptions",
+) {}
 
 // ─── Watch Key Encoding ────────────────────────────────────────────────────
 
@@ -358,7 +357,7 @@ export const makeFdbChangeEmitterService = (
 ): Effect.Effect<ChangeEmitterService> =>
   makeFdbSubscriptionService(config).pipe(
     Effect.map((subscriptions) => ({
-      emit: (event) => subscriptions.signal(event).pipe(Effect.catchAll(() => Effect.void)),
+      emit: (event) => subscriptions.signal(event).pipe(Effect.catch(() => Effect.void)),
     })),
   );
 

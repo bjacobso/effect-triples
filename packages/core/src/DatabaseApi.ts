@@ -5,7 +5,7 @@
  */
 
 import { Schema } from "effect";
-import { HttpApiEndpoint, HttpApiGroup, HttpApiSchema } from "@effect/platform";
+import { HttpApiEndpoint, HttpApiGroup } from "effect/unstable/httpapi";
 import { DatabaseNotFound, DatabaseAlreadyExists, InternalError, AccessDenied } from "./Error.js";
 import {
   CreateDatabaseRequest,
@@ -25,17 +25,11 @@ import {
 } from "./Database.js";
 
 // =============================================================================
-// Path Parameters
-// =============================================================================
-
-const databaseParam = HttpApiSchema.param("database", Schema.String);
-
-// =============================================================================
 // Root Group
 // =============================================================================
 
 export class RootApi extends HttpApiGroup.make("root").add(
-  HttpApiEndpoint.get("home", "/").addSuccess(RootResponse).addError(InternalError),
+  HttpApiEndpoint.get("home", "/", { success: RootResponse, error: InternalError }),
 ) {}
 
 // =============================================================================
@@ -44,12 +38,16 @@ export class RootApi extends HttpApiGroup.make("root").add(
 
 export class HealthApi extends HttpApiGroup.make("health")
   .add(
-    HttpApiEndpoint.get("check", "/health").addSuccess(HealthCheckResponse).addError(InternalError),
+    HttpApiEndpoint.get("check", "/health", {
+      success: HealthCheckResponse,
+      error: InternalError,
+    }),
   )
   .add(
-    HttpApiEndpoint.get("telemetry", "/health/telemetry")
-      .addSuccess(TelemetryHealthResponse)
-      .addError(InternalError),
+    HttpApiEndpoint.get("telemetry", "/health/telemetry", {
+      success: TelemetryHealthResponse,
+      error: InternalError,
+    }),
   ) {}
 
 // =============================================================================
@@ -57,10 +55,11 @@ export class HealthApi extends HttpApiGroup.make("health")
 // =============================================================================
 
 export class DemoApi extends HttpApiGroup.make("demo").add(
-  HttpApiEndpoint.post("reset")`/db/${databaseParam}/reset`
-    .addSuccess(ResetResponse)
-    .addError(DatabaseNotFound)
-    .addError(InternalError),
+  HttpApiEndpoint.post("reset", "/db/:database/reset", {
+    params: { database: Schema.String },
+    success: ResetResponse,
+    error: [DatabaseNotFound, InternalError],
+  }),
 ) {}
 
 // =============================================================================
@@ -70,78 +69,85 @@ export class DemoApi extends HttpApiGroup.make("demo").add(
 export class DatabaseApi extends HttpApiGroup.make("databases")
   .add(
     // Create a new database
-    HttpApiEndpoint.post("create", "/admin/databases")
-      .setPayload(CreateDatabaseRequest)
-      .addSuccess(DatabaseResponse)
-      .addError(DatabaseAlreadyExists)
-      .addError(InternalError),
+    HttpApiEndpoint.post("create", "/admin/databases", {
+      payload: CreateDatabaseRequest,
+      success: DatabaseResponse,
+      error: [DatabaseAlreadyExists, InternalError],
+    }),
   )
   .add(
     // List all databases
-    HttpApiEndpoint.get("list", "/admin/databases")
-      .addSuccess(Schema.Array(DatabaseResponse))
-      .addError(InternalError),
+    HttpApiEndpoint.get("list", "/admin/databases", {
+      success: Schema.Array(DatabaseResponse),
+      error: InternalError,
+    }),
   )
   .add(
     // Get a specific database
-    HttpApiEndpoint.get("get")`/admin/databases/${databaseParam}`
-      .addSuccess(DatabaseResponse)
-      .addError(DatabaseNotFound)
-      .addError(InternalError),
+    HttpApiEndpoint.get("get", "/admin/databases/:database", {
+      params: { database: Schema.String },
+      success: DatabaseResponse,
+      error: [DatabaseNotFound, InternalError],
+    }),
   )
   .add(
     // Update a database (description)
-    HttpApiEndpoint.patch("update")`/admin/databases/${databaseParam}`
-      .setPayload(UpdateDatabaseRequest)
-      .addSuccess(DatabaseResponse)
-      .addError(DatabaseNotFound)
-      .addError(AccessDenied)
-      .addError(InternalError),
+    HttpApiEndpoint.patch("update", "/admin/databases/:database", {
+      params: { database: Schema.String },
+      payload: UpdateDatabaseRequest,
+      success: DatabaseResponse,
+      error: [DatabaseNotFound, AccessDenied, InternalError],
+    }),
   )
   .add(
     // Delete a database
-    HttpApiEndpoint.del("delete")`/admin/databases/${databaseParam}`
-      .addError(DatabaseNotFound)
-      .addError(AccessDenied)
-      .addError(InternalError),
+    HttpApiEndpoint.delete("delete", "/admin/databases/:database", {
+      params: { database: Schema.String },
+      error: [DatabaseNotFound, AccessDenied, InternalError],
+    }),
   )
   .add(
     // Delete all databases including registry (factory reset)
-    HttpApiEndpoint.del("deleteAll", "/admin/databases").addError(InternalError),
+    HttpApiEndpoint.delete("deleteAll", "/admin/databases", { error: InternalError }),
   )
   .add(
     // Generate a random database name
-    HttpApiEndpoint.get("generateName", "/admin/databases/generate-name")
-      .addSuccess(GenerateNameResponse)
-      .addError(InternalError),
+    HttpApiEndpoint.get("generateName", "/admin/databases/generate-name", {
+      success: GenerateNameResponse,
+      error: InternalError,
+    }),
   )
   .add(
     // Clear all data in a database (per-db operation)
-    HttpApiEndpoint.post("clear")`/db/${databaseParam}/clear`
-      .addSuccess(ClearDatabaseResponse)
-      .addError(DatabaseNotFound)
-      .addError(InternalError),
+    HttpApiEndpoint.post("clear", "/db/:database/clear", {
+      params: { database: Schema.String },
+      success: ClearDatabaseResponse,
+      error: [DatabaseNotFound, InternalError],
+    }),
   )
   .add(
     // Import a DSL example into a database (per-db operation)
-    HttpApiEndpoint.post("seed")`/db/${databaseParam}/seed`
-      .setPayload(ImportDslRequest)
-      .addSuccess(ImportDslResponse)
-      .addError(DatabaseNotFound)
-      .addError(InternalError),
+    HttpApiEndpoint.post("seed", "/db/:database/seed", {
+      params: { database: Schema.String },
+      payload: ImportDslRequest,
+      success: ImportDslResponse,
+      error: [DatabaseNotFound, InternalError],
+    }),
   )
   .add(
     // Export all triples from a database as JSON
-    HttpApiEndpoint.get("exportTriples")`/db/${databaseParam}/export`
-      .addSuccess(ExportTriplesResponse)
-      .addError(DatabaseNotFound)
-      .addError(InternalError),
+    HttpApiEndpoint.get("exportTriples", "/db/:database/export", {
+      params: { database: Schema.String },
+      success: ExportTriplesResponse,
+      error: [DatabaseNotFound, InternalError],
+    }),
   )
   .add(
     // Import triples into a database from JSON
-    HttpApiEndpoint.post("importTriples")`/db/${databaseParam}/import`
-      .setPayload(ImportTriplesRequest)
-      .addSuccess(ImportTriplesResponse)
-      .addError(DatabaseNotFound)
-      .addError(InternalError),
+    HttpApiEndpoint.post("importTriples", "/db/:database/import", {
+      params: { database: Schema.String },
+      payload: ImportTriplesRequest,
+      success: ImportTriplesResponse,
+      error: [DatabaseNotFound, InternalError],
+    }),
   ) {}

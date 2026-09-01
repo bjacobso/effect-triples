@@ -14,7 +14,7 @@ import { DatabaseName as DatabaseNamePrimitive } from "./Branded.js";
 /**
  * Valid database name: database-native primitive owned by effect-triples
  */
-const DatabaseName = DatabaseNamePrimitive.annotations({
+const DatabaseName = DatabaseNamePrimitive.annotate({
   identifier: "DatabaseName",
   description: "A valid database name (kebab-case, 1-64 chars)",
 });
@@ -70,7 +70,7 @@ export type HealthCheckResponse = typeof HealthCheckResponse.Type;
  * Telemetry health check response
  */
 export const TelemetryHealthResponse = Schema.Struct({
-  status: Schema.Literal("ok", "disabled"),
+  status: Schema.Literals(["ok", "disabled"]),
   otelEnabled: Schema.Boolean,
   exporterEndpoint: Schema.optional(Schema.String),
   serviceName: Schema.optional(Schema.String),
@@ -200,7 +200,7 @@ export type ImportTriplesResponse = typeof ImportTriplesResponse.Type;
 /**
  * Example type options - all available example IDs
  */
-export const ExampleType = Schema.Literal(
+export const ExampleType = Schema.Literals([
   "teams",
   "company",
   "hr",
@@ -219,7 +219,7 @@ export const ExampleType = Schema.Literal(
   "real-estate",
   "bizops",
   "law-firm",
-);
+]);
 export type ExampleType = typeof ExampleType.Type;
 
 /**

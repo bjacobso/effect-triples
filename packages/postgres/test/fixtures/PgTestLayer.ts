@@ -96,17 +96,16 @@ const releasePgContainer = ({ container }: { container: StartedTestContainer }) 
 /**
  * Tag carrying the connection URL from the running container.
  */
-class PgConnectionInfo extends Context.Tag("test/PgConnectionInfo")<
-  PgConnectionInfo,
-  { readonly url: string }
->() {}
+class PgConnectionInfo extends Context.Service<PgConnectionInfo, { readonly url: string }>()(
+  "test/PgConnectionInfo",
+) {}
 
 // ─── Layers ────────────────────────────────────────────────────────────────
 
 /**
  * Layer that manages the PostgreSQL container lifecycle.
  */
-const PgContainerLayer: Layer.Layer<PgConnectionInfo> = Layer.scoped(
+const PgContainerLayer: Layer.Layer<PgConnectionInfo> = Layer.effect(
   PgConnectionInfo,
   Effect.acquireRelease(acquirePgContainer, releasePgContainer).pipe(
     Effect.map(({ url }) => ({ url })),
@@ -117,7 +116,7 @@ const PgContainerLayer: Layer.Layer<PgConnectionInfo> = Layer.scoped(
  * SqlClient layer that connects to the containerized PostgreSQL.
  * Uses makePostgresqlLayerFromUrl which also runs migrations.
  */
-const PgSqlClientLayer = Layer.unwrapEffect(
+const PgSqlClientLayer = Layer.unwrap(
   Effect.gen(function* () {
     const { url } = yield* PgConnectionInfo;
     return makePostgresqlLayerFromUrl(url);

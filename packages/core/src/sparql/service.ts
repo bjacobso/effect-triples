@@ -99,4 +99,4 @@ export interface SparqlService {
 /**
  * Sparql service tag for dependency injection
  */
-export class Sparql extends Context.Tag("Sparql")<Sparql, SparqlService>() {}
+export class Sparql extends Context.Service<Sparql, SparqlService>()("Sparql") {}

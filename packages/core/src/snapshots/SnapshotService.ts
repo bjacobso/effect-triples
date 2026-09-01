@@ -105,12 +105,10 @@ export interface SnapshotWriterShape {
 // Service Tags
 // ---------------------------------------------------------------------------
 
-export class SnapshotService extends Context.Tag("SnapshotService")<
-  SnapshotService,
-  SnapshotServiceShape
->() {}
+export class SnapshotService extends Context.Service<SnapshotService, SnapshotServiceShape>()(
+  "SnapshotService",
+) {}
 
-export class SnapshotWriter extends Context.Tag("SnapshotWriter")<
-  SnapshotWriter,
-  SnapshotWriterShape
->() {}
+export class SnapshotWriter extends Context.Service<SnapshotWriter, SnapshotWriterShape>()(
+  "SnapshotWriter",
+) {}

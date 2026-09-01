@@ -19,9 +19,9 @@
  */
 
 import { Effect, Layer } from "effect";
-import { SqlClient } from "@effect/sql";
+import { SqlClient } from "effect/unstable/sql";
 import { SqliteClient } from "@effect/sql-sqlite-node";
-import { NodeContext } from "@effect/platform-node";
+import { NodeServices } from "@effect/platform-node";
 import { DatabaseManager } from "effect-triples";
 import { Triples, type TriplesService } from "effect-triples";
 import { DatabaseManagerLive, DatabaseRegistryLive } from "effect-triples-sql";
@@ -298,7 +298,7 @@ function makeSqliteManagerLayer(): Layer.Layer<DatabaseManager> {
   return DatabaseManagerLive.pipe(
     Layer.provide(DatabaseRegistryLive),
     Layer.provide(backend),
-    Layer.provide(NodeContext.layer),
+    Layer.provide(NodeServices.layer),
   ) as Layer.Layer<DatabaseManager>;
 }
 

@@ -9,4 +9,6 @@ export interface SqlDialect {
   readonly escapeLikePattern: (value: string) => string;
 }
 
-export class CurrentDialect extends Context.Tag("CurrentDialect")<CurrentDialect, SqlDialect>() {}
+export class CurrentDialect extends Context.Service<CurrentDialect, SqlDialect>()(
+  "CurrentDialect",
+) {}

@@ -48,10 +48,9 @@ export interface ChangeEmitterService {
   readonly emit: (event: ChangeEvent) => Effect.Effect<void>;
 }
 
-export class ChangeEmitter extends Context.Tag("ChangeEmitter")<
-  ChangeEmitter,
-  ChangeEmitterService
->() {}
+export class ChangeEmitter extends Context.Service<ChangeEmitter, ChangeEmitterService>()(
+  "ChangeEmitter",
+) {}
 
 // =============================================================================
 // No-op Implementation

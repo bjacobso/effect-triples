@@ -284,7 +284,7 @@ const makeKvTriplesService = Effect.gen(function* () {
 
       return results;
     }).pipe(
-      Effect.catchAll((e) =>
+      Effect.catch((e) =>
         Effect.fail(new ReadError({ message: `Query failed: ${String(e)}`, cause: e })),
       ),
     );
@@ -301,7 +301,7 @@ const makeKvTriplesService = Effect.gen(function* () {
         yield* hexaStore.assert(datom);
         return datomToTriple(datom);
       }).pipe(
-        Effect.catchAll((e) =>
+        Effect.catch((e) =>
           Effect.fail(new WriteError({ message: `Assert failed: ${String(e)}`, cause: e })),
         ),
       ),
@@ -319,7 +319,7 @@ const makeKvTriplesService = Effect.gen(function* () {
         yield* hexaStore.assertBatch(datoms);
         return datoms.map(datomToTriple);
       }).pipe(
-        Effect.catchAll((e) =>
+        Effect.catch((e) =>
           Effect.fail(new WriteError({ message: `AssertBatch failed: ${String(e)}`, cause: e })),
         ),
       ),
@@ -333,7 +333,7 @@ const makeKvTriplesService = Effect.gen(function* () {
           );
         }
       }).pipe(
-        Effect.catchAll((e) => {
+        Effect.catch((e) => {
           if (e instanceof WriteError) return Effect.fail(e);
           return Effect.fail(new WriteError({ message: `Retract failed: ${String(e)}`, cause: e }));
         }),
@@ -353,7 +353,7 @@ const makeKvTriplesService = Effect.gen(function* () {
         }
         return count;
       }).pipe(
-        Effect.catchAll((e) =>
+        Effect.catch((e) =>
           Effect.fail(
             new WriteError({ message: `RetractByPattern failed: ${String(e)}`, cause: e }),
           ),
@@ -442,14 +442,14 @@ const makeKvTriplesService = Effect.gen(function* () {
           retracted: retractedCount,
         } satisfies TransactionResult;
       }).pipe(
-        Effect.catchAll((e) =>
+        Effect.catch((e) =>
           Effect.fail(new WriteError({ message: `Transact failed: ${String(e)}`, cause: e })),
         ),
       ),
 
     withTransaction: <A, E>(effect: Effect.Effect<A, E>) =>
       effect.pipe(
-        Effect.catchAll((e) => {
+        Effect.catch((e) => {
           if (e instanceof WriteError) return Effect.fail(e) as Effect.Effect<A, E | WriteError>;
           return Effect.fail(e);
         }),
@@ -462,7 +462,7 @@ const makeKvTriplesService = Effect.gen(function* () {
         const datom = yield* hexaStore.getById(id);
         return datom !== null ? datomToTriple(datom) : null;
       }).pipe(
-        Effect.catchAll((e) =>
+        Effect.catch((e) =>
           Effect.fail(new ReadError({ message: `Get failed: ${String(e)}`, cause: e })),
         ),
       ),
@@ -476,7 +476,7 @@ const makeKvTriplesService = Effect.gen(function* () {
         const datoms = yield* hexaStore.scanCollectAsync({ entity: entityId });
         return datoms.map(datomToTriple);
       }).pipe(
-        Effect.catchAll((e) =>
+        Effect.catch((e) =>
           Effect.fail(new ReadError({ message: `Entity failed: ${String(e)}`, cause: e })),
         ),
       ),
@@ -489,7 +489,7 @@ const makeKvTriplesService = Effect.gen(function* () {
         const datoms = yield* Stream.runCollect(hexaStore.scanAsOf(scanPat, asOf));
         return Array.from(datoms).map(datomToTriple);
       }).pipe(
-        Effect.catchAll((e) =>
+        Effect.catch((e) =>
           Effect.fail(new ReadError({ message: `MatchAsOf failed: ${String(e)}`, cause: e })),
         ),
       ),
@@ -499,7 +499,7 @@ const makeKvTriplesService = Effect.gen(function* () {
         const datoms = yield* Stream.runCollect(hexaStore.entityHistory(entityId));
         return Array.from(datoms).map(datomToTriple);
       }).pipe(
-        Effect.catchAll((e) =>
+        Effect.catch((e) =>
           Effect.fail(new ReadError({ message: `History failed: ${String(e)}`, cause: e })),
         ),
       ),
@@ -638,7 +638,7 @@ const makeKvTriplesService = Effect.gen(function* () {
 
         return allTriples;
       }).pipe(
-        Effect.catchAll((e) =>
+        Effect.catch((e) =>
           Effect.fail(new ReadError({ message: `Entities query failed: ${String(e)}`, cause: e })),
         ),
       ),

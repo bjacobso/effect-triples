@@ -5,8 +5,8 @@
  * Uses SQL compilation for efficient query execution.
  */
 
-import { Effect, Layer, Schema } from "effect";
-import { SqlClient } from "@effect/sql";
+import { Effect, Layer, Result, Schema } from "effect";
+import { SqlClient } from "effect/unstable/sql";
 import {
   Triples,
   Sparql,
@@ -100,19 +100,19 @@ export const SparqlLive = Layer.effect(
     const query = (rawQuery: unknown, debug = false) =>
       Effect.gen(function* () {
         // 1. Validate query with Effect Schema
-        const parseResult = Schema.decodeUnknownEither(SparqlQuery)(rawQuery);
+        const parseResult = Schema.decodeUnknownResult(SparqlQuery)(rawQuery);
 
-        if (parseResult._tag === "Left") {
+        if (Result.isFailure(parseResult)) {
           return yield* Effect.fail(
             new SparqlValidationError({
-              message: `Invalid SPARQL query: ${parseResult.left.message}`,
+              message: `Invalid SPARQL query: ${parseResult.failure.message}`,
               query: rawQuery,
-              cause: parseResult.left,
+              cause: parseResult.failure,
             }),
           );
         }
 
-        const q = parseResult.right;
+        const q = parseResult.success;
 
         // 2. Compile to SQL (with metrics if debug=true)
         let compiled: CompiledQuery;

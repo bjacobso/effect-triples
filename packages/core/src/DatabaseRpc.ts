@@ -5,7 +5,7 @@
  * Used by both HTTP handlers and CLI commands.
  */
 
-import { Rpc, RpcGroup } from "@effect/rpc";
+import { Rpc, RpcGroup } from "effect/unstable/rpc";
 import { Schema } from "effect";
 import {
   CreateDatabaseRequest,
@@ -36,7 +36,7 @@ export class DatabaseRpc extends RpcGroup.make(
   Rpc.make("database.create", {
     payload: CreateDatabaseRequest,
     success: DatabaseResponse,
-    error: Schema.Union(DatabaseAlreadyExists, InternalError),
+    error: Schema.Union([DatabaseAlreadyExists, InternalError]),
   }),
 
   /**
@@ -55,7 +55,7 @@ export class DatabaseRpc extends RpcGroup.make(
       name: DatabaseName,
     }),
     success: DatabaseResponse,
-    error: Schema.Union(DatabaseNotFound, InternalError),
+    error: Schema.Union([DatabaseNotFound, InternalError]),
   }),
 
   /**
@@ -66,7 +66,7 @@ export class DatabaseRpc extends RpcGroup.make(
       name: DatabaseName,
     }),
     success: Schema.Void,
-    error: Schema.Union(DatabaseNotFound, InternalError),
+    error: Schema.Union([DatabaseNotFound, InternalError]),
   }),
 
   /**
@@ -93,7 +93,7 @@ export class DatabaseRpc extends RpcGroup.make(
       name: DatabaseName,
     }),
     success: ClearDatabaseResponse,
-    error: Schema.Union(DatabaseNotFound, InternalError),
+    error: Schema.Union([DatabaseNotFound, InternalError]),
   }),
 
   /**
@@ -105,6 +105,6 @@ export class DatabaseRpc extends RpcGroup.make(
       exampleType: ImportDslRequest.fields.exampleType,
     }),
     success: ImportDslResponse,
-    error: Schema.Union(DatabaseNotFound, InternalError),
+    error: Schema.Union([DatabaseNotFound, InternalError]),
   }),
 ) {}

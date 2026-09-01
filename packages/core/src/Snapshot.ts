@@ -77,7 +77,7 @@ export const EntitySnapshotResponse = Schema.Struct({
   entityId: Schema.String,
   entityType: Schema.NullOr(Schema.String),
   /** Attribute map: attribute name → value or array of values */
-  attributes: Schema.Record({ key: Schema.String, value: Schema.Unknown }),
+  attributes: Schema.Record(Schema.String, Schema.Unknown),
   /** Content-addressed hash (e.g., "sha256:abcdef...") */
   hash: Schema.String,
   /** Transaction ID that produced this snapshot */

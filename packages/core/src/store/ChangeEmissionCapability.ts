@@ -36,7 +36,7 @@ export const makeChangeEmissionCapability = (
   wrap: (store: TriplesService): TriplesService => {
     const safeEmit = makeWriteInterceptors(
       store,
-      (event) => emitter.emit(event).pipe(Effect.catchAllCause(() => Effect.void)),
+      (event) => emitter.emit(event).pipe(Effect.catchCause(() => Effect.void)),
       now,
     );
 

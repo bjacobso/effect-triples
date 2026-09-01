@@ -6,7 +6,7 @@
  */
 
 import { Context, Effect, Layer } from "effect";
-import { SqlClient } from "@effect/sql";
+import { SqlClient } from "effect/unstable/sql";
 import type { SqlDialect, StorageAdapter } from "effect-triples";
 
 // =============================================================================
@@ -80,7 +80,6 @@ export interface StorageBackendService {
 // Service Tag
 // =============================================================================
 
-export class StorageBackend extends Context.Tag("StorageBackend")<
-  StorageBackend,
-  StorageBackendService
->() {}
+export class StorageBackend extends Context.Service<StorageBackend, StorageBackendService>()(
+  "StorageBackend",
+) {}

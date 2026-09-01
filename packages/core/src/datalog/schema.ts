@@ -15,8 +15,8 @@ import { Schema } from "effect";
  * Examples: "?person", "?age", "?movieTitle"
  */
 export const Variable = Schema.String.pipe(
-  Schema.pattern(/^\?[a-zA-Z_][a-zA-Z0-9_]*$/),
-  Schema.annotations({
+  Schema.check(Schema.isPattern(/^\?[a-zA-Z_][a-zA-Z0-9_]*$/)),
+  Schema.annotate({
     identifier: "Variable",
     description: "A Datalog variable starting with ? (e.g., ?person, ?age)",
   }),
@@ -29,8 +29,8 @@ export const Variable = Schema.String.pipe(
  * Note: Named DatalogAttribute to avoid conflict with shared/Branded.ts Attribute type.
  */
 export const DatalogAttribute = Schema.String.pipe(
-  Schema.pattern(/^:[a-zA-Z_][a-zA-Z0-9_/-]*$/),
-  Schema.annotations({
+  Schema.check(Schema.isPattern(/^:[a-zA-Z_][a-zA-Z0-9_/-]*$/)),
+  Schema.annotate({
     identifier: "DatalogAttribute",
     description: "An attribute starting with : (e.g., :name, :movie/title)",
   }),
@@ -43,7 +43,7 @@ export const DatalogAttribute = Schema.String.pipe(
 export const TypedConstant = Schema.Struct({
   type: Schema.Literal("ref"),
   value: Schema.String,
-}).annotations({
+}).annotate({
   identifier: "TypedConstant",
   description: "A typed constant value (e.g. { type: 'ref', value: 'entity:id' })",
 });
@@ -58,12 +58,12 @@ export const isTypedConstant = (value: unknown): value is TypedConstant =>
 /**
  * Constant: a literal value (string, number, boolean, or typed constant)
  */
-export const Constant = Schema.Union(
+export const Constant = Schema.Union([
   Schema.String,
   Schema.Number,
   Schema.Boolean,
   TypedConstant,
-).annotations({
+]).annotate({
   identifier: "Constant",
   description: "A constant value (string, number, boolean, or typed constant like ref)",
 });
@@ -71,7 +71,7 @@ export const Constant = Schema.Union(
 /**
  * Term: either a variable or a constant
  */
-export const Term = Schema.Union(Variable, Constant).annotations({
+export const Term = Schema.Union([Variable, Constant]).annotate({
   identifier: "Term",
   description: "A term that is either a variable (?x) or a constant value",
 });
@@ -83,7 +83,7 @@ export const Term = Schema.Union(Variable, Constant).annotations({
 /**
  * Predicate operators for comparison
  */
-export const PredicateOp = Schema.Literal(">", ">=", "<", "<=", "=", "!=").annotations({
+export const PredicateOp = Schema.Literals([">", ">=", "<", "<=", "=", "!="]).annotate({
   identifier: "PredicateOp",
   description: "Comparison operator for predicates",
 });
@@ -98,9 +98,9 @@ export const PredicateOp = Schema.Literal(">", ">=", "<", "<=", "=", "!=").annot
  * - ["?movie", ":director", "?director"]    // 3-tuple
  * - ["?e", ":name", "?n", "?tx"]            // 4-tuple with tx binding
  */
-export const PatternClause3 = Schema.Tuple(Term, Term, Term);
-export const PatternClause4 = Schema.Tuple(Term, Term, Term, Term);
-export const PatternClause = Schema.Union(PatternClause4, PatternClause3).annotations({
+export const PatternClause3 = Schema.Tuple([Term, Term, Term]);
+export const PatternClause4 = Schema.Tuple([Term, Term, Term, Term]);
+export const PatternClause = Schema.Union([PatternClause4, PatternClause3]).annotate({
   identifier: "PatternClause",
   description: "A pattern clause [entity, attribute, value, tx?] for matching triples",
 });
@@ -113,7 +113,7 @@ export const PatternClause = Schema.Union(PatternClause4, PatternClause3).annota
  * - [">=", "?age", 18]
  * - ["!=", "?status", "inactive"]
  */
-export const PredicateClause = Schema.Tuple(PredicateOp, Term, Term).annotations({
+export const PredicateClause = Schema.Tuple([PredicateOp, Term, Term]).annotate({
   identifier: "PredicateClause",
   description: "A predicate clause [op, left, right] for filtering",
 });
@@ -121,7 +121,7 @@ export const PredicateClause = Schema.Tuple(PredicateOp, Term, Term).annotations
 /**
  * Inner clause within a `not` — patterns and predicates only (no nested not/or/link).
  */
-const NotInnerClause = Schema.Union(PredicateClause, PatternClause).annotations({
+const NotInnerClause = Schema.Union([PredicateClause, PatternClause]).annotate({
   identifier: "NotInnerClause",
   description: "A pattern or predicate clause inside a not",
 });
@@ -137,17 +137,17 @@ const NotInnerClause = Schema.Union(PredicateClause, PatternClause).annotations(
  *   — excludes results where ALL clauses match simultaneously (like NOT EXISTS with a JOIN).
  *   — inner clauses can be patterns or predicates.
  */
-export const NotClause = Schema.Tuple(
+export const NotClause = Schema.Tuple([
   Schema.Literal("not"),
   NotInnerClause,
-  Schema.optionalElement(NotInnerClause),
-  Schema.optionalElement(NotInnerClause),
-  Schema.optionalElement(NotInnerClause),
-  Schema.optionalElement(NotInnerClause),
-  Schema.optionalElement(NotInnerClause),
-  Schema.optionalElement(NotInnerClause),
-  Schema.optionalElement(NotInnerClause),
-).annotations({
+  Schema.optional(NotInnerClause),
+  Schema.optional(NotInnerClause),
+  Schema.optional(NotInnerClause),
+  Schema.optional(NotInnerClause),
+  Schema.optional(NotInnerClause),
+  Schema.optional(NotInnerClause),
+  Schema.optional(NotInnerClause),
+]).annotate({
   identifier: "NotClause",
   description: 'A negation clause ["not", clause, ...] to exclude matching results',
 });
@@ -156,7 +156,7 @@ export const NotClause = Schema.Tuple(
  * Alternative within an `or` — patterns, predicates, and negation only.
  * `or` alternatives are filter/existence checks and do not bind variables outward.
  */
-export const OrAlternative = Schema.Union(PredicateClause, NotClause, PatternClause).annotations({
+export const OrAlternative = Schema.Union([PredicateClause, NotClause, PatternClause]).annotate({
   identifier: "OrAlternative",
   description: "A pattern, predicate, or not clause inside an or",
 });
@@ -169,12 +169,10 @@ export const OrAlternative = Schema.Union(PredicateClause, NotClause, PatternCla
  * - ["or", [["?person", ":name", "Alice"], ["?person", ":name", "Bob"]]]
  * - ["or", [["=", "?status", "offline"], ["not", ["?step", ":output", "?out"]]]]
  */
-export const OrClause = Schema.Tuple(Schema.Literal("or"), Schema.Array(OrAlternative)).annotations(
-  {
-    identifier: "OrClause",
-    description: 'A disjunction clause ["or", [alternative1, alternative2, ...]]',
-  },
-);
+export const OrClause = Schema.Tuple([Schema.Literal("or"), Schema.Array(OrAlternative)]).annotate({
+  identifier: "OrClause",
+  description: 'A disjunction clause ["or", [alternative1, alternative2, ...]]',
+});
 
 // =============================================================================
 // Rule Application (for recursive queries)
@@ -190,14 +188,14 @@ export const OrClause = Schema.Tuple(Schema.Literal("or"), Schema.Array(OrAltern
  * - ["ancestor", "alice", "?ancestor"]
  * - ["connected", "?a", "?b"]
  */
-export const RuleApplication = Schema.Tuple(
+export const RuleApplication = Schema.Tuple([
   Schema.String.pipe(
-    Schema.pattern(/^[a-zA-Z_][a-zA-Z0-9_-]*$/),
-    Schema.annotations({ description: "Rule name (alphanumeric, no ? or : prefix)" }),
+    Schema.check(Schema.isPattern(/^[a-zA-Z_][a-zA-Z0-9_-]*$/)),
+    Schema.annotate({ description: "Rule name (alphanumeric, no ? or : prefix)" }),
   ),
   Term,
   Term,
-).annotations({
+]).annotate({
   identifier: "RuleApplication",
   description: "A rule application [ruleName, arg1, arg2] for recursive queries",
 });
@@ -210,14 +208,14 @@ export const RuleApplication = Schema.Tuple(
  * - ["link", "manages", "?manager", "?employee"]
  * - ["link", "manages", "?manager", "?employee", { since: "?since" }]
  */
-export const LinkClause = Schema.Tuple(
+export const LinkClause = Schema.Tuple([
   Schema.Literal("link"),
   Schema.String, // Link type name
   Term, // Source entity variable/constant
   Term, // Target entity variable/constant
   // Note: Properties are optional and handled at runtime by the compiler
   // The 5th element (properties) is optional, so we don't include it in the tuple schema
-).annotations({
+]).annotate({
   identifier: "LinkClause",
   description: 'A link clause ["link", relationshipType, source, target] for querying links',
 });
@@ -233,14 +231,14 @@ export const LinkClause = Schema.Tuple(
  * - If it's a plain identifier (no ? or :), it's a rule application
  * - Otherwise, it's a pattern
  */
-export const Clause = Schema.Union(
+export const Clause = Schema.Union([
   PredicateClause,
   NotClause,
   OrClause,
   LinkClause,
   RuleApplication,
   PatternClause,
-).annotations({
+]).annotate({
   identifier: "Clause",
   description: "A clause that is a pattern, predicate, not, or, link, or rule application",
 });
@@ -252,7 +250,7 @@ export const Clause = Schema.Union(
 /**
  * Rule body clause: can be a pattern or a rule application
  */
-export const RuleBodyClause = Schema.Union(PatternClause, RuleApplication).annotations({
+export const RuleBodyClause = Schema.Union([PatternClause, RuleApplication]).annotate({
   identifier: "RuleBodyClause",
   description: "A clause in a rule body: pattern or rule application",
 });
@@ -275,14 +273,14 @@ export const RuleBodyClause = Schema.Union(PatternClause, RuleApplication).annot
 export const Rule = Schema.Struct({
   /** Name of the rule (used in rule applications) */
   name: Schema.String.pipe(
-    Schema.pattern(/^[a-zA-Z_][a-zA-Z0-9_-]*$/),
-    Schema.annotations({ description: "Rule name" }),
+    Schema.check(Schema.isPattern(/^[a-zA-Z_][a-zA-Z0-9_-]*$/)),
+    Schema.annotate({ description: "Rule name" }),
   ),
   /** Body clauses that define when this rule matches */
   body: Schema.Array(RuleBodyClause),
   /** Maximum recursion depth (defaults to 100) */
   maxDepth: Schema.optional(Schema.Number),
-}).annotations({
+}).annotate({
   identifier: "Rule",
   description: "A rule definition for recursive queries",
 });
@@ -294,7 +292,7 @@ export const Rule = Schema.Struct({
 /**
  * Aggregate operator
  */
-export const AggregateOp = Schema.Literal("count", "sum", "avg", "min", "max").annotations({
+export const AggregateOp = Schema.Literals(["count", "sum", "avg", "min", "max"]).annotate({
   identifier: "AggregateOp",
   description: "Aggregation operator: count, sum, avg, min, max",
 });
@@ -305,7 +303,7 @@ export const AggregateOp = Schema.Literal("count", "sum", "avg", "min", "max").a
  * Examples:
  * - ["count", "?person", "?count"]
  */
-export const AggregateSpec = Schema.Tuple(AggregateOp, Variable, Variable).annotations({
+export const AggregateSpec = Schema.Tuple([AggregateOp, Variable, Variable]).annotate({
   identifier: "AggregateSpec",
   description: 'An aggregation [op, source, target] like ["count", "?person", "?count"]',
 });
@@ -317,7 +315,7 @@ export const AggregateSpec = Schema.Tuple(AggregateOp, Variable, Variable).annot
 /**
  * Order direction for sorting results
  */
-export const OrderDirection = Schema.Literal("asc", "desc").annotations({
+export const OrderDirection = Schema.Literals(["asc", "desc"]).annotate({
   identifier: "OrderDirection",
   description: "Sort direction: ascending or descending",
 });
@@ -333,7 +331,7 @@ export const OrderDirection = Schema.Literal("asc", "desc").annotations({
 export const OrderBySpec = Schema.Struct({
   variable: Variable,
   direction: Schema.optional(OrderDirection),
-}).annotations({
+}).annotate({
   identifier: "OrderBySpec",
   description: "Sorting specification for query results",
 });
@@ -345,7 +343,7 @@ export const OrderBySpec = Schema.Struct({
  * Examples:
  * - [">=", "?count", 5] - only include groups where count >= 5
  */
-export const HavingClause = Schema.Tuple(PredicateOp, Term, Term).annotations({
+export const HavingClause = Schema.Tuple([PredicateOp, Term, Term]).annotate({
   identifier: "HavingClause",
   description: "A having clause for filtering aggregated results",
 });
@@ -392,8 +390,15 @@ export const DatalogQuery = Schema.Struct({
   aggregate: Schema.optional(Schema.Array(AggregateSpec)),
   having: Schema.optional(Schema.Array(HavingClause)),
   orderBy: Schema.optional(Schema.Array(OrderBySpec)),
-  limit: Schema.optional(Schema.Number.pipe(Schema.int(), Schema.positive())),
-  offset: Schema.optional(Schema.Number.pipe(Schema.int(), Schema.nonNegative())),
+  limit: Schema.optional(
+    Schema.Number.pipe(Schema.check(Schema.isInt()), Schema.check(Schema.isGreaterThan(0))),
+  ),
+  offset: Schema.optional(
+    Schema.Number.pipe(
+      Schema.check(Schema.isInt()),
+      Schema.check(Schema.isGreaterThanOrEqualTo(0)),
+    ),
+  ),
   /**
    * Recursive rule definitions applied by rule-application clauses in `where`.
    * SQL backends compile these to recursive CTEs; KV backends evaluate them
@@ -411,7 +416,7 @@ export const DatalogQuery = Schema.Struct({
       ),
     }),
   ),
-}).annotations({
+}).annotate({
   identifier: "DatalogQuery",
   description: "A Datalog query with find, where, and optional modifiers",
 });
@@ -424,7 +429,7 @@ export const DatalogQuery = Schema.Struct({
  * Filter operators for wrapper filtering
  * Supports text matching (LIKE), equality, and comparison
  */
-export const WrapperFilterOp = Schema.Literal(
+export const WrapperFilterOp = Schema.Literals([
   "=",
   "!=",
   ">",
@@ -437,7 +442,7 @@ export const WrapperFilterOp = Schema.Literal(
   "not-ilike",
   "is-null",
   "is-not-null",
-).annotations({
+]).annotate({
   identifier: "WrapperFilterOp",
   description: "Filter operator for wrapper queries",
 });
@@ -457,7 +462,7 @@ export const WrapperFilter = Schema.Struct({
   op: WrapperFilterOp,
   /** Filter value (not required for is-null/is-not-null) */
   value: Schema.optional(Constant),
-}).annotations({
+}).annotate({
   identifier: "WrapperFilter",
   description: "A filter condition applied to wrapper query results",
 });
@@ -495,12 +500,14 @@ export const WrappedQuery = Schema.Struct({
   /** Order by specification for wrapper (required for cursor pagination) */
   orderBy: Schema.optional(Schema.Array(OrderBySpec)),
   /** Limit for wrapper pagination */
-  limit: Schema.optional(Schema.Number.pipe(Schema.int(), Schema.positive())),
+  limit: Schema.optional(
+    Schema.Number.pipe(Schema.check(Schema.isInt()), Schema.check(Schema.isGreaterThan(0))),
+  ),
   /** Cursor for keyset pagination (base64 encoded, more efficient than offset) */
   cursor: Schema.optional(Schema.String),
   /** Whether to include total count of filtered results */
   includeCount: Schema.optional(Schema.Boolean),
-}).annotations({
+}).annotate({
   identifier: "WrappedQuery",
   description: "A wrapped query with subquery semantics for filtering and cursor-based pagination",
 });
@@ -510,14 +517,14 @@ export const WrappedQuery = Schema.Struct({
  */
 export const WrappedQueryResponse = Schema.Struct({
   /** Query results as array of records */
-  results: Schema.Array(Schema.Record({ key: Schema.String, value: Schema.Unknown })),
+  results: Schema.Array(Schema.Record(Schema.String, Schema.Unknown)),
   /** Total count of filtered results (if includeCount was true) */
   totalCount: Schema.optional(Schema.Number),
   /** Cursor for the next page (if more results available) */
   nextCursor: Schema.optional(Schema.String),
   /** Authorization decision identifier for auditing and trace correlation */
   decisionId: Schema.optional(Schema.String),
-}).annotations({
+}).annotate({
   identifier: "WrappedQueryResponse",
   description: "Response from a wrapped query with pagination info",
 });
@@ -764,9 +771,7 @@ export type ExplainResult = typeof ExplainResult.Type;
 /**
  * Array of query result bindings (variable name -> value)
  */
-export const DatalogQueryResults = Schema.Array(
-  Schema.Record({ key: Schema.String, value: Schema.Unknown }),
-);
+export const DatalogQueryResults = Schema.Array(Schema.Record(Schema.String, Schema.Unknown));
 export type DatalogQueryResults = typeof DatalogQueryResults.Type;
 
 /**
@@ -788,7 +793,7 @@ export type DatalogQueryResponse = typeof DatalogQueryResponse.Type;
  * A single diagnostic from the type checker.
  */
 export const TypeCheckDiagnosticSchema = Schema.Struct({
-  severity: Schema.Literal("error", "warning", "info"),
+  severity: Schema.Literals(["error", "warning", "info"]),
   message: Schema.String,
   clauseIndex: Schema.optional(Schema.Number),
   variable: Schema.optional(Schema.String),
@@ -804,7 +809,7 @@ export type TypeCheckDiagnosticSchema = typeof TypeCheckDiagnosticSchema.Type;
  */
 export const TypeCheckResponse = Schema.Struct({
   /** Inferred types for each query variable (e.g., "?name" → "Str") */
-  variableTypes: Schema.Record({ key: Schema.String, value: Schema.String }),
+  variableTypes: Schema.Record(Schema.String, Schema.String),
   /** The computed result type as a display string (e.g., "List<{name: Str, age: Num}>") */
   resultType: Schema.String,
   /** All diagnostics from the type checker */

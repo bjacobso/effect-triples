@@ -31,7 +31,7 @@ const makeRawQueryCountingLayer = (counter: { count: number; sql: string | null 
           Effect.sync(() => {
             counter.count++;
             counter.sql = sql;
-          }).pipe(Effect.zipRight(adapter.rawQuery<T>(sql, params))),
+          }).pipe(Effect.andThen(adapter.rawQuery<T>(sql, params))),
       };
     }),
   ).pipe(Layer.provide(adapterLayer));

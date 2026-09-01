@@ -6,7 +6,7 @@
  */
 
 import { Schema } from "effect";
-import { HttpApiEndpoint, HttpApiGroup, HttpApiSchema } from "@effect/platform";
+import { HttpApiEndpoint, HttpApiGroup } from "effect/unstable/httpapi";
 import { DatabaseNotFound, InternalError } from "./Error.js";
 import {
   TransactionListRequest,
@@ -17,42 +17,36 @@ import {
 } from "./Snapshot.js";
 
 // =============================================================================
-// Path Parameters
-// =============================================================================
-
-const databaseParam = HttpApiSchema.param("database", Schema.String);
-const txIdParam = HttpApiSchema.param("txId", Schema.String);
-const entityIdParam = HttpApiSchema.param("entityId", Schema.String);
-
-// =============================================================================
 // API Group
 // =============================================================================
 
 export class SnapshotApi extends HttpApiGroup.make("snapshots")
   .add(
-    HttpApiEndpoint.post("listTransactions")`/db/${databaseParam}/transactions`
-      .setPayload(TransactionListRequest)
-      .addSuccess(TransactionListResponse)
-      .addError(DatabaseNotFound)
-      .addError(InternalError),
+    HttpApiEndpoint.post("listTransactions", "/db/:database/transactions", {
+      params: { database: Schema.String },
+      payload: TransactionListRequest,
+      success: TransactionListResponse,
+      error: [DatabaseNotFound, InternalError],
+    }),
   )
   .add(
-    HttpApiEndpoint.get("getTransaction")`/db/${databaseParam}/transactions/${txIdParam}`
-      .addSuccess(TransactionDetailResponse)
-      .addError(DatabaseNotFound)
-      .addError(InternalError),
+    HttpApiEndpoint.get("getTransaction", "/db/:database/transactions/:txId", {
+      params: { database: Schema.String, txId: Schema.String },
+      success: TransactionDetailResponse,
+      error: [DatabaseNotFound, InternalError],
+    }),
   )
   .add(
-    HttpApiEndpoint.get("getEntitySnapshot")`/db/${databaseParam}/snapshots/${entityIdParam}`
-      .addSuccess(Schema.NullOr(EntitySnapshotResponse))
-      .addError(DatabaseNotFound)
-      .addError(InternalError),
+    HttpApiEndpoint.get("getEntitySnapshot", "/db/:database/snapshots/:entityId", {
+      params: { database: Schema.String, entityId: Schema.String },
+      success: Schema.NullOr(EntitySnapshotResponse),
+      error: [DatabaseNotFound, InternalError],
+    }),
   )
   .add(
-    HttpApiEndpoint.get(
-      "getEntityHashHistory",
-    )`/db/${databaseParam}/snapshots/${entityIdParam}/history`
-      .addSuccess(HashHistoryResponse)
-      .addError(DatabaseNotFound)
-      .addError(InternalError),
+    HttpApiEndpoint.get("getEntityHashHistory", "/db/:database/snapshots/:entityId/history", {
+      params: { database: Schema.String, entityId: Schema.String },
+      success: HashHistoryResponse,
+      error: [DatabaseNotFound, InternalError],
+    }),
   ) {}

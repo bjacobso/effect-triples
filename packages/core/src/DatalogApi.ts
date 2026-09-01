@@ -5,7 +5,7 @@
  */
 
 import { Schema } from "effect";
-import { HttpApiEndpoint, HttpApiGroup, HttpApiSchema } from "@effect/platform";
+import { HttpApiEndpoint, HttpApiGroup } from "effect/unstable/httpapi";
 import {
   AuthorizationDenied,
   DatabaseNotFound,
@@ -22,65 +22,49 @@ import {
 } from "./Datalog.js";
 
 // =============================================================================
-// Path Parameters
-// =============================================================================
-
-const databaseParam = HttpApiSchema.param("database", Schema.String);
-
-// =============================================================================
 // API Group
 // =============================================================================
 
 export class DatalogApi extends HttpApiGroup.make("datalog")
   .add(
-    HttpApiEndpoint.post("query")`/db/${databaseParam}/datalog`
-      .setPayload(DatalogQuery)
-      .setUrlParams(
-        Schema.Struct({
-          debug: Schema.optional(Schema.BooleanFromString),
-        }),
-      )
-      .addSuccess(DatalogQueryResponse)
-      .addError(DatabaseNotFound)
-      .addError(DatalogQueryError)
-      .addError(AuthorizationDenied)
-      .addError(InternalError),
+    HttpApiEndpoint.post("query", "/db/:database/datalog", {
+      params: { database: Schema.String },
+      query: { debug: Schema.optional(Schema.Boolean) },
+      payload: DatalogQuery,
+      success: DatalogQueryResponse,
+      error: [DatabaseNotFound, DatalogQueryError, AuthorizationDenied, InternalError],
+    }),
   )
   .add(
-    HttpApiEndpoint.post("queryPage")`/db/${databaseParam}/datalog/page`
-      .setPayload(WrappedQuery)
-      .setUrlParams(
-        Schema.Struct({
-          debug: Schema.optional(Schema.BooleanFromString),
-        }),
-      )
-      .addSuccess(WrappedQueryResponse)
-      .addError(DatabaseNotFound)
-      .addError(DatalogQueryError)
-      .addError(AuthorizationDenied)
-      .addError(InternalError),
+    HttpApiEndpoint.post("queryPage", "/db/:database/datalog/page", {
+      params: { database: Schema.String },
+      query: { debug: Schema.optional(Schema.Boolean) },
+      payload: WrappedQuery,
+      success: WrappedQueryResponse,
+      error: [DatabaseNotFound, DatalogQueryError, AuthorizationDenied, InternalError],
+    }),
   )
   .add(
-    HttpApiEndpoint.post("explain")`/db/${databaseParam}/datalog/explain`
-      .setPayload(DatalogQuery)
-      .addSuccess(ExplainResult)
-      .addError(DatabaseNotFound)
-      .addError(DatalogQueryError)
-      .addError(InternalError),
+    HttpApiEndpoint.post("explain", "/db/:database/datalog/explain", {
+      params: { database: Schema.String },
+      payload: DatalogQuery,
+      success: ExplainResult,
+      error: [DatabaseNotFound, DatalogQueryError, InternalError],
+    }),
   )
   .add(
-    HttpApiEndpoint.post("explainPage")`/db/${databaseParam}/datalog/explain/page`
-      .setPayload(WrappedQuery)
-      .addSuccess(ExplainResult)
-      .addError(DatabaseNotFound)
-      .addError(DatalogQueryError)
-      .addError(InternalError),
+    HttpApiEndpoint.post("explainPage", "/db/:database/datalog/explain/page", {
+      params: { database: Schema.String },
+      payload: WrappedQuery,
+      success: ExplainResult,
+      error: [DatabaseNotFound, DatalogQueryError, InternalError],
+    }),
   )
   .add(
-    HttpApiEndpoint.post("typeCheck")`/db/${databaseParam}/datalog/type-check`
-      .setPayload(DatalogQuery)
-      .addSuccess(TypeCheckResponse)
-      .addError(DatabaseNotFound)
-      .addError(DatalogQueryError)
-      .addError(InternalError),
+    HttpApiEndpoint.post("typeCheck", "/db/:database/datalog/type-check", {
+      params: { database: Schema.String },
+      payload: DatalogQuery,
+      success: TypeCheckResponse,
+      error: [DatabaseNotFound, DatalogQueryError, InternalError],
+    }),
   ) {}

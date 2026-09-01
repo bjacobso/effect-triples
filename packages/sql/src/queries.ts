@@ -1,5 +1,5 @@
 import { Effect, Option } from "effect";
-import { SqlClient } from "@effect/sql";
+import { SqlClient } from "effect/unstable/sql";
 import type {
   TripleRow,
   Triple,

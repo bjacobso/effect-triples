@@ -15,8 +15,6 @@
   },
   "dependencies": {
     "@effect/platform-node": "catalog:",
-    "@effect/rpc": "catalog:",
-    "@effect/sql": "catalog:",
     "@effect/sql-pg": "catalog:",
     "@effect/sql-sqlite-node": "catalog:",
     "effect": "catalog:",

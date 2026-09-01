@@ -6,10 +6,9 @@ export interface RuntimeClockService {
   readonly now: Effect.Effect<number>;
 }
 
-export class RuntimeClock extends Context.Tag("RuntimeClock")<
-  RuntimeClock,
-  RuntimeClockService
->() {}
+export class RuntimeClock extends Context.Service<RuntimeClock, RuntimeClockService>()(
+  "RuntimeClock",
+) {}
 
 export const RuntimeClockLive = Layer.succeed(RuntimeClock, {
   now: Effect.sync(() => Date.now()),
@@ -22,7 +21,9 @@ export interface IdGeneratorService {
   readonly nextTxId: Effect.Effect<string>;
 }
 
-export class IdGenerator extends Context.Tag("IdGenerator")<IdGenerator, IdGeneratorService>() {}
+export class IdGenerator extends Context.Service<IdGenerator, IdGeneratorService>()(
+  "IdGenerator",
+) {}
 
 export const IdGeneratorLive = Layer.succeed(IdGenerator, {
   generate: (scope) => Effect.sync(() => `${scope}/${generateId()}`),

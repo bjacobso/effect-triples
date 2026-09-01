@@ -5,7 +5,7 @@
  * Used by both HTTP handlers and CLI commands.
  */
 
-import { Rpc, RpcGroup } from "@effect/rpc";
+import { Rpc, RpcGroup } from "effect/unstable/rpc";
 import { Schema } from "effect";
 import {
   AssertTripleRequest,
@@ -37,8 +37,8 @@ export class TripleRpc extends RpcGroup.make(
       database: Schema.String,
       triples: AssertTripleRequest,
     }),
-    success: Schema.Union(Triple, Schema.Array(Triple)),
-    error: Schema.Union(DatabaseNotFound, InternalError),
+    success: Schema.Union([Triple, Schema.Array(Triple)]),
+    error: Schema.Union([DatabaseNotFound, InternalError]),
   }),
 
   /**
@@ -50,7 +50,7 @@ export class TripleRpc extends RpcGroup.make(
       tripleId: Schema.String,
     }),
     success: Schema.Void,
-    error: Schema.Union(DatabaseNotFound, TripleNotFound, InternalError),
+    error: Schema.Union([DatabaseNotFound, TripleNotFound, InternalError]),
   }),
 
   /**
@@ -62,7 +62,7 @@ export class TripleRpc extends RpcGroup.make(
       pattern: QueryRequest,
     }),
     success: RetractResponse,
-    error: Schema.Union(DatabaseNotFound, InternalError),
+    error: Schema.Union([DatabaseNotFound, InternalError]),
   }),
 
   /**
@@ -74,7 +74,7 @@ export class TripleRpc extends RpcGroup.make(
       tripleId: Schema.String,
     }),
     success: Triple,
-    error: Schema.Union(DatabaseNotFound, TripleNotFound, InternalError),
+    error: Schema.Union([DatabaseNotFound, TripleNotFound, InternalError]),
   }),
 
   /**
@@ -86,7 +86,7 @@ export class TripleRpc extends RpcGroup.make(
       entityId: Schema.String,
     }),
     success: Schema.Array(Triple),
-    error: Schema.Union(DatabaseNotFound, InternalError),
+    error: Schema.Union([DatabaseNotFound, InternalError]),
   }),
 
   /**
@@ -98,7 +98,7 @@ export class TripleRpc extends RpcGroup.make(
       pattern: QueryRequest,
     }),
     success: Schema.Array(Triple),
-    error: Schema.Union(DatabaseNotFound, InternalError),
+    error: Schema.Union([DatabaseNotFound, InternalError]),
   }),
 
   /**
@@ -111,7 +111,7 @@ export class TripleRpc extends RpcGroup.make(
       asOf: Schema.Number,
     }),
     success: Schema.Array(Triple),
-    error: Schema.Union(DatabaseNotFound, InternalError),
+    error: Schema.Union([DatabaseNotFound, InternalError]),
   }),
 
   /**
@@ -123,7 +123,7 @@ export class TripleRpc extends RpcGroup.make(
       entityId: Schema.String,
     }),
     success: Schema.Array(Triple),
-    error: Schema.Union(DatabaseNotFound, InternalError),
+    error: Schema.Union([DatabaseNotFound, InternalError]),
   }),
 
   /**
@@ -140,6 +140,6 @@ export class TripleRpc extends RpcGroup.make(
       ),
     }),
     success: TransactResponse,
-    error: Schema.Union(DatabaseNotFound, InternalError),
+    error: Schema.Union([DatabaseNotFound, InternalError]),
   }),
 ) {}

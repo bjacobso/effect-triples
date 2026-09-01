@@ -51,7 +51,6 @@ export interface StorageAdapterService {
 /**
  * StorageAdapter service tag for dependency injection
  */
-export class StorageAdapter extends Context.Tag("StorageAdapter")<
-  StorageAdapter,
-  StorageAdapterService
->() {}
+export class StorageAdapter extends Context.Service<StorageAdapter, StorageAdapterService>()(
+  "StorageAdapter",
+) {}

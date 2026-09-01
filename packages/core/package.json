@@ -117,8 +117,6 @@
     "clean": "rm -rf dist"
   },
   "dependencies": {
-    "@effect/platform": "catalog:",
-    "@effect/rpc": "catalog:",
     "effect": "catalog:",
     "ulidx": "catalog:"
   },

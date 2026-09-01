@@ -19,8 +19,8 @@ import { Schema } from "effect";
  * Examples: "?person", "?age", "?movieTitle"
  */
 export const Variable = Schema.String.pipe(
-  Schema.pattern(/^\?[a-zA-Z_][a-zA-Z0-9_]*$/),
-  Schema.annotations({
+  Schema.check(Schema.isPattern(/^\?[a-zA-Z_][a-zA-Z0-9_]*$/)),
+  Schema.annotate({
     identifier: "Variable",
     description: "A SPARQL variable starting with ? (e.g., ?person, ?age)",
   }),
@@ -31,8 +31,8 @@ export const Variable = Schema.String.pipe(
  * Examples: ":name", ":age", ":foaf/knows"
  */
 export const IRI = Schema.String.pipe(
-  Schema.pattern(/^:[a-zA-Z_][a-zA-Z0-9_/-]*$/),
-  Schema.annotations({
+  Schema.check(Schema.isPattern(/^:[a-zA-Z_][a-zA-Z0-9_/-]*$/)),
+  Schema.annotate({
     identifier: "IRI",
     description: "An IRI/attribute starting with : (e.g., :name, :foaf/knows)",
   }),
@@ -41,7 +41,7 @@ export const IRI = Schema.String.pipe(
 /**
  * Constant: a literal value (string, number, or boolean)
  */
-export const Constant = Schema.Union(Schema.String, Schema.Number, Schema.Boolean).annotations({
+export const Constant = Schema.Union([Schema.String, Schema.Number, Schema.Boolean]).annotate({
   identifier: "Constant",
   description: "A constant value (string, number, or boolean)",
 });
@@ -49,7 +49,7 @@ export const Constant = Schema.Union(Schema.String, Schema.Number, Schema.Boolea
 /**
  * Term: either a variable or a constant
  */
-export const Term = Schema.Union(Variable, Constant).annotations({
+export const Term = Schema.Union([Variable, Constant]).annotate({
   identifier: "Term",
   description: "A term that is either a variable (?x) or a constant value",
 });
@@ -62,7 +62,7 @@ export const Term = Schema.Union(Variable, Constant).annotations({
  * Triple pattern: [subject, predicate, object]
  * The basic building block of SPARQL queries
  */
-export const TriplePattern = Schema.Tuple(Term, Term, Term).annotations({
+export const TriplePattern = Schema.Tuple([Term, Term, Term]).annotate({
   identifier: "TriplePattern",
   description: "A triple pattern [subject, predicate, object] for matching triples",
 });
@@ -74,7 +74,7 @@ export const TriplePattern = Schema.Tuple(Term, Term, Term).annotations({
 /**
  * Comparison operators for FILTER
  */
-export const ComparisonOp = Schema.Literal("=", "!=", "<", ">", "<=", ">=").annotations({
+export const ComparisonOp = Schema.Literals(["=", "!=", "<", ">", "<=", ">="]).annotate({
   identifier: "ComparisonOp",
   description: "Comparison operator for FILTER expressions",
 });
@@ -82,7 +82,7 @@ export const ComparisonOp = Schema.Literal("=", "!=", "<", ">", "<=", ">=").anno
 /**
  * Logical operators for combining filters
  */
-export const LogicalOp = Schema.Literal("and", "or", "not").annotations({
+export const LogicalOp = Schema.Literals(["and", "or", "not"]).annotate({
   identifier: "LogicalOp",
   description: "Logical operator for combining FILTER expressions",
 });
@@ -90,7 +90,7 @@ export const LogicalOp = Schema.Literal("and", "or", "not").annotations({
 /**
  * Built-in function names for FILTER
  */
-export const BuiltInFunction = Schema.Literal(
+export const BuiltInFunction = Schema.Literals([
   "strlen",
   "substr",
   "contains",
@@ -116,7 +116,7 @@ export const BuiltInFunction = Schema.Literal(
   "lang",
   "datatype",
   "str",
-).annotations({
+]).annotate({
   identifier: "BuiltInFunction",
   description: "Built-in SPARQL function for FILTER expressions",
 });
@@ -128,7 +128,7 @@ export const ComparisonExpr = Schema.Struct({
   op: ComparisonOp,
   left: Term,
   right: Term,
-}).annotations({
+}).annotate({
   identifier: "ComparisonExpr",
   description: "A comparison expression like ?age >= 18",
 });
@@ -139,7 +139,7 @@ export const ComparisonExpr = Schema.Struct({
 export const BuiltInCall = Schema.Struct({
   fn: BuiltInFunction,
   args: Schema.Array(Term),
-}).annotations({
+}).annotate({
   identifier: "BuiltInCall",
   description: "A built-in function call like regex(?name, '^A')",
 });
@@ -148,12 +148,12 @@ export const BuiltInCall = Schema.Struct({
  * Filter expression: comparison or built-in call
  * Note: Logical expressions (and/or/not) handled at runtime
  */
-export const FilterExpression = Schema.Union(
+export const FilterExpression = Schema.Union([
   ComparisonExpr,
   BuiltInCall,
   // For logical expressions and EXISTS, use Unknown and validate at runtime
   Schema.Unknown,
-).annotations({
+]).annotate({
   identifier: "FilterExpression",
   description: "A FILTER expression",
 });
@@ -165,7 +165,7 @@ export const FilterExpression = Schema.Union(
 /**
  * Math operators for BIND expressions
  */
-export const MathOp = Schema.Literal("+", "-", "*", "/").annotations({
+export const MathOp = Schema.Literals(["+", "-", "*", "/"]).annotate({
   identifier: "MathOp",
   description: "Math operator for BIND expressions",
 });
@@ -174,11 +174,11 @@ export const MathOp = Schema.Literal("+", "-", "*", "/").annotations({
  * BIND expression (simplified): term, function call, or math expression
  * Note: Complex nested expressions handled at runtime
  */
-export const BindExpression = Schema.Union(
+export const BindExpression = Schema.Union([
   Term,
   BuiltInCall,
   Schema.Unknown, // Complex expressions validated at runtime
-).annotations({
+]).annotate({
   identifier: "BindExpression",
   description: "An expression for BIND",
 });
@@ -191,10 +191,10 @@ export const BindExpression = Schema.Union(
  * Property path: IRI or path object
  * Note: Complex nested paths handled at runtime
  */
-export const PropertyPath = Schema.Union(
+export const PropertyPath = Schema.Union([
   IRI,
   Schema.Unknown, // Complex paths validated at runtime
-).annotations({
+]).annotate({
   identifier: "PropertyPath",
   description: "A property path expression",
 });
@@ -208,7 +208,7 @@ export const PropertyPath = Schema.Union(
  */
 export const OptionalPattern = Schema.Struct({
   optional: Schema.Array(Schema.Unknown), // GraphPattern - validated at runtime
-}).annotations({
+}).annotate({
   identifier: "OptionalPattern",
   description: "An OPTIONAL pattern (left outer join)",
 });
@@ -218,7 +218,7 @@ export const OptionalPattern = Schema.Struct({
  */
 export const UnionPattern = Schema.Struct({
   union: Schema.Array(Schema.Array(Schema.Unknown)), // Array of GraphPatterns
-}).annotations({
+}).annotate({
   identifier: "UnionPattern",
   description: "A UNION pattern (alternatives)",
 });
@@ -228,7 +228,7 @@ export const UnionPattern = Schema.Struct({
  */
 export const FilterPattern = Schema.Struct({
   filter: FilterExpression,
-}).annotations({
+}).annotate({
   identifier: "FilterPattern",
   description: "A FILTER pattern for filtering results",
 });
@@ -241,7 +241,7 @@ export const BindPattern = Schema.Struct({
     expr: BindExpression,
     as: Variable,
   }),
-}).annotations({
+}).annotate({
   identifier: "BindPattern",
   description: "A BIND pattern for computed variables",
 });
@@ -252,11 +252,9 @@ export const BindPattern = Schema.Struct({
 export const ValuesPattern = Schema.Struct({
   values: Schema.Struct({
     variables: Schema.Array(Variable),
-    bindings: Schema.Array(
-      Schema.Record({ key: Schema.String, value: Schema.Union(Constant, Schema.Null) }),
-    ),
+    bindings: Schema.Array(Schema.Record(Schema.String, Schema.Union([Constant, Schema.Null]))),
   }),
-}).annotations({
+}).annotate({
   identifier: "ValuesPattern",
   description: "A VALUES pattern for inline data",
 });
@@ -266,7 +264,7 @@ export const ValuesPattern = Schema.Struct({
  */
 export const MinusPattern = Schema.Struct({
   minus: Schema.Array(Schema.Unknown), // GraphPattern
-}).annotations({
+}).annotate({
   identifier: "MinusPattern",
   description: "A MINUS pattern for set difference",
 });
@@ -278,7 +276,7 @@ export const PropertyPathPattern = Schema.Struct({
   subject: Term,
   path: PropertyPath,
   object: Term,
-}).annotations({
+}).annotate({
   identifier: "PropertyPathPattern",
   description: "A property path pattern for traversal",
 });
@@ -288,7 +286,7 @@ export const PropertyPathPattern = Schema.Struct({
  */
 export const SubSelectPattern = Schema.Struct({
   subSelect: Schema.Unknown, // SparqlQuery - validated at runtime
-}).annotations({
+}).annotate({
   identifier: "SubSelectPattern",
   description: "A nested SELECT subquery",
 });
@@ -296,7 +294,7 @@ export const SubSelectPattern = Schema.Struct({
 /**
  * Graph pattern element: triple, optional, union, filter, bind, values, minus, path, or subquery
  */
-export const GraphPatternElement = Schema.Union(
+export const GraphPatternElement = Schema.Union([
   TriplePattern,
   OptionalPattern,
   UnionPattern,
@@ -306,7 +304,7 @@ export const GraphPatternElement = Schema.Union(
   MinusPattern,
   PropertyPathPattern,
   SubSelectPattern,
-).annotations({
+]).annotate({
   identifier: "GraphPatternElement",
   description: "An element of a graph pattern",
 });
@@ -314,7 +312,7 @@ export const GraphPatternElement = Schema.Union(
 /**
  * Graph pattern: an array of pattern elements
  */
-export const GraphPattern = Schema.Array(GraphPatternElement).annotations({
+export const GraphPattern = Schema.Array(GraphPatternElement).annotate({
   identifier: "GraphPattern",
   description: "A graph pattern (array of pattern elements)",
 });
@@ -326,7 +324,7 @@ export const GraphPattern = Schema.Array(GraphPatternElement).annotations({
 /**
  * Aggregate operator
  */
-export const AggregateOp = Schema.Literal("count", "sum", "avg", "min", "max").annotations({
+export const AggregateOp = Schema.Literals(["count", "sum", "avg", "min", "max"]).annotate({
   identifier: "AggregateOp",
   description: "Aggregation operator",
 });
@@ -334,7 +332,7 @@ export const AggregateOp = Schema.Literal("count", "sum", "avg", "min", "max").a
 /**
  * Aggregate specification: [operator, sourceVariable, targetVariable]
  */
-export const AggregateSpec = Schema.Tuple(AggregateOp, Variable, Variable).annotations({
+export const AggregateSpec = Schema.Tuple([AggregateOp, Variable, Variable]).annotate({
   identifier: "AggregateSpec",
   description: "An aggregation [op, source, target]",
 });
@@ -346,7 +344,7 @@ export const AggregateSpec = Schema.Tuple(AggregateOp, Variable, Variable).annot
 /**
  * Order direction for sorting results
  */
-export const OrderDirection = Schema.Literal("asc", "desc").annotations({
+export const OrderDirection = Schema.Literals(["asc", "desc"]).annotate({
   identifier: "OrderDirection",
   description: "Sort direction",
 });
@@ -357,7 +355,7 @@ export const OrderDirection = Schema.Literal("asc", "desc").annotations({
 export const OrderBySpec = Schema.Struct({
   variable: Variable,
   direction: Schema.optional(OrderDirection),
-}).annotations({
+}).annotate({
   identifier: "OrderBySpec",
   description: "Sorting specification for query results",
 });
@@ -369,7 +367,7 @@ export const HavingClause = Schema.Struct({
   op: ComparisonOp,
   left: Term,
   right: Term,
-}).annotations({
+}).annotate({
   identifier: "HavingClause",
   description: "A HAVING clause for filtering aggregated results",
 });
@@ -381,7 +379,7 @@ export const HavingClause = Schema.Struct({
 /**
  * Query form: select, construct, describe, or ask
  */
-export const QueryForm = Schema.Literal("select", "construct", "describe", "ask").annotations({
+export const QueryForm = Schema.Literals(["select", "construct", "describe", "ask"]).annotate({
   identifier: "QueryForm",
   description: "The form of the SPARQL query",
 });
@@ -393,7 +391,7 @@ export const SelectClause = Schema.Struct({
   variables: Schema.Array(Variable),
   distinct: Schema.optional(Schema.Boolean),
   reduced: Schema.optional(Schema.Boolean),
-}).annotations({
+}).annotate({
   identifier: "SelectClause",
   description: "SELECT clause specifying variables to return",
 });
@@ -427,9 +425,16 @@ export const SparqlQuery = Schema.Struct({
   groupBy: Schema.optional(Schema.Array(Variable)),
   having: Schema.optional(Schema.Array(HavingClause)),
   orderBy: Schema.optional(Schema.Array(OrderBySpec)),
-  limit: Schema.optional(Schema.Number.pipe(Schema.int(), Schema.positive())),
-  offset: Schema.optional(Schema.Number.pipe(Schema.int(), Schema.nonNegative())),
-}).annotations({
+  limit: Schema.optional(
+    Schema.Number.pipe(Schema.check(Schema.isInt()), Schema.check(Schema.isGreaterThan(0))),
+  ),
+  offset: Schema.optional(
+    Schema.Number.pipe(
+      Schema.check(Schema.isInt()),
+      Schema.check(Schema.isGreaterThanOrEqualTo(0)),
+    ),
+  ),
+}).annotate({
   identifier: "SparqlQuery",
   description: "A SPARQL query with form, select/construct/describe, where, and optional modifiers",
 });

@@ -52,9 +52,9 @@ export interface DatabaseFeature {
  *
  * If not provided, DatabaseManager uses only the built-in change emission.
  */
-export class DatabaseFeatures extends Context.Tag("DatabaseFeatures")<
+export class DatabaseFeatures extends Context.Service<
   DatabaseFeatures,
   {
     readonly features: readonly DatabaseFeature[];
   }
->() {}
+>()("DatabaseFeatures") {}

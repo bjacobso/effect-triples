@@ -16,10 +16,10 @@ export interface TripleStoreRuntimeService {
   readonly nextTxId: Effect.Effect<string>;
 }
 
-export class TripleStoreRuntime extends Context.Tag("TripleStoreRuntime")<
+export class TripleStoreRuntime extends Context.Service<
   TripleStoreRuntime,
   TripleStoreRuntimeService
->() {}
+>()("TripleStoreRuntime") {}
 
 export const TripleStoreRuntimeLive = Layer.succeed(TripleStoreRuntime, {
   now: Effect.sync(() => Date.now()),

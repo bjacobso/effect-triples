@@ -41,7 +41,6 @@
     "clean": "rm -rf dist"
   },
   "dependencies": {
-    "@effect/sql": "catalog:",
     "effect": "catalog:",
     "effect-triples": "workspace:^"
   },

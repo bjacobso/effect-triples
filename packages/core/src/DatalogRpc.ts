@@ -5,7 +5,7 @@
  * Used by both HTTP handlers and CLI commands.
  */
 
-import { Rpc, RpcGroup } from "@effect/rpc";
+import { Rpc, RpcGroup } from "effect/unstable/rpc";
 import { Schema } from "effect";
 import { DatalogQuery, DatalogQueryResponse } from "./Datalog.js";
 import { DatabaseNotFound, DatalogQueryError, InternalError } from "./Error.js";
@@ -17,10 +17,7 @@ import { DatabaseNotFound, DatalogQueryError, InternalError } from "./Error.js";
 /**
  * Single result row for streaming queries
  */
-export const DatalogResultRow = Schema.Record({
-  key: Schema.String,
-  value: Schema.Unknown,
-});
+export const DatalogResultRow = Schema.Record(Schema.String, Schema.Unknown);
 export type DatalogResultRow = typeof DatalogResultRow.Type;
 
 // =============================================================================
@@ -45,7 +42,7 @@ export class DatalogRpc extends RpcGroup.make(
       debug: Schema.optional(Schema.Boolean),
     }),
     success: DatalogQueryResponse,
-    error: Schema.Union(DatabaseNotFound, DatalogQueryError, InternalError),
+    error: Schema.Union([DatabaseNotFound, DatalogQueryError, InternalError]),
   }),
 
   /**
@@ -62,7 +59,7 @@ export class DatalogRpc extends RpcGroup.make(
       query: DatalogQuery,
     }),
     success: DatalogResultRow,
-    error: Schema.Union(DatabaseNotFound, DatalogQueryError, InternalError),
+    error: Schema.Union([DatabaseNotFound, DatalogQueryError, InternalError]),
     stream: true,
   }),
 ) {}

@@ -71,16 +71,16 @@ export const SqliteTestLayer = TriplesLive.pipe(
  * Internal context tag carrying the temp directory and DB path.
  * Mirrors FdbTestLayer's FdbClusterFile pattern.
  */
-class SqliteDbInfo extends Context.Tag("test/SqliteDbInfo")<
+class SqliteDbInfo extends Context.Service<
   SqliteDbInfo,
   { readonly dbPath: string; readonly tmpDir: string }
->() {}
+>()("test/SqliteDbInfo") {}
 
 /**
  * Scoped layer that creates a temp directory on acquire and
  * removes it on release. Provides SqliteDbInfo.
  */
-const SqliteFileLifecycleLayer: Layer.Layer<SqliteDbInfo> = Layer.scoped(
+const SqliteFileLifecycleLayer: Layer.Layer<SqliteDbInfo> = Layer.effect(
   SqliteDbInfo,
   Effect.acquireRelease(
     Effect.sync(() => {
@@ -105,9 +105,9 @@ const SqliteFileLifecycleLayer: Layer.Layer<SqliteDbInfo> = Layer.scoped(
 
 /**
  * SqliteClient layer that reads the DB path from SqliteDbInfo.
- * Uses Layer.unwrapEffect to dynamically construct the client layer.
+ * Uses Layer.unwrap to dynamically construct the client layer.
  */
-const FileSqliteClientLayer = Layer.unwrapEffect(
+const FileSqliteClientLayer = Layer.unwrap(
   Effect.gen(function* () {
     const { dbPath } = yield* SqliteDbInfo;
     return SqliteClient.layer({ filename: dbPath });

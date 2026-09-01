@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { Effect } from "effect";
-import { SqlClient } from "@effect/sql";
+import { SqlClient } from "effect/unstable/sql";
 import { Triples, string, number, ref, compileWithRules, type DatalogQuery } from "effect-triples";
 import { SqliteTestLayer } from "./fixtures/SqliteTestLayer.js";
 
@@ -434,10 +434,10 @@ describe("Datalog Integration", () => {
 
           // Missing 'where'
           return yield* datalog.query({ find: ["?x"] } as unknown as DatalogQuery);
-        }).pipe(Effect.provide(TestLayer), Effect.either),
+        }).pipe(Effect.provide(TestLayer), Effect.result),
       );
 
-      expect(result._tag).toBe("Left");
+      expect(result._tag).toBe("Failure");
     });
 
     it("should treat invalid operator as pattern (returns no matches)", async () => {
@@ -1407,11 +1407,11 @@ describe("Recursive Datalog Queries", () => {
 
           return yield* datalog
             .explain({ invalid: true } as unknown as DatalogQuery)
-            .pipe(Effect.either);
+            .pipe(Effect.result);
         }).pipe(Effect.provide(TestLayer)),
       );
 
-      expect(result._tag).toBe("Left");
+      expect(result._tag).toBe("Failure");
     });
 
     it("should explain wrapped query with main and count steps", async () => {

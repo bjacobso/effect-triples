@@ -30,7 +30,7 @@ export const QueryAsOfRequest = Schema.Struct({
 });
 export type QueryAsOfRequest = typeof QueryAsOfRequest.Type;
 
-export const AssertTripleRequest = Schema.Union(TripleInput, Schema.Array(TripleInput));
+export const AssertTripleRequest = Schema.Union([TripleInput, Schema.Array(TripleInput)]);
 export type AssertTripleRequest = typeof AssertTripleRequest.Type;
 
 export const RetractResponse = Schema.Struct({ retracted: Schema.Number });
@@ -57,12 +57,12 @@ export const Triple = Schema.Struct({
   attribute: Attribute,
   value: TripleValue,
   createdAt: Schema.Number,
-  createdBy: Schema.optionalWith(Schema.String, { as: "Option" }),
-  retractedAt: Schema.optionalWith(Schema.Number, { as: "Option" }),
-  entityType: Schema.optionalWith(Schema.String, { as: "Option" }),
-  schemaVersion: Schema.optionalWith(Schema.Number, { as: "Option" }),
-  txId: Schema.optionalWith(Schema.String, { as: "Option" }),
-  retractTxId: Schema.optionalWith(Schema.String, { as: "Option" }),
+  createdBy: Schema.OptionFromOptional(Schema.String),
+  retractedAt: Schema.OptionFromOptional(Schema.Number),
+  entityType: Schema.OptionFromOptional(Schema.String),
+  schemaVersion: Schema.OptionFromOptional(Schema.Number),
+  txId: Schema.OptionFromOptional(Schema.String),
+  retractTxId: Schema.OptionFromOptional(Schema.String),
 });
 export type Triple = typeof Triple.Type;
 
@@ -107,11 +107,11 @@ export const TransactRetractPatternOp = Schema.Struct({
 });
 export type TransactRetractPatternOp = typeof TransactRetractPatternOp.Type;
 
-export const TransactOp = Schema.Union(
+export const TransactOp = Schema.Union([
   TransactAssertOp,
   TransactRetractOp,
   TransactRetractPatternOp,
-);
+]);
 export type TransactOp = typeof TransactOp.Type;
 
 export const TransactRequest = Schema.Struct({

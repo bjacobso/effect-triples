@@ -115,14 +115,14 @@ const releaseFdbContainer = ({
 
 // ─── Reusable FDB context tag ──────────────────────────────────────────────
 
-export class FdbClusterFile extends Context.Tag("test/FdbClusterFile")<
+export class FdbClusterFile extends Context.Service<
   FdbClusterFile,
   { readonly clusterFilePath: string }
->() {}
+>()("test/FdbClusterFile") {}
 
 // ─── Layers ────────────────────────────────────────────────────────────────
 
-export const FdbContainerLayer: Layer.Layer<FdbClusterFile> = Layer.scoped(
+export const FdbContainerLayer: Layer.Layer<FdbClusterFile> = Layer.effect(
   FdbClusterFile,
   Effect.acquireRelease(acquireFdbContainer, releaseFdbContainer).pipe(
     Effect.map(({ clusterFilePath }) => ({ clusterFilePath })),

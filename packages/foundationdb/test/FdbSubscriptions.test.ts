@@ -93,7 +93,7 @@ describeFdb("FdbSubscriptions", (it) => {
         }),
         () =>
           Ref.update(count, (n) => n + 1).pipe(
-            Effect.zipRight(Deferred.succeed(invalidated, undefined)),
+            Effect.andThen(Deferred.succeed(invalidated, undefined)),
           ),
         { debounceMs: 5, retryDelayMs: 10 },
       );
@@ -187,7 +187,7 @@ describeFdb("FdbSubscriptions", (it) => {
         dependency,
         () =>
           Ref.update(countA, (n) => n + 1).pipe(
-            Effect.zipRight(Deferred.succeed(invalidatedA, undefined)),
+            Effect.andThen(Deferred.succeed(invalidatedA, undefined)),
             Effect.asVoid,
           ),
         { debounceMs: 5, retryDelayMs: 10 },
@@ -196,7 +196,7 @@ describeFdb("FdbSubscriptions", (it) => {
         dependency,
         () =>
           Ref.update(countB, (n) => n + 1).pipe(
-            Effect.zipRight(Deferred.succeed(invalidatedB, undefined)),
+            Effect.andThen(Deferred.succeed(invalidatedB, undefined)),
             Effect.asVoid,
           ),
         { debounceMs: 5, retryDelayMs: 10 },

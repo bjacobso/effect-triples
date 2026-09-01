@@ -78,7 +78,7 @@ export const makeWriteInterceptors = (
   retract: (id) =>
     pipe(
       inner.get(id),
-      Effect.catchAll(() => Effect.succeed(null)),
+      Effect.catch(() => Effect.succeed(null)),
       Effect.flatMap((triple) =>
         pipe(
           inner.retract(id),
@@ -129,7 +129,7 @@ export const makeWriteInterceptors = (
         if (op.op === "retract") {
           const triple = yield* inner
             .get(op.id as any)
-            .pipe(Effect.catchAll(() => Effect.succeed(null)));
+            .pipe(Effect.catch(() => Effect.succeed(null)));
           if (triple) {
             tripleMap.set(op.id, { entityId: triple.entityId, attribute: triple.attribute });
           }

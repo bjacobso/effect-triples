@@ -1,28 +1,27 @@
-import { HttpApiSchema } from "@effect/platform";
 import { Schema } from "effect";
 
 export class DatabaseNotFound extends Schema.TaggedError<DatabaseNotFound>()(
   "DatabaseNotFound",
   { database: Schema.String },
-  HttpApiSchema.annotations({ status: 404 }),
+  { httpApiStatus: 404 },
 ) {}
 
 export class DatabaseAlreadyExists extends Schema.TaggedError<DatabaseAlreadyExists>()(
   "DatabaseAlreadyExists",
   { database: Schema.String },
-  HttpApiSchema.annotations({ status: 409 }),
+  { httpApiStatus: 409 },
 ) {}
 
 export class TripleNotFound extends Schema.TaggedError<TripleNotFound>()(
   "TripleNotFound",
   { id: Schema.String },
-  HttpApiSchema.annotations({ status: 404 }),
+  { httpApiStatus: 404 },
 ) {}
 
 export class DatalogQueryError extends Schema.TaggedError<DatalogQueryError>()(
   "DatalogQueryError",
   { message: Schema.String },
-  HttpApiSchema.annotations({ status: 400 }),
+  { httpApiStatus: 400 },
 ) {}
 
 export class AuthorizationDenied extends Schema.TaggedError<AuthorizationDenied>()(
@@ -34,7 +33,7 @@ export class AuthorizationDenied extends Schema.TaggedError<AuthorizationDenied>
     deniedFields: Schema.optional(Schema.Array(Schema.String)),
     deniedAttributes: Schema.optional(Schema.Array(Schema.String)),
   },
-  HttpApiSchema.annotations({ status: 403 }),
+  { httpApiStatus: 403 },
 ) {}
 
 export class AccessDenied extends Schema.TaggedError<AccessDenied>()(
@@ -43,11 +42,11 @@ export class AccessDenied extends Schema.TaggedError<AccessDenied>()(
     message: Schema.String,
     database: Schema.optional(Schema.String),
   },
-  HttpApiSchema.annotations({ status: 403 }),
+  { httpApiStatus: 403 },
 ) {}
 
 export class InternalError extends Schema.TaggedError<InternalError>()(
   "InternalError",
   { message: Schema.String },
-  HttpApiSchema.annotations({ status: 500 }),
+  { httpApiStatus: 500 },
 ) {}

@@ -30,7 +30,7 @@
  * ```
  */
 
-import { Chunk, Effect, Layer, Option, Stream } from "effect";
+import { Effect, Layer, Option, Stream } from "effect";
 import {
   KvBackend,
   type KvBackendService,
@@ -436,7 +436,7 @@ const makePagedRangeStream = (
     remaining: options.limit,
   };
 
-  return Stream.paginateChunkEffect(initial, (cursor) => {
+  return Stream.paginate(initial, (cursor) => {
     const limit =
       cursor.remaining === undefined ? scanPageSize : Math.min(scanPageSize, cursor.remaining);
 
@@ -464,7 +464,7 @@ const makePagedRangeStream = (
               })
             : Option.none<RangeCursor>();
 
-        return [Chunk.fromIterable(entries), nextCursor] as const;
+        return [entries, nextCursor] as const;
       }),
       Effect.orDie,
     );
@@ -640,7 +640,7 @@ export const makeFdbKvBackendService = (
         makePagedRangeStream(dbRangeSource, options, rangeScanPageSize, "getRange"),
 
       transact: <A, E>(fn: (tx: KvTransaction) => Effect.Effect<A, E>) =>
-        Effect.async<A, E>((resume) => {
+        Effect.callback<A, E>((resume) => {
           runTransactionPromise("transaction", async (fdbTx) => {
             // Wrap the FDB transaction in a KvTransaction interface
             const kvTx: KvTransaction = {

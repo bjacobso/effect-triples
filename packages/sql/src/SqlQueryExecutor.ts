@@ -9,7 +9,7 @@
  */
 
 import { Effect, Layer } from "effect";
-import { SqlClient } from "@effect/sql";
+import { SqlClient } from "effect/unstable/sql";
 import {
   QueryExecutor,
   type QueryExecutorService,

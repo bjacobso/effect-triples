@@ -44,10 +44,9 @@ export interface DOContext {
 /**
  * DOContext service tag for dependency injection
  */
-export class DOContextService extends Context.Tag("DOContextService")<
-  DOContextService,
-  DOContext
->() {}
+export class DOContextService extends Context.Service<DOContextService, DOContext>()(
+  "DOContextService",
+) {}
 
 // =============================================================================
 // Cloudflare DatabaseManager Implementation

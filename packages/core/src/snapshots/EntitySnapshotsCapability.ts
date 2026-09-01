@@ -14,7 +14,7 @@
  * @see specs/core/composable-store.md
  */
 
-import { Effect, Either, Encoding, Option, pipe } from "effect";
+import { Effect, Result, Encoding, Option, pipe } from "effect";
 import type { StoreCapability } from "../store/StoreCapability.js";
 import type { TriplesService } from "../store/Triples.js";
 import type { SnapshotWriterShape, SnapshotServiceShape } from "./SnapshotService.js";
@@ -25,7 +25,7 @@ import { WriteError } from "../errors/index.js";
 const SNAPSHOT_ID_PREFIX = "snap:";
 
 const decodePart = (value: string): string =>
-  Either.getOrThrow(Encoding.decodeBase64UrlString(value));
+  Result.getOrThrow(Encoding.decodeBase64UrlString(value));
 
 const parseSnapshotTripleId = (
   id: string,
@@ -61,7 +61,7 @@ const resolveTxTime = (
 
     const txMetaTriples = yield* store
       .match({ entityId: txId, attribute: TxAttributes.INSTANT })
-      .pipe(Effect.catchAll(() => Effect.succeed([] as readonly Triple[])));
+      .pipe(Effect.catch(() => Effect.succeed([] as readonly Triple[])));
     const txInstant = txMetaTriples.find((triple) => triple.value.type === "datetime");
     if (txInstant && txInstant.value.type === "datetime") {
       return txInstant.value.value;
@@ -82,7 +82,7 @@ const resolveRetractionMeta = (
   Effect.gen(function* () {
     const history = yield* store
       .history(entityId)
-      .pipe(Effect.catchAll(() => Effect.succeed([] as readonly Triple[])));
+      .pipe(Effect.catch(() => Effect.succeed([] as readonly Triple[])));
     const retracted = history.find(
       (triple) =>
         triple.id === tripleId &&
@@ -205,7 +205,7 @@ export const makeEntitySnapshotsCapability = (
               attribute: parsed.attribute,
               value: parsed.value,
             })
-            .pipe(Effect.catchAll(() => Effect.succeed([] as readonly Triple[])));
+            .pipe(Effect.catch(() => Effect.succeed([] as readonly Triple[])));
 
           if (candidates.length === 0) {
             return;
@@ -228,7 +228,7 @@ export const makeEntitySnapshotsCapability = (
           return;
         }
 
-        const triple = yield* store.get(id).pipe(Effect.catchAll(() => Effect.succeed(null)));
+        const triple = yield* store.get(id).pipe(Effect.catch(() => Effect.succeed(null)));
         if (!triple) {
           yield* store.retract(id);
           return;
@@ -258,7 +258,7 @@ export const makeEntitySnapshotsCapability = (
       Effect.gen(function* () {
         const matchingTriples = yield* store
           .match(pattern)
-          .pipe(Effect.catchAll(() => Effect.succeed([] as readonly Triple[])));
+          .pipe(Effect.catch(() => Effect.succeed([] as readonly Triple[])));
         const count = yield* store.retractByPattern(pattern);
         if (matchingTriples.length > 0) {
           const anchor = matchingTriples[0]!;
@@ -286,7 +286,7 @@ export const makeEntitySnapshotsCapability = (
           if (op.op === "retract") {
             const triple = yield* store
               .get(op.id as any)
-              .pipe(Effect.catchAll(() => Effect.succeed(null)));
+              .pipe(Effect.catch(() => Effect.succeed(null)));
             if (triple) {
               retractEntityMap.set(op.id, triple.entityId);
             }

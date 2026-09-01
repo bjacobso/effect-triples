@@ -572,7 +572,7 @@ export class KvTripleStore {
    */
   retract(tripleId: string, retractedAt: number, retractTxId?: string): Effect.Effect<boolean> {
     const key = metaKey(tripleId);
-    return Effect.gen(this, function* () {
+    return Effect.gen({ self: this }, function* () {
       // Try cache first
       let datom = this.datomCache.get(tripleId);
       if (!datom) {
@@ -603,7 +603,7 @@ export class KvTripleStore {
     const cached = this.datomCache.get(tripleId);
     if (cached) return Effect.succeed(cached);
 
-    return Effect.gen(this, function* () {
+    return Effect.gen({ self: this }, function* () {
       const bytes = yield* this.kv.get(metaKey(tripleId));
       if (bytes === null) return null;
       const datom = deserializeDatom(bytes);
@@ -732,7 +732,7 @@ export class KvTripleStore {
       return Effect.succeed(results);
     }
 
-    return Effect.gen(this, function* () {
+    return Effect.gen({ self: this }, function* () {
       const fetched = yield* this.kv.getMany(uncachedKeys);
       for (let j = 0; j < uncachedIndices.length; j++) {
         const idx = uncachedIndices[j]!;
@@ -761,7 +761,7 @@ export class KvTripleStore {
     const { start, end } = patternToScan(pattern);
     const includeRetracted = options?.includeRetracted ?? false;
 
-    return Effect.gen(this, function* () {
+    return Effect.gen({ self: this }, function* () {
       // 1. Range scan to collect all tripleIds
       const entries = yield* Stream.runCollect(this.kv.getRange({ start, end }));
       const tripleIds: string[] = [];
@@ -793,7 +793,7 @@ export class KvTripleStore {
   getByEntityTypeAsync(entityType: string): Effect.Effect<Datom[]> {
     const { start, end } = typePrefixRange(entityType);
 
-    return Effect.gen(this, function* () {
+    return Effect.gen({ self: this }, function* () {
       const entries = yield* Stream.runCollect(this.kv.getRange({ start, end }));
       const tripleIds: string[] = [];
       for (const [, value] of entries) {

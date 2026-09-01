@@ -71,6 +71,14 @@ try {
       return [name, `file:${tarball}`];
     }),
   );
+  const coreManifest = JSON.parse(
+    run("tar", [
+      "-xOzf",
+      dependencies["effect-triples"].slice("file:".length),
+      "package/package.json",
+    ]),
+  );
+  const effectVersion = coreManifest.dependencies.effect;
 
   writeFileSync(
     join(consumerDir, "package.json"),
@@ -81,7 +89,7 @@ try {
         type: "module",
         dependencies: {
           ...dependencies,
-          effect: "3.19.13",
+          effect: effectVersion,
           typescript: "6.0.2",
         },
         overrides: {

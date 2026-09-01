@@ -5,7 +5,7 @@
  */
 
 import { Schema } from "effect";
-import { HttpApiEndpoint, HttpApiGroup, HttpApiSchema } from "@effect/platform";
+import { HttpApiEndpoint, HttpApiGroup } from "effect/unstable/httpapi";
 import { AuthorizationDenied, DatabaseNotFound, InternalError, TripleNotFound } from "./Error.js";
 import {
   AssertTripleRequest,
@@ -18,82 +18,74 @@ import {
 } from "./Triple.js";
 
 // =============================================================================
-// Path Parameters
-// =============================================================================
-
-const databaseParam = HttpApiSchema.param("database", Schema.String);
-const tripleIdParam = HttpApiSchema.param("id", Schema.String);
-// Entity IDs should be URL-encoded by clients (e.g., employee:alice -> employee%3Aalice)
-// The HTTP layer handles decoding automatically
-const entityIdParam = HttpApiSchema.param("entityId", Schema.String);
-
-// =============================================================================
 // API Group
 // =============================================================================
 
 export class TripleApi extends HttpApiGroup.make("triples")
   .add(
-    HttpApiEndpoint.post("assert")`/db/${databaseParam}/triples`
-      .setPayload(AssertTripleRequest)
-      .addSuccess(Schema.Union(TripleResponse, Schema.Array(TripleResponse)))
-      .addError(DatabaseNotFound)
-      .addError(AuthorizationDenied)
-      .addError(InternalError),
+    HttpApiEndpoint.post("assert", "/db/:database/triples", {
+      params: { database: Schema.String },
+      payload: AssertTripleRequest,
+      success: Schema.Union([TripleResponse, Schema.Array(TripleResponse)]),
+      error: [DatabaseNotFound, AuthorizationDenied, InternalError],
+    }),
   )
   .add(
-    HttpApiEndpoint.del("retract")`/db/${databaseParam}/triples/${tripleIdParam}`
-      .addError(DatabaseNotFound)
-      .addError(TripleNotFound)
-      .addError(AuthorizationDenied)
-      .addError(InternalError),
+    HttpApiEndpoint.delete("retract", "/db/:database/triples/:id", {
+      params: { database: Schema.String, id: Schema.String },
+      error: [DatabaseNotFound, TripleNotFound, AuthorizationDenied, InternalError],
+    }),
   )
   .add(
-    HttpApiEndpoint.post("retractByPattern")`/db/${databaseParam}/retract`
-      .setPayload(QueryRequest)
-      .addSuccess(RetractResponse)
-      .addError(DatabaseNotFound)
-      .addError(AuthorizationDenied)
-      .addError(InternalError),
+    HttpApiEndpoint.post("retractByPattern", "/db/:database/retract", {
+      params: { database: Schema.String },
+      payload: QueryRequest,
+      success: RetractResponse,
+      error: [DatabaseNotFound, AuthorizationDenied, InternalError],
+    }),
   )
   .add(
-    HttpApiEndpoint.get("getTriple")`/db/${databaseParam}/triples/${tripleIdParam}`
-      .addSuccess(TripleResponse)
-      .addError(DatabaseNotFound)
-      .addError(TripleNotFound)
-      .addError(InternalError),
+    HttpApiEndpoint.get("getTriple", "/db/:database/triples/:id", {
+      params: { database: Schema.String, id: Schema.String },
+      success: TripleResponse,
+      error: [DatabaseNotFound, TripleNotFound, InternalError],
+    }),
   )
   .add(
-    HttpApiEndpoint.get("getEntity")`/db/${databaseParam}/entities/${entityIdParam}`
-      .addSuccess(Schema.Array(TripleResponse))
-      .addError(DatabaseNotFound)
-      .addError(InternalError),
+    HttpApiEndpoint.get("getEntity", "/db/:database/entities/:entityId", {
+      params: { database: Schema.String, entityId: Schema.String },
+      success: Schema.Array(TripleResponse),
+      error: [DatabaseNotFound, InternalError],
+    }),
   )
   .add(
-    HttpApiEndpoint.post("query")`/db/${databaseParam}/query`
-      .setPayload(QueryRequest)
-      .addSuccess(Schema.Array(TripleResponse))
-      .addError(DatabaseNotFound)
-      .addError(InternalError),
+    HttpApiEndpoint.post("query", "/db/:database/query", {
+      params: { database: Schema.String },
+      payload: QueryRequest,
+      success: Schema.Array(TripleResponse),
+      error: [DatabaseNotFound, InternalError],
+    }),
   )
   .add(
-    HttpApiEndpoint.post("queryAsOf")`/db/${databaseParam}/query/as-of`
-      .setPayload(QueryAsOfRequest)
-      .addSuccess(Schema.Array(TripleResponse))
-      .addError(DatabaseNotFound)
-      .addError(InternalError),
+    HttpApiEndpoint.post("queryAsOf", "/db/:database/query/as-of", {
+      params: { database: Schema.String },
+      payload: QueryAsOfRequest,
+      success: Schema.Array(TripleResponse),
+      error: [DatabaseNotFound, InternalError],
+    }),
   )
   .add(
-    HttpApiEndpoint.get("history")`/db/${databaseParam}/entities/${entityIdParam}/history`
-      .addSuccess(Schema.Array(TripleResponse))
-      .addError(DatabaseNotFound)
-      .addError(InternalError),
+    HttpApiEndpoint.get("history", "/db/:database/entities/:entityId/history", {
+      params: { database: Schema.String, entityId: Schema.String },
+      success: Schema.Array(TripleResponse),
+      error: [DatabaseNotFound, InternalError],
+    }),
   )
   .add(
-    HttpApiEndpoint.post("transact")`/db/${databaseParam}/transact`
-      .setPayload(TransactRequest)
-      .addSuccess(TransactResponse)
-      .addError(DatabaseNotFound)
-      .addError(AuthorizationDenied)
-      .addError(TripleNotFound)
-      .addError(InternalError),
+    HttpApiEndpoint.post("transact", "/db/:database/transact", {
+      params: { database: Schema.String },
+      payload: TransactRequest,
+      success: TransactResponse,
+      error: [DatabaseNotFound, AuthorizationDenied, TripleNotFound, InternalError],
+    }),
   ) {}

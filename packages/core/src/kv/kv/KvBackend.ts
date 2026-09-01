@@ -100,4 +100,4 @@ export interface KvBackendService {
 }
 
 /** Effect service tag for dependency injection. */
-export class KvBackend extends Context.Tag("KvBackend")<KvBackend, KvBackendService>() {}
+export class KvBackend extends Context.Service<KvBackend, KvBackendService>()("KvBackend") {}

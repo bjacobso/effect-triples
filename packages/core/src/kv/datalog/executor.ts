@@ -16,7 +16,7 @@
  * and wrapper queries with cursor-based keyset pagination.
  */
 
-import { Effect, Either, Encoding, Stream } from "effect";
+import { Effect, Result, Encoding, Stream } from "effect";
 import type { KvTripleStore } from "../hexastore/KvTripleStore.js";
 import type { TripleValue } from "../../Value.js";
 import {
@@ -975,7 +975,7 @@ const textDecoder = new TextDecoder();
 const encodeBase64Url = (bytes: Uint8Array): string => Encoding.encodeBase64Url(bytes);
 
 const decodeBase64Url = (base64url: string): Uint8Array =>
-  Either.getOrThrow(Encoding.decodeBase64Url(base64url));
+  Result.getOrThrow(Encoding.decodeBase64Url(base64url));
 
 /**
  * Encode a cursor from a result row.

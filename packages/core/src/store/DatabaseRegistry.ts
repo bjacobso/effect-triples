@@ -123,7 +123,6 @@ export interface DatabaseRegistryService {
 /**
  * DatabaseRegistry service tag for dependency injection
  */
-export class DatabaseRegistry extends Context.Tag("DatabaseRegistry")<
-  DatabaseRegistry,
-  DatabaseRegistryService
->() {}
+export class DatabaseRegistry extends Context.Service<DatabaseRegistry, DatabaseRegistryService>()(
+  "DatabaseRegistry",
+) {}

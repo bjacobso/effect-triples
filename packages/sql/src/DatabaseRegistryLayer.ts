@@ -5,7 +5,7 @@
  */
 
 import { Effect, Layer, Scope, Context, pipe, Exit } from "effect";
-import { SqlClient } from "@effect/sql";
+import { SqlClient } from "effect/unstable/sql";
 import {
   DatabaseRegistry,
   type DatabaseRegistryService,
@@ -91,7 +91,7 @@ const toAccessEntry = (row: AccessRow): DatabaseAccessEntry => ({
  * Provides the DatabaseRegistry service using SQLite storage.
  * Requires StorageBackend for database operations.
  */
-export const DatabaseRegistryLive = Layer.scoped(
+export const DatabaseRegistryLive = Layer.effect(
   DatabaseRegistry,
   Effect.gen(function* () {
     const backend = yield* StorageBackend;
@@ -343,7 +343,7 @@ export const DatabaseRegistryLive = Layer.scoped(
     // Clean up registry scope when the service is closed
     yield* Effect.addFinalizer(() =>
       Effect.gen(function* () {
-        yield* Scope.close(registryScope, Exit.void).pipe(Effect.catchAll(() => Effect.void));
+        yield* Scope.close(registryScope, Exit.void).pipe(Effect.catch(() => Effect.void));
         yield* Effect.logInfo("Registry database connection closed");
       }),
     );

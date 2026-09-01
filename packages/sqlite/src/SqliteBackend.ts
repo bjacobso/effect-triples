@@ -7,7 +7,7 @@
 
 import { Config, Effect, Layer } from "effect";
 import { SqliteClient } from "@effect/sql-sqlite-node";
-import { FileSystem } from "@effect/platform";
+import { FileSystem } from "effect";
 import { SqliteDialect } from "effect-triples";
 import { StorageBackend, type StorageBackendService } from "effect-triples-sql";
 import { SqliteAdapterLive } from "./SqliteAdapter.js";
@@ -63,7 +63,7 @@ export const makeSqliteBackend = (
         Effect.tapError((e) =>
           Effect.logWarning(`Failed to create data directory ${dataDir}: ${e}`),
         ),
-        Effect.catchAll(() => Effect.void),
+        Effect.catch(() => Effect.void),
       );
 
       yield* Effect.logInfo(`Data directory initialized: ${dataDir}`);
@@ -74,7 +74,7 @@ export const makeSqliteBackend = (
         yield* fs.writeFileString(testFilePath, "test");
         yield* fs.remove(testFilePath);
       }).pipe(
-        Effect.catchAll((error) =>
+        Effect.catch((error) =>
           Effect.die(new Error(`Data directory ${dataDir} is not writable: ${error}`)),
         ),
       );
@@ -113,7 +113,7 @@ export const makeSqliteBackend = (
             // Read all files in the data directory
             const entries = yield* fs
               .readDirectory(dataDir)
-              .pipe(Effect.catchAll(() => Effect.succeed([] as readonly string[])));
+              .pipe(Effect.catch(() => Effect.succeed([] as readonly string[])));
 
             // Delete all .db files and their associated -wal and -shm files
             for (const entry of entries) {
@@ -130,21 +130,21 @@ export const makeSqliteBackend = (
             // Get the size of the main db file
             const dbSize = yield* fs.stat(dbPath).pipe(
               Effect.map((stat) => Number(stat.size)),
-              Effect.catchAll(() => Effect.succeed(0)),
+              Effect.catch(() => Effect.succeed(0)),
             );
 
             // Get the size of the WAL file if it exists
             const walPath = `${dbPath}-wal`;
             const walSize = yield* fs.stat(walPath).pipe(
               Effect.map((stat) => Number(stat.size)),
-              Effect.catchAll(() => Effect.succeed(0)),
+              Effect.catch(() => Effect.succeed(0)),
             );
 
             // Get the size of the SHM file if it exists
             const shmPath = `${dbPath}-shm`;
             const shmSize = yield* fs.stat(shmPath).pipe(
               Effect.map((stat) => Number(stat.size)),
-              Effect.catchAll(() => Effect.succeed(0)),
+              Effect.catch(() => Effect.succeed(0)),
             );
 
             return dbSize + walSize + shmSize;

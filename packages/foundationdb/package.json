@@ -42,7 +42,6 @@
     "clean": "rm -rf dist"
   },
   "dependencies": {
-    "@effect/platform": "catalog:",
     "effect": "catalog:",
     "effect-triples": "workspace:^",
     "foundationdb": "^2.0.1"

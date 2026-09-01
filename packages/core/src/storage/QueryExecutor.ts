@@ -162,7 +162,6 @@ export interface QueryExecutorService {
 /**
  * QueryExecutor service tag for dependency injection
  */
-export class QueryExecutor extends Context.Tag("QueryExecutor")<
-  QueryExecutor,
-  QueryExecutorService
->() {}
+export class QueryExecutor extends Context.Service<QueryExecutor, QueryExecutorService>()(
+  "QueryExecutor",
+) {}

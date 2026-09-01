@@ -1,5 +1,5 @@
 import { Effect, Layer } from "effect";
-import { SqlClient } from "@effect/sql";
+import { SqlClient } from "effect/unstable/sql";
 import { SqliteClient } from "@effect/sql-sqlite-node";
 import { runMigrations } from "effect-triples-sql";
 

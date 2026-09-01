@@ -107,10 +107,10 @@ export interface SubscriptionManagerService {
 // Service Tag
 // =============================================================================
 
-export class SubscriptionManager extends Context.Tag("SubscriptionManager")<
+export class SubscriptionManager extends Context.Service<
   SubscriptionManager,
   SubscriptionManagerService
->() {}
+>()("SubscriptionManager") {}
 
 // =============================================================================
 // Implementation

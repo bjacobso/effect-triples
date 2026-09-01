@@ -25,10 +25,9 @@ export interface PostMutationHookService {
   readonly onMutation: (event: ChangeEvent) => Effect.Effect<void>;
 }
 
-export class PostMutationHook extends Context.Tag("PostMutationHook")<
-  PostMutationHook,
-  PostMutationHookService
->() {}
+export class PostMutationHook extends Context.Service<PostMutationHook, PostMutationHookService>()(
+  "PostMutationHook",
+) {}
 
 // =============================================================================
 // No-op Implementation

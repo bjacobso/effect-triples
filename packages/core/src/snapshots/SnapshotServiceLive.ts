@@ -917,9 +917,7 @@ const makeSnapshotService = Effect.gen(function* () {
       const entities = yield* Effect.all(
         entityIds.map((entityId) =>
           Effect.gen(function* () {
-            const snap = yield* at(entityId, txId).pipe(
-              Effect.catchAll(() => Effect.succeed(null)),
-            );
+            const snap = yield* at(entityId, txId).pipe(Effect.catch(() => Effect.succeed(null)));
             let snapshot: EntitySnapshotResponse | null = null;
             let previousHash: string | null = null;
 
@@ -934,7 +932,7 @@ const makeSnapshotService = Effect.gen(function* () {
               };
 
               const history = yield* hashes(entityId).pipe(
-                Effect.catchAll(() =>
+                Effect.catch(() =>
                   Effect.succeed(
                     [] as ReadonlyArray<{ txId: string; txTime: number; hash: string }>,
                   ),

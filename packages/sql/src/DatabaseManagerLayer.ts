@@ -67,7 +67,7 @@ const mapToInternalError = <A, E, R>(
 interface CachedServices {
   triples: TriplesService;
   snapshotService: import("effect-triples").SnapshotServiceShape;
-  scope: Scope.CloseableScope;
+  scope: Scope.Closeable;
   lastAccessedAt: number;
 }
 
@@ -86,7 +86,7 @@ interface CachedServices {
  * - ReactiveConstraints (priority 40) -- constraint evaluation on write
  * - ChangeEmission (priority 50) -- broadcast changes to connected clients
  */
-export const DatabaseManagerLive = Layer.scoped(
+export const DatabaseManagerLive = Layer.effect(
   DatabaseManager,
   Effect.gen(function* () {
     const backend = yield* StorageBackend;
@@ -121,7 +121,7 @@ export const DatabaseManagerLive = Layer.scoped(
         for (const [dbName, services] of HashMap.toEntries(cache)) {
           const idleTime = now - services.lastAccessedAt;
           if (idleTime > IDLE_TIMEOUT_MS) {
-            yield* Scope.close(services.scope, Exit.void).pipe(Effect.catchAll(() => Effect.void));
+            yield* Scope.close(services.scope, Exit.void).pipe(Effect.catch(() => Effect.void));
             yield* Ref.update(cacheRef, HashMap.remove(dbName));
             yield* Effect.logInfo(
               `Closed idle database connection: ${dbName} (idle for ${Math.round(
@@ -131,7 +131,7 @@ export const DatabaseManagerLive = Layer.scoped(
           }
         }
       }
-    }).pipe(Effect.fork);
+    }).pipe(Effect.forkChild);
 
     /**
      * Build the fully-composed layer for a database.
@@ -258,13 +258,13 @@ export const DatabaseManagerLive = Layer.scoped(
           // Use the cached store to get count - query all triples with empty pattern
           const triples = yield* cached.value.triples
             .match({})
-            .pipe(Effect.catchAll(() => Effect.succeed([] as readonly unknown[])));
+            .pipe(Effect.catch(() => Effect.succeed([] as readonly unknown[])));
           return triples.length;
         }
 
         // Database not in cache, try to create services temporarily
         const services = yield* createDatabaseServices(name).pipe(
-          Effect.catchAll(() => Effect.succeed(null)),
+          Effect.catch(() => Effect.succeed(null)),
         );
 
         if (services === null) {
@@ -274,11 +274,11 @@ export const DatabaseManagerLive = Layer.scoped(
         // Get count and close scope
         const triples = yield* services.triples
           .match({})
-          .pipe(Effect.catchAll(() => Effect.succeed([] as readonly unknown[])));
+          .pipe(Effect.catch(() => Effect.succeed([] as readonly unknown[])));
         const count = triples.length;
 
         // Close the temporary scope
-        yield* Scope.close(services.scope, Exit.void).pipe(Effect.catchAll(() => Effect.void));
+        yield* Scope.close(services.scope, Exit.void).pipe(Effect.catch(() => Effect.void));
 
         return count;
       });
@@ -291,7 +291,7 @@ export const DatabaseManagerLive = Layer.scoped(
         const cache = yield* Ref.get(cacheRef);
         const count = HashMap.size(cache);
         for (const [, services] of HashMap.toEntries(cache)) {
-          yield* Scope.close(services.scope, Exit.void).pipe(Effect.catchAll(() => Effect.void));
+          yield* Scope.close(services.scope, Exit.void).pipe(Effect.catch(() => Effect.void));
         }
         yield* Ref.set(cacheRef, HashMap.empty<string, CachedServices>());
         if (count > 0) {
@@ -333,7 +333,7 @@ export const DatabaseManagerLive = Layer.scoped(
         const tripleCount = yield* getTripleCount(name);
         const sizeBytes = yield* backend
           .getDatabaseSize(name)
-          .pipe(Effect.catchAll(() => Effect.succeed(undefined)));
+          .pipe(Effect.catch(() => Effect.succeed(undefined)));
 
         return {
           ...database,
@@ -351,9 +351,7 @@ export const DatabaseManagerLive = Layer.scoped(
         const cache = yield* Ref.get(cacheRef);
         const cached = HashMap.get(cache, name);
         if (cached._tag === "Some") {
-          yield* Scope.close(cached.value.scope, Exit.void).pipe(
-            Effect.catchAll(() => Effect.void),
-          );
+          yield* Scope.close(cached.value.scope, Exit.void).pipe(Effect.catch(() => Effect.void));
           yield* Effect.logInfo(`Database connection closed: ${name}`);
         }
 
@@ -364,7 +362,7 @@ export const DatabaseManagerLive = Layer.scoped(
         yield* registry.unregister(name);
 
         // Delete database storage using the backend
-        yield* backend.deleteDatabaseStorage(name).pipe(Effect.catchAll(() => Effect.void));
+        yield* backend.deleteDatabaseStorage(name).pipe(Effect.catch(() => Effect.void));
 
         yield* Effect.logInfo(`Database deleted: ${name}`);
       });
@@ -392,7 +390,7 @@ export const DatabaseManagerLive = Layer.scoped(
           const tripleCount = yield* getTripleCount(db.name);
           const sizeBytes = yield* backend
             .getDatabaseSize(db.name)
-            .pipe(Effect.catchAll(() => Effect.succeed(undefined)));
+            .pipe(Effect.catch(() => Effect.succeed(undefined)));
           enrichedDatabases.push({
             ...db,
             tripleCount,
@@ -412,7 +410,7 @@ export const DatabaseManagerLive = Layer.scoped(
         const tripleCount = yield* getTripleCount(name);
         const sizeBytes = yield* backend
           .getDatabaseSize(name)
-          .pipe(Effect.catchAll(() => Effect.succeed(undefined)));
+          .pipe(Effect.catch(() => Effect.succeed(undefined)));
 
         return {
           ...database,

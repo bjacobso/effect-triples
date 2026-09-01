@@ -1,5 +1,5 @@
 import { Effect } from "effect";
-import { SqlClient } from "@effect/sql";
+import { SqlClient } from "effect/unstable/sql";
 import { MigrationError } from "effect-triples";
 import {
   TRIPLES_TABLE_DDL,
@@ -152,9 +152,14 @@ export const runMigrations = Effect.gen(function* () {
     yield* sql.unsafe(migration.up).pipe(
       Effect.catchIf(
         (error) => {
-          const msg = (
-            String(error) + String((error as { cause?: unknown }).cause ?? "")
-          ).toLowerCase();
+          const sqlError = error as {
+            readonly cause?: unknown;
+            readonly reason?: { readonly cause?: unknown };
+          };
+          const msg = [error, sqlError.cause, sqlError.reason, sqlError.reason?.cause]
+            .map(String)
+            .join(" ")
+            .toLowerCase();
           return (
             msg.includes("duplicate column name") ||
             (msg.includes("column") && msg.includes("already exists"))

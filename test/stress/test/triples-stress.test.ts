@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { Effect, Layer, Schedule } from "effect";
-import { SqlClient } from "@effect/sql";
+import { SqlClient } from "effect/unstable/sql";
 import { generateId } from "effect-triples";
 import { string, boolean, ref } from "effect-triples";
 import type { EntityId } from "effect-triples";
@@ -330,9 +330,8 @@ describe(`Triple Store Stress Test [${BACKEND}] - ${(EMPLOYEE_COUNT * TRIPLES_PE
                     }),
                   ),
                   Effect.retry(
-                    Schedule.addDelay(
-                      Schedule.recurs(MAX_RETRIES),
-                      () => `${RETRY_DELAY_MS} millis`,
+                    Schedule.addDelay(Schedule.recurs(MAX_RETRIES), () =>
+                      Effect.succeed(`${RETRY_DELAY_MS} millis`),
                     ),
                   ),
                 );
