@@ -254,6 +254,34 @@ const binding = (
 ): Record<string, Constant | null> =>
   Object.fromEntries(variables.map((variable) => [variable, row[variable] ?? null]));
 
+export const candidateIdentityId = (
+  definitionName: string,
+  identity: Readonly<Record<string, Constant | null>>,
+): ContentId => {
+  const encoded = CanonicalJson.encodeOrThrow({
+    derivation: definitionName,
+    identity,
+  } as unknown as CanonicalJson.CanonicalValue);
+  return ContentIds.hash(ContentIds.Domain.derivationIdentity, encoded);
+};
+
+export const candidateRevisionId = (input: {
+  readonly id: ContentId;
+  readonly definitionId: ContentId;
+  readonly configSnapshot: string;
+  readonly result: Readonly<Record<string, Constant | null>>;
+  readonly sources: readonly SourceFact[];
+}): ContentId => {
+  const encoded = CanonicalJson.encodeOrThrow({
+    id: input.id,
+    definition: input.definitionId,
+    configSnapshot: input.configSnapshot,
+    result: input.result,
+    sources: input.sources,
+  } as unknown as CanonicalJson.CanonicalValue);
+  return ContentIds.hash(ContentIds.Domain.derivationCandidate, encoded);
+};
+
 const candidateFrom = (
   definition: Definition,
   basis: TemporalBasis & { readonly validAt: number },
@@ -261,24 +289,20 @@ const candidateFrom = (
   result: Readonly<Record<string, Constant | null>>,
   sources: readonly SourceFact[],
 ): Candidate => {
-  const identityEncoding = CanonicalJson.encodeOrThrow({
-    derivation: definition.name,
-    identity,
-  } as unknown as CanonicalJson.CanonicalValue);
-  const id = ContentIds.hash(ContentIds.Domain.derivationIdentity, identityEncoding);
-  const revisionEncoding = CanonicalJson.encodeOrThrow({
+  const id = candidateIdentityId(definition.name, identity);
+  const revision = candidateRevisionId({
     id,
-    definition: definition.id,
+    definitionId: definition.id,
     configSnapshot: definition.configSnapshot,
     result,
     sources,
-  } as unknown as CanonicalJson.CanonicalValue);
+  });
   const boundaries = sources
     .map((source) => source.validTo)
     .filter((value): value is number => value !== undefined && value > basis.validAt);
   return {
     id,
-    revision: ContentIds.hash(ContentIds.Domain.derivationCandidate, revisionEncoding),
+    revision,
     definitionId: definition.id,
     configSnapshot: definition.configSnapshot,
     identity,

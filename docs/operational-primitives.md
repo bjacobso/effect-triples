@@ -85,6 +85,20 @@ attribute dependencies, and configuration snapshot. Evaluation returns `Candidat
 governed work without coupling those concepts to Triplex. Conflicting outputs for the same
 declared identity fail with a typed error rather than being selected arbitrarily.
 
+`Derivation.Materialization` persists candidate revisions and complete evaluation runs as
+immutable Triples system entities. Each run atomically binds its definition, config snapshot,
+bitemporal basis, candidate set, and latest dependency-relevant transaction position. There is no
+mutable first-writer checkpoint race: the current run for a definition is selected by source
+position and then materialization commit position. A newly deployed definition has its own stream,
+while reconciliation can still compare its stable logical candidate identities with the preceding
+run for the same name.
+
+`current` returns explicit `current`, `stale`, or `unmaterialized` state and retains the last
+durable candidates when stale. Relevant transaction positions are derived from the definition's
+discovered attributes; materializer and unrelated transactions do not create false lag. Persisted
+candidate bodies are schema-decoded and content-verified. Immutable run membership can be queried
+with ordinary Datalog for audit and composition.
+
 The initial provenance contract supports patterns, predicates, and negation. Recursive rules,
 disjunction, aggregation, and pagination are rejected until their exact provenance semantics are
 implemented.
@@ -104,12 +118,12 @@ uniqueness, required relationships, reference target kinds, and Datalog invarian
 support observation mode, which writes first-class violations, and enforcement mode, which rejects
 a command. Cross-entity policy must not be hidden inside value decoding.
 
-### Durable derivation materializations
+### Indexed projection checkpoints
 
-Persist derivation candidates behind an atomically moved checkpoint that records the definition,
-temporal basis, and source transaction position. The materialization must expose lag/staleness and
-remain safely rebuildable from the transaction feed and pinned definition. Triplex should not turn
-an added candidate into a Task or a removed candidate into a cancellation; applications own
+Derivation freshness currently discovers its dependency-relevant source position by scanning the
+ordered transaction journal. Add conventional consumer receipts/checkpoints and an indexed latest
+relevant position so long-running materializers can resume without a full scan. Triplex should not
+turn an added candidate into a Task or a removed candidate into a cancellation; applications own
 durable occurrences, assignment, evidence disposition, conversations, and retry policy.
 
 ### Hypothetical evaluation

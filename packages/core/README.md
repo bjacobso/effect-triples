@@ -88,6 +88,12 @@ attribute dependencies, and returns candidates suitable for application-owned re
 `Derivation.reconcile` reports added, removed, changed, and unchanged candidates; it does not
 create tasks or other domain objects.
 
+`Derivation.Materialization.materialize` persists an immutable candidate set, bitemporal basis,
+configuration pin, and relevant transaction position in one Triples transaction.
+`Materialization.current` returns `current`, `stale`, or `unmaterialized` without discarding the
+last durable candidates. Immutable runs remain queryable with `Materialization.runsQuery` and
+stored candidate bodies are content-verified when loaded.
+
 ## Content addressing
 
 `@bjacobso/triplex/content` exports deterministic canonical encoding and browser-safe,

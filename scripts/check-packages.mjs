@@ -152,6 +152,7 @@ void EntityValidation;
 void Evaluate;
 void TypeExpr;
 void Derivation;
+void Derivation.Materialization;
 void makeSqliteLayer;
 void Cloudflare;
 void FoundationDb;
@@ -184,6 +185,7 @@ void Testkit;
     join(consumerDir, "smoke.mjs"),
     `import { Effect } from "effect";
 import { Triples, string } from "@bjacobso/triplex";
+import * as Derivation from "@bjacobso/triplex/derivation";
 import { SqliteTriples } from "@bjacobso/triplex-sqlite";
 
 const result = await Effect.runPromise(
@@ -193,15 +195,36 @@ const result = await Effect.runPromise(
       entityId: "person:alice",
       attribute: ":person/name",
       value: string("Alice"),
+      validFrom: 0,
     });
-    return yield* triples.query({
+    const query = {
       find: ["?name"],
       where: [["?person", ":person/name", "?name"]],
+    };
+    const definition = yield* Derivation.make({
+      name: "person.names",
+      query,
+      identity: ["?name"],
+      configSnapshot: "config:consumer-smoke",
     });
+    yield* Derivation.Materialization.materialize(triples, definition, {
+      basis: { validAt: 1 },
+    });
+    return {
+      query: yield* triples.query(query),
+      materialization: yield* Derivation.Materialization.current(triples, definition, {
+        basis: { validAt: 1 },
+      }),
+    };
   }).pipe(Effect.provide(SqliteTriples.layerMemory)),
 );
 
-if (result.results.length !== 1 || result.results[0]?.["?name"] !== "Alice") {
+if (
+  result.query.results.length !== 1 ||
+  result.query.results[0]?.["?name"] !== "Alice" ||
+  result.materialization.status !== "current" ||
+  result.materialization.candidates.length !== 1
+) {
   throw new Error("Unexpected packaged SQLite/Datalog result: " + JSON.stringify(result));
 }
 `,

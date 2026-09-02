@@ -264,8 +264,42 @@ for transaction-feed-driven invalidation.
 This first release intentionally accepts complete structural queries with patterns,
 predicates, and negation—no rules, disjunction, aggregation, or pagination—so exact positive
 source provenance is well-defined. Evaluation is read-only and storage-independent. Durable
-materialization checkpoints, hypothetical fact overlays, and provenance through recursive
-rules remain future work.
+checkpoints are available through `Derivation.Materialization`:
+
+```ts
+yield *
+  Derivation.Materialization.materialize(triples, openI9, {
+    basis: { validAt: now },
+  });
+
+const state =
+  yield *
+  Derivation.Materialization.current(triples, openI9, {
+    basis: { validAt: now },
+  });
+
+if (state.status === "stale") {
+  const next =
+    yield *
+    Derivation.Materialization.materialize(triples, openI9, {
+      basis: { validAt: now },
+    });
+  scheduleReconciliation(next.reconciliation);
+}
+```
+
+Candidate revisions and runs are immutable Triples system entities. A run atomically records its
+candidate set, configuration pin, bitemporal basis, and latest relevant transaction position.
+Freshness is dependency-scoped, so unrelated transactions do not make a materialization stale;
+definition changes, relevant writes, and a different temporal basis do. Concurrent runs select a
+logical head by source position within a definition rather than racing a mutable pointer. Stored
+candidate bodies are schema-decoded and their content IDs are verified when read. Historical run
+membership is also available as ordinary Datalog through `Materialization.runsQuery`.
+
+Hypothetical fact overlays, negative-evidence expiry discovery, and provenance through recursive
+rules remain future work. Transaction-position discovery currently scans the ordered journal;
+large deployments should retain an application checkpoint until Triplex exposes indexed consumer
+receipts.
 
 ## Triples and values
 

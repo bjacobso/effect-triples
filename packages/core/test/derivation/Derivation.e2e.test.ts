@@ -2,9 +2,11 @@ import { describe, expect, it } from "@effect/vitest";
 import { Effect } from "effect";
 
 import { KvTriples } from "../../src/kv/layers/KvTriplesLive.js";
+import { transactSystem } from "../../src/store/systemNamespace.js";
 import { Triples } from "../../src/store/Triples.js";
 import { ref } from "../../src/Value.js";
 import * as Derivation from "../../src/derivation/Derivation.js";
+import * as Materialization from "../../src/derivation/Materialization.js";
 
 const placementFacts = (placement: string, validTo?: number) =>
   [
@@ -137,5 +139,137 @@ describe("content-addressed derivations", () => {
           Derivation.reconcile(first.candidates, withAnotherSource.candidates).changed,
         ).toHaveLength(1);
       }).pipe(Effect.provide(KvTriples.layer)),
+  );
+
+  it.effect("checkpoints candidates durably and reports projection freshness", () =>
+    Effect.gen(function* () {
+      const triples = yield* Triples;
+      yield* triples.assertBatch(placementFacts("placement:one"));
+      const task = yield* Derivation.make({
+        name: "task.i9",
+        query: taskQuery,
+        identity: ["?worker", "?scope"],
+        configSnapshot: "config:staffing-v1",
+      });
+
+      expect(yield* Materialization.current(triples, task, { basis: { validAt: 110 } })).toEqual(
+        expect.objectContaining({ status: "unmaterialized", candidates: [] }),
+      );
+
+      const first = yield* Materialization.materialize(triples, task, {
+        basis: { validAt: 110 },
+      });
+      expect(first.transaction).toBeDefined();
+      expect(first.reconciliation.added).toHaveLength(1);
+      expect(yield* Materialization.current(triples, task, { basis: { validAt: 110 } })).toEqual(
+        expect.objectContaining({
+          status: "current",
+          sourcePosition: first.sourcePosition,
+          candidates: [expect.objectContaining({ id: first.candidates[0]!.id })],
+        }),
+      );
+
+      const repeated = yield* Materialization.materialize(triples, task, {
+        basis: { validAt: 110 },
+      });
+      expect(repeated.transaction).toBeUndefined();
+      expect(repeated.reconciliation.unchanged).toHaveLength(1);
+
+      // An unrelated transaction advances the global journal but cannot make
+      // this dependency-scoped projection stale.
+      yield* triples.assert({
+        entityId: "note:one",
+        entityType: "Note",
+        attribute: ":note/body",
+        value: { type: "string", value: "unrelated" },
+      });
+      expect(yield* Materialization.current(triples, task, { basis: { validAt: 110 } })).toEqual(
+        expect.objectContaining({ status: "current", sourcePosition: first.sourcePosition }),
+      );
+
+      yield* triples.assert({
+        entityId: "worker:maria",
+        entityType: "Worker",
+        attribute: ":submission/i9",
+        value: ref("employer:acme"),
+        validFrom: 120,
+        validTo: 200,
+      });
+      const stale = yield* Materialization.current(triples, task, { basis: { validAt: 150 } });
+      expect(stale).toEqual(
+        expect.objectContaining({
+          status: "stale",
+          candidates: [expect.objectContaining({ id: first.candidates[0]!.id })],
+        }),
+      );
+      expect(stale.currentPosition).toBeGreaterThan(first.sourcePosition);
+
+      const satisfied = yield* Materialization.materialize(triples, task, {
+        basis: { validAt: 150 },
+      });
+      expect(satisfied.candidates).toEqual([]);
+      expect(satisfied.reconciliation.removed).toHaveLength(1);
+      expect(yield* Materialization.current(triples, task, { basis: { validAt: 150 } })).toEqual(
+        expect.objectContaining({ status: "current", candidates: [] }),
+      );
+
+      // Valid time alone makes the pinned checkpoint stale. Re-evaluation at
+      // expiry reopens the obligation without a new operational transaction.
+      expect(yield* Materialization.current(triples, task, { basis: { validAt: 200 } })).toEqual(
+        expect.objectContaining({ status: "stale", candidates: [] }),
+      );
+      const reopened = yield* Materialization.materialize(triples, task, {
+        basis: { validAt: 200 },
+      });
+      expect(reopened.reconciliation.added).toHaveLength(1);
+
+      // Deploying another immutable definition keeps logical candidate IDs
+      // stable while producing a changed revision and a new durable run.
+      const taskV2 = yield* Derivation.make({
+        name: "task.i9",
+        query: taskQuery,
+        identity: ["?worker", "?scope"],
+        configSnapshot: "config:staffing-v2",
+      });
+      expect(yield* Materialization.current(triples, taskV2, { basis: { validAt: 200 } })).toEqual(
+        expect.objectContaining({ status: "stale" }),
+      );
+      const redeployed = yield* Materialization.materialize(triples, taskV2, {
+        basis: { validAt: 200 },
+      });
+      expect(redeployed.candidates[0]!.id).toBe(reopened.candidates[0]!.id);
+      expect(redeployed.reconciliation.changed).toHaveLength(1);
+      expect(
+        (yield* triples.query(Materialization.runsQuery("task.i9"))).results.length,
+      ).toBeGreaterThan(1);
+
+      const candidateEntity = Materialization.entityId.candidate(
+        redeployed.candidates[0]!.revision,
+      );
+      const body = (yield* triples.match({
+        entityId: candidateEntity,
+        attribute: Materialization.System.attribute.candidateBody,
+      }))[0]!;
+      expect(body.value.type).toBe("json");
+      const stored =
+        body.value.type === "json" ? (body.value.value as Record<string, unknown>) : {};
+      yield* transactSystem(triples, [
+        { op: "retract", id: body.id },
+        {
+          op: "assert",
+          entityId: candidateEntity,
+          entityType: Materialization.System.entityType.candidate,
+          attribute: Materialization.System.attribute.candidateBody,
+          value: {
+            type: "json",
+            value: { ...stored, result: { "?scope": "employer:other" } },
+          },
+        },
+      ]);
+      const corrupt = yield* Materialization.current(triples, taskV2, {
+        basis: { validAt: 200 },
+      }).pipe(Effect.flip);
+      expect(corrupt._tag).toBe("CorruptDerivationMaterializationError");
+    }).pipe(Effect.provide(KvTriples.layer)),
   );
 });

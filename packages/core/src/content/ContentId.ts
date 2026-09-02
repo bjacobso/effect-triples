@@ -46,6 +46,7 @@ export const Domain = {
   derivationDefinition: "triplex/derivation-definition",
   derivationIdentity: "triplex/derivation-identity",
   derivationCandidate: "triplex/derivation-candidate",
+  derivationRun: "triplex/derivation-run",
 } as const;
 
 export type Domain = (typeof Domain)[keyof typeof Domain];

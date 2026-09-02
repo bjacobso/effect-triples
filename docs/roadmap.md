@@ -6,8 +6,9 @@ The operational foundation and its ordering constraints are specified in
 [`operational-primitives.md`](operational-primitives.md). Atomic KV transactions,
 compare-and-retract conditions, causal transaction envelopes, and per-transaction change journals
 are implemented, including a backend-issued commit cursor and resumable transaction pages. The
-next reliability milestone is conventional consumer checkpoints and command receipts, followed by
-graph constraints and durable checkpointing for the now-implemented portable derivation candidates.
+portable derivation candidates and their immutable, freshness-aware materialization runs are also
+implemented. The next reliability milestone is indexed consumer checkpoints and command receipts,
+followed by graph constraints and hypothetical evaluation overlays.
 
 ## Immediate correctness gate: backend parity
 
@@ -67,8 +68,8 @@ graph constraints and durable checkpointing for the now-implemented portable der
 - Differential tests cover historical corrections, future-effective facts, retractions, joins, and
   negation.
 - Structural derivations now expose the earliest `validTo` among positive supporting facts. Next:
-  model wakeups caused by expiring negated evidence and persist scheduler/materializer checkpoints
-  so expiry-driven projections reopen without relying on a daily full scan.
+  model wakeups caused by expiring negated evidence and connect persisted materialization runs to
+  scheduler checkpoints so expiry-driven projections reopen without relying on a daily full scan.
 
 ## 6. Integrated Full-Text Search (FTS)
 
