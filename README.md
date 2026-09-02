@@ -705,6 +705,11 @@ values compare numerically; text, refs, blobs, and JSON compare as text; incompa
 `is-not-null` take no operand, while every other operator requires one. Invalid filter shapes fail
 with `DatalogValidationError` before reaching a backend.
 
+Direct ordering and cursor pagination share one typed total order across backends: numbers and
+datetimes first, booleans second, text-family values third, and `null` last. The requested direction
+orders values within each family; a deterministic entity tie-breaker makes every page boundary
+unique. SQL keeps this physical sort key hidden while returning the original typed values.
+
 ```ts
 const first =
   yield *

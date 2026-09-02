@@ -150,6 +150,9 @@ export interface CompiledQuery {
 }
 
 export interface CompiledValueColumns {
+  readonly category: string;
+  readonly orderNumber: string;
+  readonly orderText: string;
   readonly type: string;
   readonly string: string;
   readonly number: string;
@@ -864,6 +867,9 @@ const distinctCountExpression = (binding: VariableBinding): string => {
 
 interface OptionalProjectionExpressions {
   readonly scalar: string;
+  readonly category: string;
+  readonly orderNumber: string;
+  readonly orderText: string;
   readonly type: string;
   readonly string: string;
   readonly number: string;
@@ -903,6 +909,11 @@ const optionalProjectionExpressions = (
     scalar: select(
       "COALESCE(opt.value_string, CAST(opt.value_number AS TEXT), CAST(opt.value_boolean AS TEXT), CAST(opt.value_datetime AS TEXT), opt.value_json)",
     ),
+    category: `COALESCE(${select(
+      "CASE WHEN opt.value_type IN ('number', 'datetime') THEN 0 WHEN opt.value_type = 'boolean' THEN 1 ELSE 2 END",
+    )}, 3)`,
+    orderNumber: select("COALESCE(opt.value_number, opt.value_datetime)"),
+    orderText: select("COALESCE(opt.value_string, opt.value_json)"),
     type: select("opt.value_type"),
     string: select("opt.value_string"),
     number: select("opt.value_number"),
@@ -959,15 +970,21 @@ const buildHavingClause = (
  */
 const buildOrderByClause = (
   orderBy: readonly OrderBySpec[] | undefined,
-  ctx: CompilerContext,
+  valueColumnMap: ReadonlyMap<string, CompiledValueColumns>,
 ): string => {
   if (!orderBy || orderBy.length === 0) {
     return "";
   }
 
-  const parts = orderBy.map(({ variable, direction = "asc" }) => {
-    const expr = resolveTermExpression(variable, ctx, "ORDER BY");
-    return `${expr} ${direction.toUpperCase()}`;
+  const parts = orderBy.flatMap(({ variable, direction = "asc" }) => {
+    const columns = valueColumnMap.get(variable);
+    if (columns === undefined) return [`"${variable}" ${direction.toUpperCase()}`];
+    return [
+      `"${columns.category}" ASC`,
+      `"${columns.orderNumber}" ${direction.toUpperCase()}`,
+      `"${columns.boolean}" ${direction.toUpperCase()}`,
+      `"${columns.orderText}" ${direction.toUpperCase()}`,
+    ];
   });
 
   return `ORDER BY ${parts.join(", ")}`;
@@ -1062,6 +1079,9 @@ const buildSelectAndGroupBy = (
           const colName = `"${term}"`;
           const index = valueColumnMap.size;
           const columns: CompiledValueColumns = {
+            category: `_triplex_value_${index}_category`,
+            orderNumber: `_triplex_value_${index}_order_number`,
+            orderText: `_triplex_value_${index}_order_text`,
             type: `_triplex_value_${index}_type`,
             string: `_triplex_value_${index}_string`,
             number: `_triplex_value_${index}_number`,
@@ -1070,6 +1090,9 @@ const buildSelectAndGroupBy = (
             json: `_triplex_value_${index}_json`,
           };
           selectParts.push(`${projection.scalar} AS ${colName}`);
+          selectParts.push(`${projection.category} AS "${columns.category}"`);
+          selectParts.push(`${projection.orderNumber} AS "${columns.orderNumber}"`);
+          selectParts.push(`${projection.orderText} AS "${columns.orderText}"`);
           selectParts.push(`${projection.type} AS "${columns.type}"`);
           selectParts.push(`${projection.string} AS "${columns.string}"`);
           selectParts.push(`${projection.number} AS "${columns.number}"`);
@@ -1086,6 +1109,9 @@ const buildSelectAndGroupBy = (
       if (isTripleValueBinding(binding)) {
         const index = valueColumnMap.size;
         const columns: CompiledValueColumns = {
+          category: `_triplex_value_${index}_category`,
+          orderNumber: `_triplex_value_${index}_order_number`,
+          orderText: `_triplex_value_${index}_order_text`,
           type: `_triplex_value_${index}_type`,
           string: `_triplex_value_${index}_string`,
           number: `_triplex_value_${index}_number`,
@@ -1094,6 +1120,11 @@ const buildSelectAndGroupBy = (
           json: `_triplex_value_${index}_json`,
         };
         selectParts.push(`${getColumnExpression(binding)} AS ${colName}`);
+        selectParts.push(
+          `CASE WHEN ${numberScalarTypeCondition(binding.alias)} THEN 0 WHEN ${binding.alias}.value_type = 'boolean' THEN 1 WHEN ${binding.alias}.value_type IS NULL THEN 3 ELSE 2 END AS "${columns.category}"`,
+        );
+        selectParts.push(`${numberScalarExpression(binding.alias)} AS "${columns.orderNumber}"`);
+        selectParts.push(`${textScalarExpression(binding.alias)} AS "${columns.orderText}"`);
         selectParts.push(`${binding.alias}.value_type AS "${columns.type}"`);
         selectParts.push(`${binding.alias}.value_string AS "${columns.string}"`);
         selectParts.push(`${binding.alias}.value_number AS "${columns.number}"`);
@@ -1219,7 +1250,7 @@ export const compile = (
 
   // Build HAVING, ORDER BY, LIMIT clauses
   const havingClause = buildHavingClause(having, ctx);
-  const orderByClause = buildOrderByClause(orderBy, ctx);
+  const orderByClause = buildOrderByClause(orderBy, valueColumnMap);
   const limitClause = buildLimitClause(limit, offset, dialect);
 
   // Build final SQL
@@ -1757,7 +1788,7 @@ export const compileWithRules = (
 
   // Build HAVING, ORDER BY, LIMIT clauses
   const havingClause = buildHavingClause(having, ctx);
-  const orderByClause = buildOrderByClause(orderBy, ctx);
+  const orderByClause = buildOrderByClause(orderBy, valueColumnMap);
   const limitClause = buildLimitClause(limit, offset, dialect);
 
   // Build final SQL with CTEs

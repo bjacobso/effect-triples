@@ -17,7 +17,9 @@ hosts typed configuration as a modular layer over the same core.
   binary-rule invariants before either engine runs; invalid input remains a typed Effect failure.
   Aggregate duplicate, distinct-count, and empty-input behavior is also backend-independent.
   Wrapped filters use hidden typed projection columns rather than flattened SQL text, preserving
-  numeric, text-family, boolean, and null semantics through pagination.
+  numeric, text-family, boolean, and null semantics through pagination. Direct ordering and
+  keyset pagination share the same hidden typed total-order key, including deterministic null and
+  mixed-family placement.
 - Core's `content` module owns deterministic canonical encoding, domain-separated browser-safe
   SHA-256, and the shared `ContentId` format. Entity snapshots and configuration use distinct
   domains over this one foundation.

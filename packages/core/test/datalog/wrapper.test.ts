@@ -217,10 +217,8 @@ describe("Datalog Wrapper Compiler", () => {
 
       const result = compileWrapped(query);
 
-      expect(result.sql).toContain('ORDER BY CASE WHEN "_triplex_value_0_type"');
-      expect(result.sql).toContain(
-        'COALESCE("_triplex_value_0_string", "_triplex_value_0_json") ASC',
-      );
+      expect(result.sql).toContain('ORDER BY "_triplex_value_0_category" ASC');
+      expect(result.sql).toContain('"_triplex_value_0_order_text" ASC');
     });
 
     it("should handle multiple order by columns", () => {
@@ -241,12 +239,8 @@ describe("Datalog Wrapper Compiler", () => {
 
       const result = compileWrapped(query);
 
-      expect(result.sql).toContain(
-        'COALESCE("_triplex_value_2_string", "_triplex_value_2_json") ASC',
-      );
-      expect(result.sql).toContain(
-        'COALESCE("_triplex_value_1_number", "_triplex_value_1_datetime") DESC',
-      );
+      expect(result.sql).toContain('"_triplex_value_2_order_text" ASC');
+      expect(result.sql).toContain('"_triplex_value_1_order_number" DESC');
     });
   });
 
@@ -389,9 +383,7 @@ describe("Datalog Wrapper Compiler", () => {
 
       // Keyset comparisons use typed storage columns, preserving values such
       // as the string "007" rather than ordering their display coercion.
-      expect(result.sql).toContain(
-        'COALESCE("_triplex_value_0_string", "_triplex_value_0_json") > ?',
-      );
+      expect(result.sql).toContain('"_triplex_value_0_order_text" > ?');
       expect(result.params).toContain("Smith");
     });
 
@@ -407,9 +399,7 @@ describe("Datalog Wrapper Compiler", () => {
 
       const result = compileWrapped(query, undefined, { cursorValues: [30] });
 
-      expect(result.sql).toContain(
-        'COALESCE("_triplex_value_0_number", "_triplex_value_0_datetime") < ?',
-      );
+      expect(result.sql).toContain('"_triplex_value_0_order_number" < ?');
       expect(result.params).toContain(30);
     });
 
@@ -437,12 +427,8 @@ describe("Datalog Wrapper Compiler", () => {
       // The typed components still form a lexicographic keyset condition.
       expect(result.sql).toContain("WHERE");
       expect(result.sql).toMatch(/OR/);
-      expect(result.sql).toContain(
-        'COALESCE("_triplex_value_1_string", "_triplex_value_1_json") > ?',
-      );
-      expect(result.sql).toContain(
-        'COALESCE("_triplex_value_2_number", "_triplex_value_2_datetime") < ?',
-      );
+      expect(result.sql).toContain('"_triplex_value_1_order_text" > ?');
+      expect(result.sql).toContain('"_triplex_value_2_order_number" < ?');
       expect(result.params).toContain("Engineering");
       expect(result.params).toContain(30);
     });
@@ -467,9 +453,7 @@ describe("Datalog Wrapper Compiler", () => {
       expect(result.sql).toContain(
         'COALESCE("_triplex_value_1_string", "_triplex_value_1_json") = ?',
       );
-      expect(result.sql).toContain(
-        'COALESCE("_triplex_value_0_string", "_triplex_value_0_json") > ?',
-      );
+      expect(result.sql).toContain('"_triplex_value_0_order_text" > ?');
       expect(result.params).toContain("Engineering");
       expect(result.params).toContain("Smith");
     });

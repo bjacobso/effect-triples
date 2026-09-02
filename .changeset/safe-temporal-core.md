@@ -35,3 +35,5 @@ Run Datalog runtime shape and semantic preflight through one backend-neutral val
 Align aggregate input multiplicity, distinct counts, and empty-input results across KV, SQLite, and PostgreSQL. Extend typed projection and equality joins to JSON and blob values without string-to-number guessing.
 
 Make wrapped Datalog filters type-aware across KV, SQLite, and PostgreSQL. Validate filter operands before execution, keep negative operators SQL-null compatible, and preserve the physical value columns needed to compare optional numeric projections numerically.
+
+Use one typed total-order key for direct Datalog ordering and cursor pagination across KV, SQLite, and PostgreSQL. Mixed numbers, datetimes, booleans, text-family values, and nulls now retain identical order and stable page boundaries on every supported backend.

@@ -194,11 +194,10 @@ const sortComponents = (
       ];
     }
 
-    const type = quoted(columns.type);
-    const numeric = `COALESCE(${quoted(columns.number)}, ${quoted(columns.datetime)})`;
+    const numeric = quoted(columns.orderNumber);
     const boolean = quoted(columns.boolean);
-    const text = `COALESCE(${quoted(columns.string)}, ${quoted(columns.json)})`;
-    const category = `CASE WHEN ${type} IN ('number', 'datetime') THEN 0 WHEN ${type} = 'boolean' THEN 1 WHEN ${type} IS NULL THEN 3 ELSE 2 END`;
+    const text = quoted(columns.orderText);
+    const category = quoted(columns.category);
     return [
       {
         expression: category,
@@ -330,6 +329,9 @@ export const compileWrapped = (
   );
   for (const columns of innerCompiled.valueColumnMap.values()) {
     for (const column of [
+      `"${columns.category}"`,
+      `"${columns.orderNumber}"`,
+      `"${columns.orderText}"`,
       `"${columns.type}"`,
       `"${columns.string}"`,
       `"${columns.number}"`,

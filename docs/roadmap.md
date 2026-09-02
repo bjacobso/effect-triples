@@ -27,8 +27,9 @@ unique and durable consumer checkpoints are available through the `operational` 
   now fail through one backend-neutral typed preflight. Projection and joins cover all seven stored
   value types, and aggregate duplicate, distinct-count, and empty-input semantics are differential
   tested. Wrapped filters now validate operand arity and use typed projection columns so numeric,
-  text-family, boolean, and null behavior agrees across backends. Continue expanding mixed-type
-  pagination edge cases and hostile schema-valid input.
+  text-family, boolean, and null behavior agrees across backends. Direct ordering and keyset
+  pagination now share a typed total order for mixed scalar families, including null placement and
+  deterministic ties. Continue expanding hostile schema-valid input.
 - SQL projection now carries hidden storage tags through execution, so strings such as `"007"`,
   numeric-looking entity IDs and refs, datetimes, booleans, and JSON are decoded without guessing.
 - Recursive SQL rule definitions, applications, optional projection attributes, and depth bounds

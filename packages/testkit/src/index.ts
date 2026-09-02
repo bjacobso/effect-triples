@@ -788,6 +788,116 @@ export const triplesConformanceCases: readonly ConformanceCase[] = [
     }),
   },
   {
+    name: "Datalog ordering and pagination preserve mixed scalar order",
+    run: Effect.gen(function* () {
+      const t = yield* Triples;
+      const fixtures = [
+        ["conf:order:number-2", number(2)],
+        ["conf:order:datetime-5", datetime(5)],
+        ["conf:order:number-10", number(10)],
+        ["conf:order:boolean-false", boolean(false)],
+        ["conf:order:boolean-true", boolean(true)],
+        ["conf:order:string-10", string("10")],
+        ["conf:order:string-2", string("2")],
+      ] as const;
+      yield* t.assertBatch(
+        fixtures.flatMap(([entityId, value]) => [
+          {
+            entityId,
+            attribute: ":_schema/type",
+            value: string("OrderFixture"),
+          },
+          { entityId, attribute: ":conf/order-value", value },
+        ]),
+      );
+      yield* t.assert({
+        entityId: "conf:order:missing",
+        attribute: ":_schema/type",
+        value: string("OrderFixture"),
+      });
+
+      const ascending = yield* t.query({
+        find: ["?entity", "?value"],
+        where: [["?entity", ":conf/order-value", "?value"]],
+        orderBy: [
+          { variable: "?value", direction: "asc" },
+          { variable: "?entity", direction: "asc" },
+        ],
+      });
+      yield* check(
+        ascending.results.map((row) => row["?entity"]).join(",") ===
+          [
+            "conf:order:number-2",
+            "conf:order:datetime-5",
+            "conf:order:number-10",
+            "conf:order:boolean-false",
+            "conf:order:boolean-true",
+            "conf:order:string-10",
+            "conf:order:string-2",
+          ].join(","),
+        "direct ordering must compare numeric values numerically and retain scalar-family order",
+      );
+
+      const descending = yield* t.query({
+        find: ["?entity", "?value"],
+        where: [["?entity", ":conf/order-value", "?value"]],
+        orderBy: [
+          { variable: "?value", direction: "desc" },
+          { variable: "?entity", direction: "asc" },
+        ],
+      });
+      yield* check(
+        descending.results.map((row) => row["?entity"]).join(",") ===
+          [
+            "conf:order:number-10",
+            "conf:order:datetime-5",
+            "conf:order:number-2",
+            "conf:order:boolean-true",
+            "conf:order:boolean-false",
+            "conf:order:string-2",
+            "conf:order:string-10",
+          ].join(","),
+        "descending order must reverse values within each stable scalar family",
+      );
+
+      const inner = {
+        find: ["?entity", "?value"],
+        where: [["?entity", ":_schema/type", "OrderFixture"]],
+        optionalProjection: {
+          rowBinding: "?entity",
+          fields: [{ attribute: ":conf/order-value", variable: "?value" }],
+        },
+      } as const;
+      const pagedEntities: unknown[] = [];
+      let cursor: string | undefined;
+      do {
+        const page = yield* t.queryPage({
+          inner,
+          orderBy: [{ variable: "?value", direction: "asc" }],
+          limit: 2,
+          ...(cursor === undefined ? {} : { cursor }),
+        });
+        pagedEntities.push(...page.results.map((row) => row["?entity"]));
+        cursor = page.nextCursor;
+      } while (cursor !== undefined);
+
+      yield* check(
+        pagedEntities.join(",") ===
+          [
+            "conf:order:number-2",
+            "conf:order:datetime-5",
+            "conf:order:number-10",
+            "conf:order:boolean-false",
+            "conf:order:boolean-true",
+            "conf:order:string-10",
+            "conf:order:string-2",
+            "conf:order:missing",
+          ].join(","),
+        "keyset pagination must visit mixed typed and null values exactly once",
+      );
+    }),
+  },
+  {
     name: "datalog untyped strings match string and ref values while typed refs stay exact",
     run: Effect.gen(function* () {
       const t = yield* Triples;
