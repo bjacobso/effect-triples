@@ -89,20 +89,20 @@ Migration is per tenant because `tenant_id` becomes the physical organization-da
 Run it while writes are stopped or dual-written and verified. For every distinct legacy
 `tenant_id`, provision its mapped Triplex database and copy rows with this field mapping:
 
-| Legacy `effect_triples`                                                                       | Triplex `triples`                          |
-| --------------------------------------------------------------------------------------------- | ------------------------------------------ |
-| `id`                                                                                          | `id`                                       |
-| `entity_id`, `attribute`, `entity_type`                                                       | same names                                 |
-| `value_type`, `value_string`, `value_number`, `value_boolean`, `value_datetime`, `value_json` | same names                                 |
-| `transaction_id`                                                                              | `tx_id`                                    |
-| `recorded_at`                                                                                 | `created_at` and `recorded_at`             |
-| derived from the rebuilt journal                                                              | `recorded_position`                        |
-| `created_by`                                                                                  | `created_by`                               |
-| `valid_from`, `valid_to`                                                                      | same names                                 |
-| `retracted_at`                                                                                | `retracted_at` and `recorded_retracted_at` |
-| `retracted_by_transaction_id`                                                                 | `retract_tx_id`                            |
-| derived from `retracted_by_transaction_id`'s rebuilt journal entry                            | `recorded_retracted_position`              |
-| no legacy column                                                                              | `schema_version = 1`                       |
+| Legacy `effect_triples`                                                                       | Triplex `triples`    |
+| --------------------------------------------------------------------------------------------- | -------------------- |
+| `id`                                                                                          | `id`                 |
+| `entity_id`, `attribute`, `entity_type`                                                       | same names           |
+| `value_type`, `value_string`, `value_number`, `value_boolean`, `value_datetime`, `value_json` | same names           |
+| `transaction_id`                                                                              | `tx_id`              |
+| `recorded_at`                                                                                 | `recorded_at`        |
+| derived from the rebuilt journal                                                              | `recorded_position`  |
+| `created_by`                                                                                  | `created_by`         |
+| `valid_from`, `valid_to`                                                                      | same names           |
+| `retracted_at`                                                                                | `retracted_at`       |
+| `retracted_by_transaction_id`                                                                 | `retract_tx_id`      |
+| derived from `retracted_by_transaction_id`'s rebuilt journal entry                            | `retracted_position` |
+| no legacy column                                                                              | `schema_version = 1` |
 
 Do not copy `tenant_id` into entity IDs. Preserve all assertion and retraction rows. After loading,
 allocate transaction commit positions in the legacy recorded order with a deterministic
@@ -121,6 +121,8 @@ Before cutover, compare per organization:
 
 Run exported Triplex migrations through the host migration system before the copy. Triplex uses
 `triplex_schema_migrations`, avoiding the host application's migration table.
+Triplex is greenfield and publishes one complete v1 schema migration; it does not upgrade databases
+created by earlier development builds.
 
 ## Compiling the EntityType DSL
 

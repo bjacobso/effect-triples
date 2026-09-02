@@ -3,7 +3,7 @@ import { Encoding, Result, Schema } from "effect";
 import type { WrappedQueryResult } from "./storage/QueryExecutor.js";
 import type { OrderBySpec, WrappedQuery } from "./datalog/types.js";
 import type { ResolvedTemporalBasis, TemporalBasis } from "./Temporal.js";
-import { basisFromAsOf, resolveTemporalBasis } from "./Temporal.js";
+import { resolveTemporalBasis } from "./Temporal.js";
 import { PaginationCursorError } from "./errors/index.js";
 import * as CanonicalJson from "./content/CanonicalJson.js";
 import * as ContentId from "./content/ContentId.js";
@@ -187,7 +187,6 @@ const sameBasis = (left: ResolvedTemporalBasis, right: ResolvedTemporalBasis): b
 export const preparePagination = (input: {
   readonly query: WrappedQuery;
   readonly basis?: TemporalBasis;
-  readonly asOf?: number;
   readonly now: number;
   readonly recordedPosition: number;
   readonly scope: string;
@@ -198,13 +197,6 @@ export const preparePagination = (input: {
       message: "Pagination requires a non-negative safe commit position",
     });
   }
-  if (input.basis !== undefined && input.asOf !== undefined) {
-    throw new PaginationCursorError({
-      reason: "basis_mismatch",
-      message: "Use either basis or asOf, not both",
-    });
-  }
-
   const orderBy = normalizePaginationOrder(input.query);
   const baseQuery = withoutCursor({ ...input.query, orderBy: [...orderBy] });
   const envelope =
@@ -216,8 +208,8 @@ export const preparePagination = (input: {
   };
   if (envelope !== undefined) {
     basis = envelope.basis;
-    if (input.basis !== undefined || input.asOf !== undefined) {
-      const requested = resolveTemporalBasis(input.basis ?? basisFromAsOf(input.asOf!), input.now);
+    if (input.basis !== undefined) {
+      const requested = resolveTemporalBasis(input.basis, input.now);
       if (!sameBasis(requested, basis)) {
         throw new PaginationCursorError({
           reason: "basis_mismatch",
@@ -226,10 +218,7 @@ export const preparePagination = (input: {
       }
     }
   } else {
-    const resolved = resolveTemporalBasis(
-      input.basis ?? (input.asOf === undefined ? undefined : basisFromAsOf(input.asOf)),
-      input.now,
-    );
+    const resolved = resolveTemporalBasis(input.basis, input.now);
     basis = {
       recordedAt: resolved.recordedAt ?? input.now,
       recordedPosition: input.recordedPosition,

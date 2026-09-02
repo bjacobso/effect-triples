@@ -13,6 +13,7 @@ import { Data, Effect } from "effect";
 import type { ReadError } from "../errors/index.js";
 import { Triples } from "../store/Triples.js";
 import type { Triple } from "../Triple.js";
+import type { TemporalBasis } from "../Temporal.js";
 import type { TripleValue } from "../Value.js";
 import * as CanonicalJson from "../content/CanonicalJson.js";
 import * as ContentId from "../content/ContentId.js";
@@ -57,8 +58,8 @@ export interface EvaluateRefInput {
   /** Entity substituted for `World.SUBJECT`. */
   readonly subject: string;
   readonly clock: World.Clock;
-  /** Evaluate against facts visible at this wall-clock time. Defaults to now. */
-  readonly asOf?: number;
+  /** Evaluate against facts visible at this bitemporal basis. Defaults to now. */
+  readonly basis?: TemporalBasis;
 }
 
 export interface Decision {
@@ -138,7 +139,7 @@ const scalarValue = (value: TripleValue): World.Value | undefined => {
 
 const worldFromReads = (
   reads: ReadonlyArray<FactRead>,
-  asOf?: number,
+  basis?: TemporalBasis,
 ): Effect.Effect<
   World.World,
   ReadError | AmbiguousDecisionFactError | UnsupportedDecisionFactError,
@@ -150,10 +151,7 @@ const worldFromReads = (
 
     for (const read of reads) {
       const pattern = { entityId: read.entity, attribute: read.attribute };
-      const matches =
-        asOf === undefined
-          ? yield* triples.match(pattern)
-          : yield* triples.matchAsOf(pattern, asOf);
+      const matches = yield* triples.match(pattern, basis);
 
       if (matches.length > 1) {
         return yield* new AmbiguousDecisionFactError({
@@ -216,7 +214,7 @@ export const evaluate = (
 
     const catalog = Catalog.fromNodes([...ConfigNode.walk(snapshot.root)].map(({ node }) => node));
     const expr = BoolExpr.rule(input.rule);
-    const world = yield* worldFromReads(factReads(expr, catalog, input.subject), input.asOf);
+    const world = yield* worldFromReads(factReads(expr, catalog, input.subject), input.basis);
     const evaluation = Evaluate.evaluate(expr, world, input.clock, catalog, input.subject);
 
     const decision = {

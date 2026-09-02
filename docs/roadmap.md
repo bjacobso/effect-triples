@@ -24,15 +24,7 @@ constraints.
 - Keep PostgreSQL, FoundationDB, and Cloudflare experimental until each backend passes the shared
   conformance and differential suites in CI.
 
-## 1. Structured Data Retrieval (Pull API)
-
-**Goal:** Enable fetching nested, hierarchical data in a single query.
-
-- Implement a Datomic-style `pull` API: `pull(entityId, [":name", {":friends": [":name"]}])`.
-- Reduce the need for manual result-shaping in application code.
-- Optimize by batching underlying SQL queries for nested attributes.
-
-## 2. Schema-Aware Constraints & Enforcement
+## 1. Schema-Aware Constraints & Enforcement
 
 **Goal:** Move from a "bag of facts" to a reliable, structured database.
 
@@ -43,7 +35,7 @@ constraints.
 - Keep these graph constraints separate from value-local `TypeExpr` definitions.
 - Support both queryable observation findings and opt-in transaction enforcement.
 
-## 3. Reactive "Live" Queries (Watch API)
+## 2. Reactive "Live" Queries (Watch API)
 
 **Goal:** Power real-time, reactive user interfaces.
 
@@ -53,7 +45,7 @@ constraints.
 - Build reliable invalidation on the ordered transaction feed; `ChangeEmitter` remains a
   best-effort wake-up mechanism.
 
-## 4. Application-Level Multi-tenancy
+## 3. Application-Level Multi-tenancy
 
 **Goal:** Native, safe isolation for SaaS applications.
 
@@ -61,7 +53,7 @@ constraints.
   model and a backend-portable query/write policy contract.
 - Do not add an ambient `tenantId` column that silently changes query semantics.
 
-## 5. Bitemporality (Valid Time)
+## Delivered foundation: Bitemporality (Valid Time)
 
 **Goal:** Distinguish between when a fact was recorded and when it became true.
 
@@ -75,7 +67,7 @@ constraints.
   reopen expiry-driven projections without a daily full scan. Next: replace the conservative
   journal scan with indexed dependency schedules and durable consumer checkpoints.
 
-## 6. Integrated Full-Text Search (FTS)
+## 4. Integrated Full-Text Search (FTS)
 
 **Goal:** Seamlessly combine graph traversal with text search.
 
@@ -83,7 +75,7 @@ constraints.
 - Support relevance scoring and highlighting in query results.
 - Leverage underlying SQL engine FTS capabilities (SQLite FTS5, Postgres GIN/GiST).
 
-## 7. Performance & Query Optimization
+## 5. Performance & Query Optimization
 
 **Goal:** Handle millions of triples with sub-millisecond latency.
 
@@ -91,7 +83,7 @@ constraints.
 - **JSON Indexing:** Optimize `value_json` lookups for complex data types.
 - **Recursive Rule Performance:** Optimize CTE generation for deep graph traversals.
 
-## 8. Client-Side Sync & Offline-First
+## 6. Client-Side Sync & Offline-First
 
 **Goal:** Enable seamless data replication to edge devices and browsers.
 
@@ -99,10 +91,9 @@ constraints.
 - Provide a lightweight browser-side Hexastore for local querying.
 - Implement conflict resolution strategies for offline writes.
 
-## 9. Developer Experience (DX) & Tooling
+## 7. Developer Experience (DX) & Tooling
 
 **Goal:** Make the database "inspectable" and easy to use.
 
 - **Database Studio:** A web-based UI for exploring entities, history, and snapshots.
-- **Type-Safe Query Builder:** Autocomplete for attributes and variables in TypeScript.
 - **OpenTelemetry Integration:** Built-in tracing for query execution and performance bottlenecks.

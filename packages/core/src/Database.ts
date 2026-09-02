@@ -5,7 +5,7 @@
  */
 
 import { Schema } from "effect";
-import { DatabaseName as DatabaseNamePrimitive } from "./Branded.js";
+import { DatabaseId } from "./Branded.js";
 
 // =============================================================================
 // Database Name
@@ -14,9 +14,9 @@ import { DatabaseName as DatabaseNamePrimitive } from "./Branded.js";
 /**
  * Valid database name: database-native primitive owned by @bjacobso/triplex
  */
-const DatabaseName = DatabaseNamePrimitive.annotate({
-  identifier: "DatabaseName",
-  description: "A valid database name (kebab-case, 1-64 chars)",
+const DatabaseIdentifier = DatabaseId.annotate({
+  identifier: "DatabaseId",
+  description: "A valid database identifier (kebab-case, 1-64 chars)",
 });
 
 // =============================================================================
@@ -27,7 +27,7 @@ const DatabaseName = DatabaseNamePrimitive.annotate({
  * Request to create a new database
  */
 export const CreateDatabaseRequest = Schema.Struct({
-  name: DatabaseName,
+  name: DatabaseIdentifier,
   description: Schema.optional(Schema.String),
 });
 export type CreateDatabaseRequest = typeof CreateDatabaseRequest.Type;

@@ -18,22 +18,20 @@ const ref = (value: string): TripleValue => ({ type: "ref", value });
 
 let counter = 0;
 const makeDatom = (overrides: Partial<Datom> = {}): Datom => {
-  const createdAt = overrides.createdAt ?? 1000;
+  const recordedAt = overrides.recordedAt ?? 1000;
   return {
     tripleId: `triple-${++counter}`,
     entity: "emp:alice",
     attribute: ":employee/name",
     value: str("Alice"),
     txId: "tx:1",
-    createdAt,
-    recordedAt: overrides.recordedAt ?? createdAt,
+    recordedAt,
     recordedPosition: overrides.recordedPosition ?? 1,
-    validFrom: overrides.validFrom ?? createdAt,
+    validFrom: overrides.validFrom ?? recordedAt,
     validTo: null,
     createdBy: null,
     retractedAt: null,
-    recordedRetractedAt: null,
-    recordedRetractedPosition: null,
+    retractedPosition: null,
     retractTxId: null,
     entityType: null,
     ...overrides,
@@ -134,7 +132,7 @@ describe("retract", () => {
     const datom = makeDatom();
     await run(store.assert(datom));
 
-    const retracted = await run(store.retract(datom.tripleId, 2000, "tx:2"));
+    const retracted = await run(store.retract(datom.tripleId, 2000, "tx:2", 2));
     expect(retracted).toBe(true);
 
     const result = await run(store.getById(datom.tripleId));
@@ -143,16 +141,16 @@ describe("retract", () => {
   });
 
   it("returns false for non-existent triple", async () => {
-    const result = await run(store.retract("non-existent", 2000));
+    const result = await run(store.retract("non-existent", 2000, "tx:2", 2));
     expect(result).toBe(false);
   });
 
   it("returns false for already-retracted triple", async () => {
     const datom = makeDatom();
     await run(store.assert(datom));
-    await run(store.retract(datom.tripleId, 2000));
+    await run(store.retract(datom.tripleId, 2000, "tx:2", 2));
 
-    const result = await run(store.retract(datom.tripleId, 3000));
+    const result = await run(store.retract(datom.tripleId, 3000, "tx:3", 3));
     expect(result).toBe(false);
   });
 
@@ -161,7 +159,7 @@ describe("retract", () => {
     const d2 = makeDatom({ entity: "emp:alice", attribute: ":employee/age", value: num(30) });
 
     await run(store.assertBatch([d1, d2]));
-    await run(store.retract(d1.tripleId, 2000));
+    await run(store.retract(d1.tripleId, 2000, "tx:2", 2));
 
     const results = await run(collect(store.scan({ entity: "emp:alice" })));
     expect(results.length).toBe(1);
@@ -173,7 +171,7 @@ describe("retract", () => {
     const d2 = makeDatom({ entity: "emp:alice", attribute: ":employee/age", value: num(30) });
 
     await run(store.assertBatch([d1, d2]));
-    await run(store.retract(d1.tripleId, 2000));
+    await run(store.retract(d1.tripleId, 2000, "tx:2", 2));
 
     const results = await run(
       collect(store.scan({ entity: "emp:alice" }, { includeRetracted: true })),
@@ -290,11 +288,11 @@ describe("scanAsOf", () => {
       entity: "emp:alice",
       attribute: ":employee/name",
       value: str("Alice"),
-      createdAt: 1000,
+      recordedAt: 1000,
     });
 
     await run(store.assert(d1));
-    await run(store.retract(d1.tripleId, 3000, "tx:2"));
+    await run(store.retract(d1.tripleId, 3000, "tx:2", 2));
 
     // Before creation → nothing
     const before = await run(collect(store.scanAsOf({ entity: "emp:alice" }, 500)));
@@ -319,21 +317,21 @@ describe("scanAsOf", () => {
       entity: "emp:alice",
       attribute: ":employee/name",
       value: str("Alice"),
-      createdAt: 1000,
+      recordedAt: 1000,
       txId: "tx:1",
     });
     const v2 = makeDatom({
       entity: "emp:alice",
       attribute: ":employee/name",
       value: str("Alice Smith"),
-      createdAt: 2000,
+      recordedAt: 2000,
       txId: "tx:2",
     });
 
     await run(store.assert(v1));
     await run(store.assert(v2));
     // Retract old value at time of new assertion
-    await run(store.retract(v1.tripleId, 2000, "tx:2"));
+    await run(store.retract(v1.tripleId, 2000, "tx:2", 2));
 
     // At t=1500, only v1 is visible
     const at1500 = await run(
@@ -375,7 +373,7 @@ describe("getEntity and entityHistory", () => {
     });
 
     await run(store.assert(d1));
-    await run(store.retract(d1.tripleId, 2000));
+    await run(store.retract(d1.tripleId, 2000, "tx:2", 2));
     await run(store.assert(d2));
 
     const history = await run(collect(store.entityHistory("emp:alice")));

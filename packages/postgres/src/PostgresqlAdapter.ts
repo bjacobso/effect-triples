@@ -107,13 +107,13 @@ export const makePostgresqlAdapter = (config: PostgresqlAdapterConfig = {}) =>
               INSERT INTO triples (
                 id, entity_id, attribute, value_type,
                 value_string, value_number, value_boolean, value_datetime, value_json,
-                created_at, recorded_at, recorded_position, valid_from, valid_to,
+                recorded_at, recorded_position, valid_from, valid_to,
                 created_by, entity_type, schema_version, tx_id
               ) VALUES (
                 ${id}, ${input.entityId}, ${input.attribute}, ${packed.value_type},
                 ${packed.value_string}, ${packed.value_number}, ${packed.value_boolean},
                 ${packed.value_datetime}, ${packed.value_json},
-                ${timestamp}, ${timestamp}, ${position}, ${input.validFrom ?? timestamp}, ${input.validTo ?? null},
+                ${timestamp}, ${position}, ${input.validFrom ?? timestamp}, ${input.validTo ?? null},
                 ${input.createdBy ?? null}, ${input.entityType ?? null}, ${1}, ${txId}
               )
             `.pipe(
@@ -136,15 +136,13 @@ export const makePostgresqlAdapter = (config: PostgresqlAdapterConfig = {}) =>
               value_boolean: packed.value_boolean,
               value_datetime: packed.value_datetime,
               value_json: packed.value_json,
-              created_at: timestamp,
               recorded_at: timestamp,
               recorded_position: position,
               valid_from: input.validFrom ?? timestamp,
               valid_to: input.validTo ?? null,
               created_by: input.createdBy ?? null,
               retracted_at: null,
-              recorded_retracted_at: null,
-              recorded_retracted_position: null,
+              retracted_position: null,
               entity_type: input.entityType ?? null,
               schema_version: 1,
               tx_id: txId,
@@ -198,7 +196,6 @@ export const makePostgresqlAdapter = (config: PostgresqlAdapterConfig = {}) =>
                       packed.value_datetime,
                       packed.value_json,
                       timestamp,
-                      timestamp,
                       position,
                       input.validFrom ?? timestamp,
                       input.validTo ?? null,
@@ -215,7 +212,7 @@ export const makePostgresqlAdapter = (config: PostgresqlAdapterConfig = {}) =>
                   INSERT INTO triples (
                     id, entity_id, attribute, value_type,
                     value_string, value_number, value_boolean, value_datetime, value_json,
-                    created_at, recorded_at, recorded_position, valid_from, valid_to,
+                    recorded_at, recorded_position, valid_from, valid_to,
                     created_by, entity_type, schema_version, tx_id
                   ) VALUES ${valuesSql}
                 `;
@@ -241,15 +238,13 @@ export const makePostgresqlAdapter = (config: PostgresqlAdapterConfig = {}) =>
                 value_boolean: packed.value_boolean,
                 value_datetime: packed.value_datetime,
                 value_json: packed.value_json,
-                created_at: timestamp,
                 recorded_at: timestamp,
                 recorded_position: position,
                 valid_from: input.validFrom ?? timestamp,
                 valid_to: input.validTo ?? null,
                 created_by: input.createdBy ?? null,
                 retracted_at: null,
-                recorded_retracted_at: null,
-                recorded_retracted_position: null,
+                retracted_position: null,
                 entity_type: input.entityType ?? null,
                 schema_version: 1,
                 tx_id: txId,
@@ -274,7 +269,7 @@ export const makePostgresqlAdapter = (config: PostgresqlAdapterConfig = {}) =>
           Effect.gen(function* () {
             const rows = yield* sql<{ readonly id: string }>`
               UPDATE triples
-              SET retracted_at = ${timestamp}, recorded_retracted_at = ${timestamp}, recorded_retracted_position = ${position ?? null}, retract_tx_id = ${txId ?? null}
+              SET retracted_at = ${timestamp}, retracted_position = ${position}, retract_tx_id = ${txId}
               WHERE id = ${id} AND retracted_at IS NULL
               RETURNING id
             `.pipe(
@@ -315,16 +310,27 @@ export const makePostgresqlAdapter = (config: PostgresqlAdapterConfig = {}) =>
         );
 
       const temporalConditions = (
-        basis: { readonly recordedAt?: number; readonly validAt: number } | undefined,
+        basis:
+          | {
+              readonly recordedAt?: number;
+              readonly recordedPosition?: number;
+              readonly validAt: number;
+            }
+          | undefined,
         collector: ReturnType<typeof createParamCollector>,
       ): string[] => {
         const conditions =
-          basis?.recordedAt === undefined
-            ? ["recorded_retracted_at IS NULL"]
-            : [
-                `recorded_at <= ${collector.add(basis.recordedAt)}`,
-                `(recorded_retracted_at IS NULL OR recorded_retracted_at > ${collector.add(basis.recordedAt)})`,
-              ];
+          basis?.recordedPosition !== undefined
+            ? [
+                `recorded_position <= ${collector.add(basis.recordedPosition)}`,
+                `(retracted_position IS NULL OR retracted_position > ${collector.add(basis.recordedPosition)})`,
+              ]
+            : basis?.recordedAt === undefined
+              ? ["retracted_at IS NULL"]
+              : [
+                  `recorded_at <= ${collector.add(basis.recordedAt)}`,
+                  `(retracted_at IS NULL OR retracted_at > ${collector.add(basis.recordedAt)})`,
+                ];
         if (basis !== undefined) {
           conditions.push(
             `valid_from <= ${collector.add(basis.validAt)}`,
@@ -430,16 +436,13 @@ export const makePostgresqlAdapter = (config: PostgresqlAdapterConfig = {}) =>
           }),
         );
 
-      const queryAsOf: StorageAdapterService["queryAsOf"] = (pattern, asOf) =>
-        query(pattern, { recordedAt: asOf, validAt: asOf });
-
       const history: StorageAdapterService["history"] = (entityId) =>
         provide(
           Effect.gen(function* () {
             const rows = yield* sql<TripleRow>`
               SELECT * FROM triples
               WHERE entity_id = ${entityId}
-              ORDER BY created_at ASC
+              ORDER BY recorded_at ASC
             `.pipe(
               Effect.mapError(
                 (error) =>
@@ -510,7 +513,6 @@ export const makePostgresqlAdapter = (config: PostgresqlAdapterConfig = {}) =>
         getByEntity,
         getByEntities,
         query,
-        queryAsOf,
         history,
         rawQuery,
         initialize,

@@ -15,8 +15,6 @@ export { type PaginationCursor } from "./Pagination.js";
 export * from "./Value.js";
 export * from "./errors/index.js";
 export * from "./types/Pattern.js";
-export * from "./types/Filter.js";
-export { type QueryState, type QueryOperator, Query } from "./types/QueryBuilder.js";
 export {
   type Subscription,
   type AffectedSubscriptions,
@@ -74,7 +72,6 @@ export {
   type TransactionRecord,
   type TransactionPageRequest,
   type TransactionPage,
-  type BulkInsertOptions,
   type QueryOptions,
   type QueryResponse,
   type PagedQueryResponse,

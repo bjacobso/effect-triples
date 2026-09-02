@@ -51,7 +51,7 @@ const resolveTxTime = (
 ): Effect.Effect<number, WriteError> =>
   Effect.gen(function* () {
     if (assertedTriples.length > 0) {
-      return assertedTriples[0]!.createdAt;
+      return assertedTriples[0]!.recordedAt;
     }
 
     const txMetaTriples = yield* store
@@ -156,16 +156,16 @@ export function wrapStoreWithSnapshots(
           writer
             .materialize(
               Option.getOrElse(triple.txId, () => generateTransactionId()),
-              triple.createdAt,
+              triple.recordedAt,
               [triple.entityId],
             )
             .pipe(Effect.mapError(mapMaterializeError)),
         ),
       ),
 
-    assertBatch: (inputs, options) =>
+    assertBatch: (inputs) =>
       pipe(
-        store.assertBatch(inputs, options),
+        store.assertBatch(inputs),
         Effect.tap((triples) => {
           if (triples.length === 0) return Effect.void;
           const entityIds = uniqueEntityIds(triples);
@@ -173,7 +173,7 @@ export function wrapStoreWithSnapshots(
           return writer
             .materialize(
               Option.getOrElse(first.txId, () => generateTransactionId()),
-              first.createdAt,
+              first.recordedAt,
               entityIds,
             )
             .pipe(Effect.mapError(mapMaterializeError));

@@ -155,7 +155,7 @@ describe("Datalog backend differential corpus", () => {
         { entityId: "person:alice", attribute: ":person/parent", value: ref("person:bob") },
         { entityId: "person:bob", attribute: ":person/parent", value: ref("person:charlie") },
       ]);
-      const asOf = initial[0]!.createdAt;
+      const asOf = initial[0]!.recordedAt;
       yield* Effect.sleep("5 millis");
       yield* triples.transact([
         { op: "retract", id: initial[0]!.id },
@@ -200,9 +200,13 @@ describe("Datalog backend differential corpus", () => {
         ],
       };
 
-      const historicalJoin = yield* triples.query(joined, { asOf });
+      const historicalJoin = yield* triples.query(joined, {
+        basis: { recordedAt: asOf, validAt: asOf },
+      });
       const currentJoin = yield* triples.query(joined);
-      const historicalAncestors = yield* triples.query(ancestors, { asOf });
+      const historicalAncestors = yield* triples.query(ancestors, {
+        basis: { recordedAt: asOf, validAt: asOf },
+      });
       const currentAncestors = yield* triples.query(ancestors);
       return {
         historicalJoin: normalizeRows(historicalJoin.results),

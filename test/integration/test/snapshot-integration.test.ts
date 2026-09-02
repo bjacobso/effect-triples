@@ -98,7 +98,7 @@ describe("Snapshot Integration (auto-materialization)", () => {
                 value: number(42),
               },
             ],
-            { user: "auditor" },
+            { actor: "auditor" },
           );
 
           const ageTriple = created.triples.find((triple) => triple.attribute === ":person/age");
@@ -113,7 +113,7 @@ describe("Snapshot Integration (auto-materialization)", () => {
           expect(list.totalCount).toBe(2);
           expect(createdSummary).toMatchObject({
             txId: created.txId,
-            user: "auditor",
+            actor: "auditor",
             assertCount: 2,
             retractCount: 0,
             affectedEntities: ["p:audit"],
@@ -177,13 +177,13 @@ describe("Snapshot Integration (auto-materialization)", () => {
                 value: number(36),
               },
             ],
-            { user: "detail-auditor" },
+            { actor: "detail-auditor" },
           );
 
           const detail = yield* snapService.getTransaction(created.txId);
 
           expect(detail.txId).toBe(created.txId);
-          expect(detail.user).toBe("detail-auditor");
+          expect(detail.actor).toBe("detail-auditor");
           expect(detail.assertCount).toBe(2);
           expect(detail.retractCount).toBe(0);
           expect(detail.entities).toHaveLength(1);
@@ -662,7 +662,7 @@ describe("StoreCapability composition", () => {
   describe("composeStore with EntitySnapshotsCapability", () => {
     /**
      * Build a test layer using `composeStore` + `makeEntitySnapshotsCapability`
-     * instead of the legacy `wrapStoreWithSnapshots` function.
+     * alongside the direct `wrapStoreWithSnapshots` composition helper.
      *
      * Uses the same layer construction pattern as `makeIntegrationLayer` above
      * to ensure layer memoization shares the same Triples + StorageAdapter

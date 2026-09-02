@@ -10,12 +10,9 @@ import { Effect, Layer, Option, Stream } from "effect";
 import type { Triple, TripleInput, TripleId, EntityId, TransactOp } from "../../Triple.js";
 import type { TripleValue } from "../../Value.js";
 import type { Pattern } from "../../types/Pattern.js";
-import type { QueryState } from "../../types/QueryBuilder.js";
-import type { Filter } from "../../types/Filter.js";
 import {
   Triples,
   type TriplesService,
-  type BulkInsertOptions,
   type TransactionResult,
   type TransactionMeta,
   type QueryOptions,
@@ -95,14 +92,11 @@ const datomToTriple = (datom: Datom): Triple => ({
   entityId: datom.entity as EntityId,
   attribute: datom.attribute as Triple["attribute"],
   value: datom.value,
-  createdAt: datom.createdAt,
   recordedAt: datom.recordedAt,
   validFrom: datom.validFrom,
   validTo: datom.validTo !== null ? Option.some(datom.validTo) : Option.none(),
   createdBy: datom.createdBy !== null ? Option.some(datom.createdBy) : Option.none(),
   retractedAt: datom.retractedAt !== null ? Option.some(datom.retractedAt) : Option.none(),
-  recordedRetractedAt:
-    datom.recordedRetractedAt !== null ? Option.some(datom.recordedRetractedAt) : Option.none(),
   entityType: datom.entityType !== null ? Option.some(datom.entityType) : Option.none(),
   schemaVersion: Option.none(),
   txId: Option.some(datom.txId),
@@ -113,7 +107,7 @@ const tripleInputToDatom = (
   input: TripleInput,
   tripleId: string,
   txId: string,
-  createdAt: number,
+  recordedAt: number,
   recordedPosition: number,
 ): Datom => ({
   tripleId,
@@ -121,15 +115,13 @@ const tripleInputToDatom = (
   attribute: input.attribute,
   value: input.value,
   txId,
-  createdAt,
-  recordedAt: createdAt,
+  recordedAt,
   recordedPosition,
-  validFrom: input.validFrom ?? createdAt,
+  validFrom: input.validFrom ?? recordedAt,
   validTo: input.validTo ?? null,
   createdBy: input.createdBy ?? null,
   retractedAt: null,
-  recordedRetractedAt: null,
-  recordedRetractedPosition: null,
+  retractedPosition: null,
   retractTxId: null,
   entityType: input.entityType ?? null,
 });
@@ -155,127 +147,6 @@ const patternToScan = (pattern: Pattern): ScanPattern => {
   }
 
   return result;
-};
-
-// ─── Filter evaluation (for the fluent builder) ─────────────────────────────
-
-const tripleValueEquals = (tv: TripleValue, raw: unknown): boolean => {
-  switch (tv.type) {
-    case "string":
-    case "ref":
-    case "blob":
-      return tv.value === raw;
-    case "number":
-    case "datetime":
-      return tv.value === raw;
-    case "boolean":
-      return tv.value === raw;
-    case "json":
-      return JSON.stringify(tv.value) === JSON.stringify(raw);
-  }
-};
-
-const evaluateFilter = (triples: readonly Triple[], filter: Filter): Triple[] => {
-  switch (filter.type) {
-    case "eq":
-      return triples.filter(
-        (t) => t.attribute === filter.attribute && tripleValueEquals(t.value, filter.value),
-      );
-    case "neq":
-      return triples.filter(
-        (t) => t.attribute !== filter.attribute || !tripleValueEquals(t.value, filter.value),
-      );
-    case "gt":
-      return triples.filter(
-        (t) =>
-          t.attribute === filter.attribute &&
-          t.value.type === "number" &&
-          t.value.value > filter.value,
-      );
-    case "gte":
-      return triples.filter(
-        (t) =>
-          t.attribute === filter.attribute &&
-          t.value.type === "number" &&
-          t.value.value >= filter.value,
-      );
-    case "lt":
-      return triples.filter(
-        (t) =>
-          t.attribute === filter.attribute &&
-          t.value.type === "number" &&
-          t.value.value < filter.value,
-      );
-    case "lte":
-      return triples.filter(
-        (t) =>
-          t.attribute === filter.attribute &&
-          t.value.type === "number" &&
-          t.value.value <= filter.value,
-      );
-    case "contains":
-      return triples.filter(
-        (t) =>
-          t.attribute === filter.attribute &&
-          t.value.type === "string" &&
-          t.value.value.includes(filter.value),
-      );
-    case "startsWith":
-      return triples.filter(
-        (t) =>
-          t.attribute === filter.attribute &&
-          t.value.type === "string" &&
-          t.value.value.startsWith(filter.value),
-      );
-    case "exists":
-      return triples.filter((t) => t.attribute === filter.attribute);
-    case "notExists": {
-      const entities = new Set(
-        triples.filter((t) => t.attribute === filter.attribute).map((t) => t.entityId),
-      );
-      return triples.filter((t) => !entities.has(t.entityId));
-    }
-    case "in":
-      return triples.filter(
-        (t) =>
-          t.attribute === filter.attribute &&
-          filter.values.some((v) => tripleValueEquals(t.value, v)),
-      );
-    case "and":
-      return filter.filters.reduce((acc, f) => evaluateFilter(acc, f), [...triples]);
-    case "or": {
-      const sets = filter.filters.map((f) => evaluateFilter(triples, f));
-      const seen = new Set<string>();
-      const result: Triple[] = [];
-      for (const set of sets) {
-        for (const t of set) {
-          if (!seen.has(t.id)) {
-            seen.add(t.id);
-            result.push(t);
-          }
-        }
-      }
-      return result;
-    }
-    case "not":
-      return triples.filter((t) => !evaluateFilter([t], filter.filter).length);
-  }
-};
-
-const extractSortValue = (tv: TripleValue): string | number | boolean | null => {
-  switch (tv.type) {
-    case "string":
-    case "ref":
-    case "blob":
-      return tv.value;
-    case "number":
-    case "datetime":
-      return tv.value;
-    case "boolean":
-      return tv.value;
-    case "json":
-      return JSON.stringify(tv.value);
-  }
 };
 
 // ─── Datalog debug metrics (KV backends generate no SQL) ────────────────────
@@ -410,7 +281,7 @@ const makeKvTriplesService = Effect.gen(function* () {
         ),
       ),
 
-    assertBatch: (inputs: readonly TripleInput[], _options?: BulkInsertOptions) => {
+    assertBatch: (inputs: readonly TripleInput[]) => {
       if (inputs.length === 0) return Effect.succeed([]);
       return transactService(
         inputs.map((input) => ({
@@ -489,7 +360,7 @@ const makeKvTriplesService = Effect.gen(function* () {
             const txId = yield* runtime.nextTxId;
             const now = yield* runtime.now;
             const position = yield* nextKvCommitPosition(tx);
-            const actor = meta?.actor ?? meta?.user;
+            const actor = meta?.actor;
             const preconditionIds = livePreconditionIds(meta);
             const asserted: Triple[] = [];
             const changes: import("../../store/Triples.js").TransactionChange[] = [];
@@ -637,7 +508,7 @@ const makeKvTriplesService = Effect.gen(function* () {
         ),
       ),
 
-    entitiesById: (entityIds, basis) =>
+    entities: (entityIds, basis) =>
       Effect.gen(function* () {
         const resolved = resolveTemporalBasis(basis, yield* runtime.now);
         return yield* Effect.forEach(entityIds, (entityId) =>
@@ -747,15 +618,7 @@ const makeKvTriplesService = Effect.gen(function* () {
 
     query: (q: DatalogQuery, options?: QueryOptions) =>
       Effect.gen(function* () {
-        if (options?.basis !== undefined && options.asOf !== undefined) {
-          return yield* Effect.fail(
-            new ReadError({ message: "Use either basis or asOf, not both" }),
-          );
-        }
-        const basis = resolveTemporalBasis(
-          options?.basis ?? (options?.asOf === undefined ? undefined : basisFromAsOf(options.asOf)),
-          yield* runtime.now,
-        );
+        const basis = resolveTemporalBasis(options?.basis, yield* runtime.now);
         return yield* executeQuery(hexaStore, q, q.rules ?? [], { basis });
       }).pipe(
         Effect.map((result) => {
@@ -784,7 +647,6 @@ const makeKvTriplesService = Effect.gen(function* () {
             preparePagination({
               query: q,
               ...(options?.basis === undefined ? {} : { basis: options.basis }),
-              ...(options?.asOf === undefined ? {} : { asOf: options.asOf }),
               now: currentTime,
               recordedPosition,
               scope: runtime.scope,
@@ -835,95 +697,6 @@ const makeKvTriplesService = Effect.gen(function* () {
           steps: [{ label: "main", query: JSON.stringify(q, null, 2) }],
         },
       }),
-
-    // === Fluent-builder execution =========================================
-
-    entities: (state: QueryState) =>
-      Effect.gen(function* () {
-        const typeScanPat: ScanPattern = {
-          attribute: ":entity/type",
-          value: { type: "string", value: state.entityType },
-        };
-        const syncTypeDatoms = hexaStore.scanCollect(typeScanPat);
-        const entityIds: string[] = [];
-        if (syncTypeDatoms !== null) {
-          for (let i = 0; i < syncTypeDatoms.length; i++) {
-            entityIds.push(syncTypeDatoms[i]!.entity);
-          }
-        } else {
-          const typeDatoms = yield* hexaStore.scanCollectAsync(typeScanPat);
-          for (const datom of typeDatoms) {
-            entityIds.push(datom.entity);
-          }
-        }
-
-        let allTriples: Triple[] = [];
-        for (const eid of entityIds) {
-          const syncEntityDatoms = hexaStore.scanCollect({ entity: eid });
-          if (syncEntityDatoms !== null) {
-            for (let i = 0; i < syncEntityDatoms.length; i++) {
-              allTriples.push(datomToTriple(syncEntityDatoms[i]!));
-            }
-          } else {
-            const entityDatoms = yield* hexaStore.scanCollectAsync({ entity: eid });
-            allTriples.push(...entityDatoms.map(datomToTriple));
-          }
-        }
-
-        for (const filter of state.filters) {
-          const matching = evaluateFilter(allTriples, filter);
-          const matchingEntities = new Set(matching.map((t) => t.entityId));
-          allTriples = allTriples.filter((t) => matchingEntities.has(t.entityId));
-        }
-
-        if (state.sorts.length > 0) {
-          const byEntity = new Map<string, Triple[]>();
-          for (const t of allTriples) {
-            const group = byEntity.get(t.entityId) ?? [];
-            group.push(t);
-            byEntity.set(t.entityId, group);
-          }
-
-          const entityOrder = [...byEntity.keys()].sort((a, b) => {
-            for (const sort of state.sorts) {
-              const aTriple = byEntity.get(a)?.find((t) => t.attribute === sort.attribute);
-              const bTriple = byEntity.get(b)?.find((t) => t.attribute === sort.attribute);
-              const aVal = aTriple ? extractSortValue(aTriple.value) : null;
-              const bVal = bTriple ? extractSortValue(bTriple.value) : null;
-
-              if (aVal === bVal) continue;
-              if (aVal === null) return sort.nulls === "first" ? -1 : 1;
-              if (bVal === null) return sort.nulls === "first" ? 1 : -1;
-
-              let cmp = 0;
-              if (typeof aVal === "number" && typeof bVal === "number") {
-                cmp = aVal - bVal;
-              } else {
-                cmp = String(aVal) < String(bVal) ? -1 : 1;
-              }
-              if (sort.direction === "desc") cmp = -cmp;
-              if (cmp !== 0) return cmp;
-            }
-            return 0;
-          });
-
-          allTriples = entityOrder.flatMap((eid) => byEntity.get(eid) ?? []);
-        }
-
-        if (state.offset !== undefined || state.limit !== undefined) {
-          const uniqueEntities = [...new Set(allTriples.map((t) => t.entityId))];
-          const start = state.offset ?? 0;
-          const end = state.limit !== undefined ? start + state.limit : undefined;
-          const pageEntities = new Set(uniqueEntities.slice(start, end));
-          allTriples = allTriples.filter((t) => pageEntities.has(t.entityId));
-        }
-
-        return allTriples;
-      }).pipe(
-        Effect.catch((e) =>
-          Effect.fail(new ReadError({ message: `Entities query failed: ${String(e)}`, cause: e })),
-        ),
-      ),
   };
 
   return service;

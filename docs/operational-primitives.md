@@ -37,7 +37,7 @@ Every successful `transact` persists an `_Transaction` entity with:
 
 - `:_tx/position`;
 - `:_tx/instant`;
-- `:_tx/actor` (`:_tx/user` remains readable during the pre-1.0 transition);
+- `:_tx/actor`;
 - `:_tx/command-id`;
 - `:_tx/correlation-id`;
 - `:_tx/causation-id`;

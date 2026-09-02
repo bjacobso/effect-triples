@@ -47,15 +47,13 @@ export interface Datom {
   readonly attribute: string;
   readonly value: TripleValue;
   readonly txId: string;
-  readonly createdAt: number;
   readonly recordedAt: number;
   readonly recordedPosition: number;
   readonly validFrom: number;
   readonly validTo: number | null;
   readonly createdBy: string | null;
   readonly retractedAt: number | null;
-  readonly recordedRetractedAt: number | null;
-  readonly recordedRetractedPosition: number | null;
+  readonly retractedPosition: number | null;
   readonly retractTxId: string | null;
   readonly entityType: string | null;
 }
@@ -87,27 +85,25 @@ const asciiToBytes = (s: string): Uint8Array => {
 // Eliminates 2 allocations per triple (JSON string + textEncoder.encode).
 //
 // Layout (all multi-byte integers are big-endian):
-//   [1 byte]  format version (0x04)
+//   [1 byte]  format version (0x01)
 //   [4 bytes] tripleId length, then [N bytes] tripleId (UTF-8)
 //   [4 bytes] entity length, then [N bytes] entity
 //   [4 bytes] attribute length, then [N bytes] attribute
 //   [1 byte]  value type tag (0=string, 1=number, 2=boolean, 3=datetime, 4=ref, 5=json, 6=blob)
 //   [varies]  value payload (see below)
 //   [4 bytes] txId length, then [N bytes] txId
-//   [8 bytes] createdAt (float64 big-endian)
+//   [8 bytes] recordedAt (float64 big-endian)
 //   [1 byte]  flags: bit0 = hasCreatedBy, bit1 = hasRetractedAt, bit2 = hasRetractTxId, bit3 = hasEntityType
 //   [conditional] createdBy: [4 bytes] length + [N bytes] string
 //   [conditional] retractedAt: [8 bytes] float64
 //   [conditional] retractTxId: [4 bytes] length + [N bytes] string
 //   [conditional] entityType: [4 bytes] length + [N bytes] string
-//   [8 bytes] recordedAt (float64)
 //   [8 bytes] validFrom (float64)
-//   [1 byte] temporal flags: bit0 = hasValidTo, bit1 = hasRecordedRetractedAt
+//   [1 byte] temporal flags: bit0 = hasValidTo
 //   [conditional] validTo: [8 bytes]
-//   [conditional] recordedRetractedAt: [8 bytes]
 //   [8 bytes] recordedPosition (float64)
-//   [1 byte] hasRecordedRetractedPosition
-//   [conditional: 8 bytes recordedRetractedPosition]
+//   [1 byte] hasRetractedPosition
+//   [conditional: 8 bytes retractedPosition]
 //
 // Value payloads:
 //   string/ref/blob: [4 bytes] length + [N bytes] UTF-8
@@ -117,10 +113,7 @@ const asciiToBytes = (s: string): Uint8Array => {
 //   blob: [4 bytes] value length + [N bytes] value + [4 bytes] mimeType length + [N bytes] mimeType
 //         + [8 bytes] size (float64) + [1 byte] hasFilename + [conditional: 4 bytes len + N bytes]
 
-const LEGACY_BINARY_FORMAT_VERSION = 0x01;
-const FORMAT_VERSION = 0x04;
-const PRE_POSITION_FORMAT_VERSION = 0x03;
-const PRE_BITEMPORAL_FORMAT_VERSION = 0x02;
+const FORMAT_VERSION = 0x01;
 
 // Value type tags for binary format
 const VT_STRING = 0;
@@ -258,9 +251,9 @@ const serializeDatom = (datom: Datom): Uint8Array => {
   // txId
   offset = writeStr(datom.txId, offset);
 
-  // createdAt
+  // recordedAt
   ensureCapacity(8, offset);
-  _writeDV.setFloat64(offset, datom.createdAt, false);
+  _writeDV.setFloat64(offset, datom.recordedAt, false);
   offset += 8;
 
   // Flags
@@ -282,36 +275,25 @@ const serializeDatom = (datom: Datom): Uint8Array => {
   offset = writeNullableStr(datom.retractTxId, offset);
   offset = writeNullableStr(datom.entityType, offset);
 
-  // Explicit bitemporal fields (v3+). The legacy created/retracted fields are
-  // retained in the prefix so existing index data can be decoded safely.
-  ensureCapacity(18, offset);
-  _writeDV.setFloat64(offset, datom.recordedAt, false);
-  offset += 8;
+  // Business-time interval.
+  ensureCapacity(9, offset);
   _writeDV.setFloat64(offset, datom.validFrom, false);
   offset += 8;
-  let temporalFlags = 0;
-  if (datom.validTo !== null) temporalFlags |= 0x01;
-  if (datom.recordedRetractedAt !== null) temporalFlags |= 0x02;
+  const temporalFlags = datom.validTo !== null ? 0x01 : 0;
   _writeBuf[offset++] = temporalFlags;
   if (datom.validTo !== null) {
     ensureCapacity(8, offset);
     _writeDV.setFloat64(offset, datom.validTo, false);
     offset += 8;
   }
-  if (datom.recordedRetractedAt !== null) {
-    ensureCapacity(8, offset);
-    _writeDV.setFloat64(offset, datom.recordedRetractedAt, false);
-    offset += 8;
-  }
-
-  // Exact transaction-position cut for snapshot-stable pagination (v4+).
+  // Exact transaction-position cut for snapshot-stable pagination.
   ensureCapacity(9, offset);
   _writeDV.setFloat64(offset, datom.recordedPosition, false);
   offset += 8;
-  _writeBuf[offset++] = datom.recordedRetractedPosition === null ? 0 : 1;
-  if (datom.recordedRetractedPosition !== null) {
+  _writeBuf[offset++] = datom.retractedPosition === null ? 0 : 1;
+  if (datom.retractedPosition !== null) {
     ensureCapacity(8, offset);
-    _writeDV.setFloat64(offset, datom.recordedRetractedPosition, false);
+    _writeDV.setFloat64(offset, datom.retractedPosition, false);
     offset += 8;
   }
 
@@ -322,15 +304,13 @@ const serializeDatom = (datom: Datom): Uint8Array => {
 };
 
 /** Read a length-prefixed string. Returns [string, newOffset]. */
-const readStr = (buf: Uint8Array, offset: number, lengthBytes: 2 | 4): [string, number] => {
+const readStr = (buf: Uint8Array, offset: number): [string, number] => {
   const len =
-    lengthBytes === 2
-      ? (buf[offset]! << 8) | buf[offset + 1]!
-      : buf[offset]! * 0x1000000 +
-        buf[offset + 1]! * 0x10000 +
-        buf[offset + 2]! * 0x100 +
-        buf[offset + 3]!;
-  offset += lengthBytes;
+    buf[offset]! * 0x1000000 +
+    buf[offset + 1]! * 0x10000 +
+    buf[offset + 2]! * 0x100 +
+    buf[offset + 3]!;
+  offset += 4;
   // Fast path: ASCII
   let isAscii = true;
   for (let i = 0; i < len; i++) {
@@ -349,31 +329,23 @@ const readStr = (buf: Uint8Array, offset: number, lengthBytes: 2 | 4): [string, 
 
 /**
  * Deserialize a Datom from META storage bytes.
- * Supports the current binary format, version 0x01 records, and legacy JSON.
+ * Decode the current Triplex datom format.
  */
 const deserializeDatom = (bytes: Uint8Array): Datom => {
   const version = bytes[0];
-  if (
-    version !== FORMAT_VERSION &&
-    version !== PRE_POSITION_FORMAT_VERSION &&
-    version !== PRE_BITEMPORAL_FORMAT_VERSION &&
-    version !== LEGACY_BINARY_FORMAT_VERSION
-  ) {
-    return JSON.parse(textDecoder.decode(bytes)) as Datom;
-  }
-  const lengthBytes = version === LEGACY_BINARY_FORMAT_VERSION ? 2 : 4;
+  if (version !== FORMAT_VERSION) throw new Error(`Unsupported datom format: ${String(version)}`);
 
   const dv = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
   let offset = 1; // skip version byte
 
   let tripleId: string;
-  [tripleId, offset] = readStr(bytes, offset, lengthBytes);
+  [tripleId, offset] = readStr(bytes, offset);
 
   let entity: string;
-  [entity, offset] = readStr(bytes, offset, lengthBytes);
+  [entity, offset] = readStr(bytes, offset);
 
   let attribute: string;
-  [attribute, offset] = readStr(bytes, offset, lengthBytes);
+  [attribute, offset] = readStr(bytes, offset);
 
   // Value
   const valueTag = bytes[offset++]!;
@@ -381,7 +353,7 @@ const deserializeDatom = (bytes: Uint8Array): Datom => {
   switch (valueTag) {
     case VT_STRING: {
       let sv: string;
-      [sv, offset] = readStr(bytes, offset, lengthBytes);
+      [sv, offset] = readStr(bytes, offset);
       value = { type: "string", value: sv };
       break;
     }
@@ -398,7 +370,7 @@ const deserializeDatom = (bytes: Uint8Array): Datom => {
       break;
     case VT_REF: {
       let rv: string;
-      [rv, offset] = readStr(bytes, offset, lengthBytes);
+      [rv, offset] = readStr(bytes, offset);
       value = { type: "ref", value: rv };
       break;
     }
@@ -412,14 +384,14 @@ const deserializeDatom = (bytes: Uint8Array): Datom => {
     }
     case VT_BLOB: {
       let bv: string, mimeType: string;
-      [bv, offset] = readStr(bytes, offset, lengthBytes);
-      [mimeType, offset] = readStr(bytes, offset, lengthBytes);
+      [bv, offset] = readStr(bytes, offset);
+      [mimeType, offset] = readStr(bytes, offset);
       const size = dv.getFloat64(offset, false);
       offset += 8;
       const hasFilename = bytes[offset++]! !== 0;
       let filename: string | undefined;
       if (hasFilename) {
-        [filename, offset] = readStr(bytes, offset, lengthBytes);
+        [filename, offset] = readStr(bytes, offset);
       }
       value = {
         type: "blob",
@@ -435,9 +407,9 @@ const deserializeDatom = (bytes: Uint8Array): Datom => {
   }
 
   let txId: string;
-  [txId, offset] = readStr(bytes, offset, lengthBytes);
+  [txId, offset] = readStr(bytes, offset);
 
-  const createdAt = dv.getFloat64(offset, false);
+  const recordedAt = dv.getFloat64(offset, false);
   offset += 8;
 
   const flags = bytes[offset++]!;
@@ -448,7 +420,7 @@ const deserializeDatom = (bytes: Uint8Array): Datom => {
 
   let createdBy: string | null = null;
   if (hasCreatedBy) {
-    [createdBy, offset] = readStr(bytes, offset, lengthBytes);
+    [createdBy, offset] = readStr(bytes, offset);
   }
 
   let retractedAt: number | null = null;
@@ -459,42 +431,28 @@ const deserializeDatom = (bytes: Uint8Array): Datom => {
 
   let retractTxId: string | null = null;
   if (hasRetractTxId) {
-    [retractTxId, offset] = readStr(bytes, offset, lengthBytes);
+    [retractTxId, offset] = readStr(bytes, offset);
   }
 
   let entityType: string | null = null;
   if (hasEntityType) {
-    [entityType, offset] = readStr(bytes, offset, lengthBytes);
+    [entityType, offset] = readStr(bytes, offset);
   }
 
-  let recordedAt = createdAt;
-  let validFrom = createdAt;
+  const validFrom = dv.getFloat64(offset, false);
+  offset += 8;
   let validTo: number | null = null;
-  let recordedRetractedAt = retractedAt;
-  if (version === FORMAT_VERSION || version === PRE_POSITION_FORMAT_VERSION) {
-    recordedAt = dv.getFloat64(offset, false);
+  const temporalFlags = bytes[offset++]!;
+  if ((temporalFlags & 0x01) !== 0) {
+    validTo = dv.getFloat64(offset, false);
     offset += 8;
-    validFrom = dv.getFloat64(offset, false);
-    offset += 8;
-    const temporalFlags = bytes[offset++]!;
-    if ((temporalFlags & 0x01) !== 0) {
-      validTo = dv.getFloat64(offset, false);
-      offset += 8;
-    }
-    if ((temporalFlags & 0x02) !== 0) {
-      recordedRetractedAt = dv.getFloat64(offset, false);
-      offset += 8;
-    }
   }
 
-  let recordedPosition = 0;
-  let recordedRetractedPosition: number | null = null;
-  if (version === FORMAT_VERSION) {
-    recordedPosition = dv.getFloat64(offset, false);
-    offset += 8;
-    if (bytes[offset++]! !== 0) {
-      recordedRetractedPosition = dv.getFloat64(offset, false);
-    }
+  const recordedPosition = dv.getFloat64(offset, false);
+  offset += 8;
+  let retractedPosition: number | null = null;
+  if (bytes[offset++]! !== 0) {
+    retractedPosition = dv.getFloat64(offset, false);
   }
 
   return {
@@ -503,15 +461,13 @@ const deserializeDatom = (bytes: Uint8Array): Datom => {
     attribute,
     value,
     txId,
-    createdAt,
     recordedAt,
     recordedPosition,
     validFrom,
     validTo,
     createdBy,
     retractedAt,
-    recordedRetractedAt,
-    recordedRetractedPosition,
+    retractedPosition,
     retractTxId,
     entityType,
   };
@@ -677,8 +633,8 @@ export class KvTripleStore {
   retract(
     tripleId: string,
     retractedAt: number,
-    retractTxId?: string,
-    recordedRetractedPosition?: number,
+    retractTxId: string,
+    retractedPosition: number,
   ): Effect.Effect<boolean> {
     const key = metaKey(tripleId);
     return Effect.gen({ self: this }, function* () {
@@ -694,9 +650,8 @@ export class KvTripleStore {
       const updated: Datom = {
         ...datom,
         retractedAt,
-        recordedRetractedAt: retractedAt,
-        recordedRetractedPosition: recordedRetractedPosition ?? null,
-        retractTxId: retractTxId ?? null,
+        retractedPosition,
+        retractTxId,
       };
 
       yield* this.kv.set(key, serializeDatom(updated));
@@ -1006,14 +961,14 @@ const visibleAt = (datom: Datom, basis: ResolvedTemporalBasis): boolean => {
       ? (datom.recordedPosition === 0
           ? basis.recordedAt === undefined || datom.recordedAt <= basis.recordedAt
           : datom.recordedPosition <= basis.recordedPosition) &&
-        (datom.recordedRetractedAt === null ||
-          (datom.recordedRetractedPosition === null
-            ? basis.recordedAt !== undefined && datom.recordedRetractedAt > basis.recordedAt
-            : datom.recordedRetractedPosition > basis.recordedPosition))
+        (datom.retractedAt === null ||
+          (datom.retractedPosition === null
+            ? basis.recordedAt !== undefined && datom.retractedAt > basis.recordedAt
+            : datom.retractedPosition > basis.recordedPosition))
       : basis.recordedAt === undefined
-        ? datom.recordedRetractedAt === null
+        ? datom.retractedAt === null
         : datom.recordedAt <= basis.recordedAt &&
-          (datom.recordedRetractedAt === null || datom.recordedRetractedAt > basis.recordedAt);
+          (datom.retractedAt === null || datom.retractedAt > basis.recordedAt);
   return (
     recordedVisible &&
     datom.validFrom <= basis.validAt &&

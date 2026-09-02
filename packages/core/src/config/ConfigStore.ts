@@ -146,7 +146,7 @@ const groupByEntity = (
 const latest = (triples: ReadonlyArray<Triple>, attribute: string): Triple | undefined =>
   triples
     .filter((triple) => triple.attribute === attribute)
-    .sort((a, b) => b.createdAt - a.createdAt || b.id.localeCompare(a.id))[0];
+    .sort((a, b) => b.recordedAt - a.recordedAt || b.id.localeCompare(a.id))[0];
 
 const stringValue = (triple: Triple | undefined): string | undefined => {
   if (!triple) return undefined;

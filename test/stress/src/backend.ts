@@ -563,10 +563,3 @@ export function describeBackend(backend: BackendName): string {
       return `FoundationDB KV (${process.env["FDB_CLUSTER_FILE"] ?? "default cluster file"})`;
   }
 }
-
-/**
- * Whether BulkInsertOptions are applicable (only for SQLite).
- */
-export function supportsBulkOptions(backend: BackendName): boolean {
-  return backend === "sqlite";
-}

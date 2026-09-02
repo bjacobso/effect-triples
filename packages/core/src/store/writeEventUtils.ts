@@ -47,7 +47,7 @@ export const makeWriteInterceptors = (
       Effect.tap((triple) =>
         onEvent({
           txId: Option.getOrElse(triple.txId, () => ""),
-          timestamp: triple.createdAt,
+          timestamp: triple.recordedAt,
           changes: [
             { operation: "assert" as const, entityId: input.entityId, attribute: input.attribute },
           ],
@@ -55,9 +55,9 @@ export const makeWriteInterceptors = (
       ),
     ),
 
-  assertBatch: (inputs, options) =>
+  assertBatch: (inputs) =>
     pipe(
-      inner.assertBatch(inputs, options),
+      inner.assertBatch(inputs),
       Effect.tap((triples) => {
         return Effect.gen(function* () {
           const changes: TripleChange[] = inputs.map((input) => ({
@@ -68,7 +68,7 @@ export const makeWriteInterceptors = (
           const first = triples[0];
           return yield* onEvent({
             txId: first ? Option.getOrElse(first.txId, () => "") : "",
-            timestamp: first?.createdAt ?? (yield* now),
+            timestamp: first?.recordedAt ?? (yield* now),
             changes,
           });
         });

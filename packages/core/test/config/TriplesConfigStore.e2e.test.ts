@@ -145,7 +145,7 @@ describe("Triples-backed typed configuration", () => {
             value: string("denied"),
           },
         ],
-        { user: "security-sync" },
+        { actor: "security-sync" },
       );
 
       const afterFactChange = yield* ConfigRuntime.evaluate({

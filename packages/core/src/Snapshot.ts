@@ -20,8 +20,8 @@ export const TransactionSummary = Schema.Struct({
   txId: Schema.String,
   /** When the transaction occurred (epoch millis) */
   timestamp: Schema.Number,
-  /** Who performed the transaction (if recorded) */
-  user: Schema.NullOr(Schema.String),
+  /** Actor that performed the transaction (if recorded) */
+  actor: Schema.NullOr(Schema.String),
   /** Number of triples asserted in this transaction */
   assertCount: Schema.Number,
   /** Number of triples retracted in this transaction */
@@ -134,7 +134,7 @@ export type TransactionEntitySnapshot = typeof TransactionEntitySnapshot.Type;
 export const TransactionDetailResponse = Schema.Struct({
   txId: Schema.String,
   timestamp: Schema.Number,
-  user: Schema.NullOr(Schema.String),
+  actor: Schema.NullOr(Schema.String),
   assertCount: Schema.Number,
   retractCount: Schema.Number,
   /** Snapshots for all entities affected by this transaction */

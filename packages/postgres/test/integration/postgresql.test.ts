@@ -17,6 +17,7 @@ import { DatabaseManager, Triples, unsafe, string, number, ref } from "@bjacobso
 import { compile } from "@bjacobso/triplex/datalog";
 import { ConfigNode, ConfigStore } from "@bjacobso/triplex/config";
 import {
+  DatabaseRegistry,
   IdGeneratorLive,
   RuntimeClockLive,
   TripleStoreRuntimeLayer,
@@ -73,12 +74,19 @@ describe("PostgreSQL Integration", () => {
             Layer.provide(TripleStoreRuntimeLayer),
             Layer.provide(IdGeneratorLive),
           );
+          const applicationLayer = Layer.merge(managerLayer, registry);
 
           yield* Effect.gen(function* () {
             const manager = yield* DatabaseManager;
+            const access = yield* DatabaseRegistry;
             yield* Effect.all([manager.create("org-acme"), manager.create("org-globex")], {
               concurrency: "unbounded",
             });
+
+            expect(yield* access.hasAccess("stranger", "org-acme")).toBe(false);
+            yield* access.grantAccess("acme-operator", "org-acme", "member");
+            expect(yield* access.hasAccess("acme-operator", "org-acme")).toBe(true);
+            expect(yield* access.hasAccess("acme-operator", "org-globex")).toBe(false);
 
             const [acme, globex] = yield* Effect.all([
               manager.getTriples("org-acme"),
@@ -210,7 +218,7 @@ describe("PostgreSQL Integration", () => {
             });
 
             yield* Effect.all([manager.delete("org-acme"), manager.delete("org-globex")]);
-          }).pipe(Effect.provide(managerLayer));
+          }).pipe(Effect.provide(applicationLayer));
         }).pipe(Effect.provide(PgContainerLayer)),
       );
     },

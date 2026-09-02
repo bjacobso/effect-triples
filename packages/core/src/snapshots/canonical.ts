@@ -62,13 +62,8 @@ export interface EntityDiff {
 /** Current canonical format version. Prefixed to hash input for future-proofing. */
 export const CANONICAL_VERSION = "v1";
 
-/**
- * Format version number for the entity_blobs table.
- *
- * Version 2 replaces the legacy `fnv1a:<8 hex>` key with the shared,
- * domain-separated `sha256-<64 hex>` ContentId format.
- */
-export const FORMAT_VERSION = 2;
+/** Format version number for the greenfield entity_blobs representation. */
+export const FORMAT_VERSION = 1;
 
 // ---------------------------------------------------------------------------
 // Triple → SnapshotValue conversion

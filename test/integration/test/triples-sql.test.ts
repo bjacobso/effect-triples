@@ -252,8 +252,8 @@ describe("Triples", () => {
           ]);
 
           expect(batch).toHaveLength(2);
-          expect(batch[0]!.createdAt).toBe(1010);
-          expect(batch[1]!.createdAt).toBe(1010);
+          expect(batch[0]!.recordedAt).toBe(1010);
+          expect(batch[1]!.recordedAt).toBe(1010);
           expect(batch[0]!.id).toBe("triple:det-1");
           expect(batch[1]!.id).toBe("triple:det-2");
           expect(Option.getOrNull(batch[0]!.txId)).toBe("tx:det-1");
@@ -314,7 +314,7 @@ describe("Triples", () => {
           });
 
           expect(triple.id).toBe("_triple/unit-000001");
-          expect(triple.createdAt).toBe(123_456);
+          expect(triple.recordedAt).toBe(123_456);
           expect(Option.getOrNull(triple.txId)).toBe("_tx/unit-000001");
 
           const tx = yield* store.transact([

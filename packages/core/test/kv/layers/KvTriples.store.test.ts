@@ -308,9 +308,9 @@ describe("KvTriplesLive - transact", () => {
   });
 });
 
-// ─── QueryAsOf (time travel) ───────────────────────────────────────────────
+// ─── MatchAsOf (time travel) ───────────────────────────────────────────────
 
-describe("KvTriplesLive - queryAsOf", () => {
+describe("KvTriplesLive - matchAsOf", () => {
   it("returns triples active at a point in time", async () => {
     await runTest(
       Effect.gen(function* () {

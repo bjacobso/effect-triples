@@ -158,8 +158,6 @@ export interface CompiledValueColumns {
 }
 
 export interface CompileOptions {
-  /** @deprecated Use `basis`. */
-  readonly asOf?: number;
   /** Evaluate every triple alias against this bitemporal basis. */
   readonly basis?: {
     readonly recordedAt?: number;
@@ -168,23 +166,18 @@ export interface CompileOptions {
   };
 }
 
-const applyTemporalBasis = (
-  sql: string,
-  basis: CompileOptions["basis"],
-  asOf: number | undefined,
-): string => {
-  const resolved = basis ?? (asOf === undefined ? undefined : { recordedAt: asOf, validAt: asOf });
-  if (resolved === undefined) return sql;
-  const validAt = String(resolved.validAt);
+const applyTemporalBasis = (sql: string, basis: CompileOptions["basis"]): string => {
+  if (basis === undefined) return sql;
+  const validAt = String(basis.validAt);
   return sql.replace(
     /\b([A-Za-z_][A-Za-z0-9_]*)\.retracted_at IS NULL/g,
     (_condition, alias: string) => {
       const recorded =
-        resolved.recordedPosition !== undefined
-          ? `((${alias}.recorded_position IS NOT NULL AND ${alias}.recorded_position <= ${resolved.recordedPosition}) OR (${alias}.recorded_position IS NULL AND ${alias}.recorded_at <= ${resolved.recordedAt})) AND (${alias}.recorded_retracted_at IS NULL OR (${alias}.recorded_retracted_position IS NOT NULL AND ${alias}.recorded_retracted_position > ${resolved.recordedPosition}) OR (${alias}.recorded_retracted_position IS NULL AND ${alias}.recorded_retracted_at > ${resolved.recordedAt}))`
-          : resolved.recordedAt === undefined
-            ? `${alias}.recorded_retracted_at IS NULL`
-            : `${alias}.recorded_at <= ${resolved.recordedAt} AND (${alias}.recorded_retracted_at IS NULL OR ${alias}.recorded_retracted_at > ${resolved.recordedAt})`;
+        basis.recordedPosition !== undefined
+          ? `${alias}.recorded_position <= ${basis.recordedPosition} AND (${alias}.retracted_position IS NULL OR ${alias}.retracted_position > ${basis.recordedPosition})`
+          : basis.recordedAt === undefined
+            ? `${alias}.retracted_at IS NULL`
+            : `${alias}.recorded_at <= ${basis.recordedAt} AND (${alias}.retracted_at IS NULL OR ${alias}.retracted_at > ${basis.recordedAt})`;
       return `${recorded} AND ${alias}.valid_from <= ${validAt} AND (${alias}.valid_to IS NULL OR ${alias}.valid_to > ${validAt})`;
     },
   );
@@ -1232,7 +1225,7 @@ export const compile = (
   ]
     .filter(Boolean)
     .join("\n");
-  const sql = applyTemporalBasis(currentSql, options.basis, options.asOf);
+  const sql = applyTemporalBasis(currentSql, options.basis);
 
   const result: CompiledQuery = {
     sql,
@@ -1768,7 +1761,7 @@ export const compileWithRules = (
   ]
     .filter(Boolean)
     .join("\n");
-  const sql = applyTemporalBasis(currentSql, options.basis, options.asOf);
+  const sql = applyTemporalBasis(currentSql, options.basis);
 
   const result: CompiledQuery = {
     sql,

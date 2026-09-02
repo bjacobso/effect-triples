@@ -51,7 +51,7 @@ interface EntitySnapshotRow {
 interface TransactionRow {
   tx_id: string;
   timestamp: number | null;
-  user: string | null;
+  actor: string | null;
 }
 
 interface CountRow {
@@ -204,8 +204,8 @@ const makeSnapshotWriter = Effect.gen(function* () {
                   const createdByBasis =
                     createdPosition !== null
                       ? createdPosition <= basis.position
-                      : triple.createdAt < basis.instant ||
-                        (triple.createdAt === basis.instant &&
+                      : triple.recordedAt < basis.instant ||
+                        (triple.recordedAt === basis.instant &&
                           (createdTxId === undefined || createdTxId <= basis.txId));
                   if (!createdByBasis) continue;
 
@@ -841,7 +841,7 @@ const makeSnapshotService = Effect.gen(function* () {
       const limit = clampTransactionLimit(request.limit);
       const cursor = decodeTransactionCursor(request.cursor);
       const whereConditions = ["instant.attribute = ?", "instant.retracted_at IS NULL"];
-      const params: unknown[] = [TxAttributes.USER, TxAttributes.INSTANT];
+      const params: unknown[] = [TxAttributes.ACTOR, TxAttributes.INSTANT];
 
       if (cursor) {
         whereConditions.push(
@@ -857,12 +857,12 @@ const makeSnapshotService = Effect.gen(function* () {
           `SELECT
              instant.entity_id AS tx_id,
              instant.value_datetime AS timestamp,
-             tx_user.value_string AS user
+             tx_actor.value_string AS actor
            FROM triples instant
-           LEFT JOIN triples tx_user
-             ON tx_user.entity_id = instant.entity_id
-            AND tx_user.attribute = ?
-            AND tx_user.retracted_at IS NULL
+           LEFT JOIN triples tx_actor
+             ON tx_actor.entity_id = instant.entity_id
+            AND tx_actor.attribute = ?
+            AND tx_actor.retracted_at IS NULL
            WHERE ${whereConditions.join(" AND ")}
            ORDER BY instant.value_datetime DESC, instant.entity_id DESC
            LIMIT ?`,
@@ -906,7 +906,7 @@ const makeSnapshotService = Effect.gen(function* () {
         return {
           txId: row.tx_id,
           timestamp: Number(row.timestamp ?? 0),
-          user: row.user,
+          actor: row.actor,
           assertCount: aggregate?.assertCount ?? 0,
           retractCount: aggregate?.retractCount ?? 0,
           affectedEntities: [...(aggregate?.affectedEntities ?? [])],
@@ -929,17 +929,17 @@ const makeSnapshotService = Effect.gen(function* () {
           `SELECT
              instant.entity_id AS tx_id,
              instant.value_datetime AS timestamp,
-             tx_user.value_string AS user
+             tx_actor.value_string AS actor
            FROM triples instant
-           LEFT JOIN triples tx_user
-             ON tx_user.entity_id = instant.entity_id
-            AND tx_user.attribute = ?
-            AND tx_user.retracted_at IS NULL
+           LEFT JOIN triples tx_actor
+             ON tx_actor.entity_id = instant.entity_id
+            AND tx_actor.attribute = ?
+            AND tx_actor.retracted_at IS NULL
            WHERE instant.entity_id = ?
              AND instant.attribute = ?
              AND instant.retracted_at IS NULL
            LIMIT 1`,
-          [TxAttributes.USER, txId, TxAttributes.INSTANT],
+          [TxAttributes.ACTOR, txId, TxAttributes.INSTANT],
         )
         .pipe(
           Effect.mapError(
@@ -1057,7 +1057,7 @@ const makeSnapshotService = Effect.gen(function* () {
       return {
         txId,
         timestamp: Number(row?.timestamp ?? 0),
-        user: row?.user ?? null,
+        actor: row?.actor ?? null,
         assertCount: assertedRows.length,
         retractCount: retractedRows.length,
         entities,

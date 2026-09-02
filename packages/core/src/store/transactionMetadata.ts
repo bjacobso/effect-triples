@@ -20,7 +20,7 @@ export const transactionChangeFromTriple = (
   validFrom: triple.validFrom,
   ...(Option.isSome(triple.validTo) ? { validTo: triple.validTo.value } : {}),
   recordedAt: triple.recordedAt,
-  ...(op === "retract" ? { recordedRetractedAt: transactionInstant } : {}),
+  ...(op === "retract" ? { retractedAt: transactionInstant } : {}),
   ...(Option.isSome(triple.txId) ? { assertionTxId: triple.txId.value } : {}),
   ...(op === "retract" ? { retractionTxId: transactionId } : {}),
 });
@@ -38,12 +38,10 @@ export const metadataInputs = (
     value,
     entityType: "_Transaction",
   });
-  const actor = meta?.actor ?? meta?.user;
   return [
     input(TxAttributes.POSITION, { type: "number", value: position }),
     input(TxAttributes.INSTANT, { type: "datetime", value: instant }),
-    ...(meta?.user ? [input(TxAttributes.USER, text(meta.user))] : []),
-    ...(actor ? [input(TxAttributes.ACTOR, text(actor))] : []),
+    ...(meta?.actor ? [input(TxAttributes.ACTOR, text(meta.actor))] : []),
     ...(meta?.commandId ? [input(TxAttributes.COMMAND_ID, text(meta.commandId))] : []),
     ...(meta?.correlationId ? [input(TxAttributes.CORRELATION_ID, text(meta.correlationId))] : []),
     ...(meta?.causationId ? [input(TxAttributes.CAUSATION_ID, text(meta.causationId))] : []),

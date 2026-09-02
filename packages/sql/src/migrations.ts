@@ -17,10 +17,10 @@ export interface Migration {
 }
 
 /**
- * Versioned migrations for the database schema.
+ * The complete greenfield Triplex schema.
  *
- * DDL is imported from schema.ts (single source of truth).
- * This migration system tracks which migrations have been applied.
+ * DDL is imported from schema.ts so explicit host-owned migration execution and
+ * convenience auto-migration use the same single v1 definition.
  */
 export const migrations: readonly Migration[] = [
   {
@@ -33,68 +33,6 @@ export const migrations: readonly Migration[] = [
       ENTITY_SNAPSHOTS_TABLE_DDL,
       ...SNAPSHOT_INDEX_DDLS,
       COMMIT_POSITION_TABLE_DDL,
-    ],
-  },
-  {
-    version: 2,
-    name: "bitemporal_facts",
-    up: [
-      "ALTER TABLE triples ADD COLUMN recorded_at BIGINT",
-      "ALTER TABLE triples ADD COLUMN recorded_retracted_at BIGINT",
-      "ALTER TABLE triples ADD COLUMN valid_from BIGINT",
-      "ALTER TABLE triples ADD COLUMN valid_to BIGINT",
-      "UPDATE triples SET recorded_at = created_at WHERE recorded_at IS NULL",
-      "UPDATE triples SET recorded_retracted_at = retracted_at WHERE recorded_retracted_at IS NULL AND retracted_at IS NOT NULL",
-      "UPDATE triples SET valid_from = created_at WHERE valid_from IS NULL",
-      "CREATE INDEX IF NOT EXISTS idx_bitemporal ON triples(recorded_at, recorded_retracted_at, valid_from, valid_to)",
-    ],
-  },
-  {
-    version: 3,
-    name: "snapshot_source_position",
-    up: [
-      "ALTER TABLE entity_snapshots ADD COLUMN tx_position BIGINT",
-      `UPDATE entity_snapshots
-       SET tx_position = (
-         SELECT value_number
-         FROM triples
-         WHERE triples.entity_id = entity_snapshots.tx_id
-           AND triples.attribute = ':_tx/position'
-         ORDER BY triples.recorded_at DESC
-         LIMIT 1
-       )
-       WHERE tx_position IS NULL`,
-      "CREATE INDEX IF NOT EXISTS idx_snapshot_position ON entity_snapshots(entity_id, tx_position DESC, tx_time DESC)",
-    ],
-  },
-  {
-    version: 4,
-    name: "fact_commit_positions",
-    up: [
-      "ALTER TABLE triples ADD COLUMN recorded_position BIGINT",
-      "ALTER TABLE triples ADD COLUMN recorded_retracted_position BIGINT",
-      `UPDATE triples
-       SET recorded_position = (
-         SELECT value_number
-         FROM triples AS transaction_position
-         WHERE transaction_position.entity_id = triples.tx_id
-           AND transaction_position.attribute = ':_tx/position'
-         ORDER BY transaction_position.recorded_at DESC
-         LIMIT 1
-       )
-       WHERE recorded_position IS NULL`,
-      `UPDATE triples
-       SET recorded_retracted_position = (
-         SELECT value_number
-         FROM triples AS transaction_position
-         WHERE transaction_position.entity_id = triples.retract_tx_id
-           AND transaction_position.attribute = ':_tx/position'
-         ORDER BY transaction_position.recorded_at DESC
-         LIMIT 1
-       )
-       WHERE recorded_retracted_position IS NULL
-         AND retract_tx_id IS NOT NULL`,
-      "CREATE INDEX IF NOT EXISTS idx_recorded_position ON triples(recorded_position, recorded_retracted_position)",
     ],
   },
 ];

@@ -1008,7 +1008,7 @@ describe("Recursive Datalog Queries", () => {
               { op: "assert", entityId: "t1", attribute: ":name", value: string("Test User") },
               { op: "assert", entityId: "t1", attribute: ":age", value: number(25) },
             ],
-            { user: "admin" },
+            { actor: "admin" },
           );
 
           // All triples should have the same tx_id
@@ -1037,32 +1037,32 @@ describe("Recursive Datalog Queries", () => {
           // Use transact to create triples with metadata
           const { txId } = yield* store.transact(
             [{ op: "assert", entityId: "t2", attribute: ":name", value: string("Another User") }],
-            { user: "testuser" },
+            { actor: "testuser" },
           );
 
           // Query the transaction metadata
           const txTriples = yield* store.entity(txId as any);
 
-          // Should have :_tx/instant and :_tx/user triples
+          // Should have :_tx/instant and :_tx/actor triples
           const instantTriple = txTriples.find((t) => t.attribute === ":_tx/instant");
-          const userTriple = txTriples.find((t) => t.attribute === ":_tx/user");
+          const actorTriple = txTriples.find((t) => t.attribute === ":_tx/actor");
 
           expect(instantTriple).toBeDefined();
           expect(instantTriple?.value.type).toBe("datetime");
 
-          expect(userTriple).toBeDefined();
-          expect(userTriple?.value.type).toBe("string");
-          if (userTriple?.value.type === "string") {
-            expect(userTriple.value.value).toBe("testuser");
+          expect(actorTriple).toBeDefined();
+          expect(actorTriple?.value.type).toBe("string");
+          if (actorTriple?.value.type === "string") {
+            expect(actorTriple.value.value).toBe("testuser");
           }
 
-          return { txId, instantTriple, userTriple };
+          return { txId, instantTriple, actorTriple };
         }).pipe(Effect.provide(TestLayer)),
       );
 
       expect(result.txId).toBeDefined();
       expect(result.instantTriple).toBeDefined();
-      expect(result.userTriple).toBeDefined();
+      expect(result.actorTriple).toBeDefined();
     });
 
     it("should bind transaction in 4-tuple patterns", async () => {
@@ -1074,12 +1074,12 @@ describe("Recursive Datalog Queries", () => {
           // Create some data with transactions
           yield* store.transact(
             [{ op: "assert", entityId: "tx-test-1", attribute: ":name", value: string("First") }],
-            { user: "user1" },
+            { actor: "user1" },
           );
 
           yield* store.transact(
             [{ op: "assert", entityId: "tx-test-2", attribute: ":name", value: string("Second") }],
-            { user: "user2" },
+            { actor: "user2" },
           );
 
           // Query with 4-tuple pattern to bind tx
@@ -1112,7 +1112,7 @@ describe("Recursive Datalog Queries", () => {
           const store = yield* Triples;
           const datalog = yield* Triples;
 
-          // Create data with transaction and user
+          // Create data with a transaction actor
           yield* store.transact(
             [
               {
@@ -1122,15 +1122,15 @@ describe("Recursive Datalog Queries", () => {
                 value: string("MetaTest"),
               },
             ],
-            { user: "queryuser" },
+            { actor: "queryuser" },
           );
 
-          // Query to get name with transaction user
+          // Query to get name with transaction actor
           const results = yield* datalog.query({
-            find: ["?name", "?user"],
+            find: ["?name", "?actor"],
             where: [
               ["?e", ":name", "?name", "?tx"],
-              ["?tx", ":_tx/user", "?user"],
+              ["?tx", ":_tx/actor", "?actor"],
             ],
           });
 
@@ -1138,14 +1138,14 @@ describe("Recursive Datalog Queries", () => {
           const metaResult = results.results.find((r) => r["?name"] === "MetaTest");
 
           expect(metaResult).toBeDefined();
-          expect(metaResult?.["?user"]).toBe("queryuser");
+          expect(metaResult?.["?actor"]).toBe("queryuser");
 
           return metaResult;
         }).pipe(Effect.provide(TestLayer)),
       );
 
       expect(result).toBeDefined();
-      expect(result?.["?user"]).toBe("queryuser");
+      expect(result?.["?actor"]).toBe("queryuser");
     });
 
     it("should filter by specific transaction id", async () => {

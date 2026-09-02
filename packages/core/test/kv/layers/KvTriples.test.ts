@@ -56,7 +56,7 @@ describe("KvTriples (merged service)", () => {
               entityType: "Person",
             },
           ],
-          { user: "alice" },
+          { actor: "alice" },
         );
         const txTriples = yield* t.match({ entityId: tx.txId });
         return txTriples.map((tr) => tr.attribute as string);
@@ -65,7 +65,7 @@ describe("KvTriples (merged service)", () => {
 
     expect(attrs).toContain(":_tx/instant");
     expect(attrs).toContain(":_tx/position");
-    expect(attrs).toContain(":_tx/user");
+    expect(attrs).toContain(":_tx/actor");
   });
 
   it("pages transaction journals from a durable commit position", async () => {

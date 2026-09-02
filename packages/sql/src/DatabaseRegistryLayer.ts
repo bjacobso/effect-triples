@@ -318,21 +318,6 @@ export const DatabaseRegistryLive = Layer.effect(
       databaseName: string,
     ): Effect.Effect<boolean, InternalError> =>
       Effect.gen(function* () {
-        // Check if the database has ANY access entries
-        const totalRows = yield* pipe(
-          registrySql<{ cnt: number }>`
-            SELECT COUNT(*) as cnt FROM database_access WHERE database_name = ${databaseName}
-          `,
-          mapToInternalError,
-        );
-        const totalCount = totalRows[0]?.cnt ?? 0;
-
-        // If no access entries exist, the database is unprotected (backward compatible)
-        if (totalCount === 0) {
-          return true;
-        }
-
-        // Check if this specific user has access
         const userRows = yield* pipe(
           registrySql<{ cnt: number }>`
             SELECT COUNT(*) as cnt FROM database_access

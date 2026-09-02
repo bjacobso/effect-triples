@@ -26,8 +26,6 @@ export const TxAttributes = {
   POSITION: ":_tx/position",
   /** Timestamp when the transaction occurred (epoch millis) */
   INSTANT: ":_tx/instant",
-  /** User who performed the transaction */
-  USER: ":_tx/user",
   /** Actor (human, agent, or service) that issued the command. */
   ACTOR: ":_tx/actor",
   /** Idempotency key for the command represented by this transaction. */

@@ -442,8 +442,9 @@ fact as retracted rather than deleting it, which is what makes the store tempora
 
 ## Temporal facts and time travel
 
-Because retraction is a stamp, not a delete, every fact carries `createdAt` and an
-optional `retractedAt`, and the full timeline of an entity is always recoverable. Two
+Because retraction is a stamp, not a delete, every fact carries `recordedAt` and an
+optional `retractedAt`, plus its `validFrom`/`validTo` business-time interval. The full
+timeline of an entity is always recoverable. Two
 methods expose this directly:
 
 ```ts
@@ -544,7 +545,10 @@ Pass one temporal basis for the complete query—including joins, negation, opti
 projection, and recursive rules:
 
 ```ts
-yield * triples.query(query, { asOf: someEpochMillis });
+yield *
+  triples.query(query, {
+    basis: { recordedAt: someEpochMillis, validAt: someEpochMillis },
+  });
 ```
 
 A pattern is `[entity, attribute, value]`. Any position may be a variable (`"?x"`) or a
@@ -652,7 +656,7 @@ transaction metadata entity written by `transact`:
 ```ts
 where: [
   ["?e", ":person/name", "?name", "?tx"],
-  ["?tx", ":_tx/user", "?user"],
+  ["?tx", ":_tx/actor", "?actor"],
 ];
 ```
 
@@ -784,18 +788,16 @@ runtime service tags—import `Triples` and `SnapshotService` from the root. Tri
 not impose an HTTP or RPC transport contract; applications expose the core services
 through the transport that fits their runtime.
 
-## Content IDs and pre-1.0 migration
+## Content IDs and storage baseline
 
 Triplex uses one browser-safe content-addressing foundation: deterministic canonical
 encoding followed by domain-separated SHA-256. A `ContentId` is formatted as
 `sha256-<64 lowercase hex characters>`, with distinct domains for entity snapshots,
 config nodes, closures, stamps, types, evaluations, release-pinned decisions, and observations.
 
-This replaces the earlier `fnv1a:<8 hex characters>` entity-snapshot hash. Because the
-package is unpublished and pre-1.0, SQL now starts from one canonical baseline migration.
-Any database created by an earlier development build must be recreated, or its derived
-entity snapshots rebuilt from temporal triples. Triplex intentionally does not retain a
-dual-format shim before 1.0.
+The SQL packages expose one v1 migration containing the complete current schema. Triplex
+is greenfield: there is no v2 upgrade path or alternate KV codec, so databases created by
+development builds before this baseline must be recreated.
 
 ## Development
 
@@ -812,10 +814,9 @@ package dependency graph.
 
 ## Roadmap
 
-Planned work is tracked in [docs/roadmap.md](./docs/roadmap.md), including a structured
-Pull API, schema-aware constraints, reactive "live" queries, built-in multi-tenancy,
-bitemporality (valid time), integrated full-text search, query optimization, and
-client-side sync / offline-first support.
+Planned work is tracked in [docs/roadmap.md](./docs/roadmap.md), including schema-aware
+constraints, reactive "live" queries, indexed projection checkpoints, integrated full-text
+search, query optimization, and client-side sync / offline-first support.
 
 ## License
 

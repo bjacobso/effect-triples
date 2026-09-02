@@ -37,8 +37,8 @@ export interface StorageAdapterService {
   readonly retract: (
     id: string,
     timestamp: number,
-    txId?: string,
-    position?: number,
+    txId: string,
+    position: number,
   ) => Effect.Effect<boolean, WriteError>;
   readonly getById: (id: string) => Effect.Effect<TripleRow | null, ReadError>;
   readonly getByEntity: (
@@ -52,10 +52,6 @@ export interface StorageAdapterService {
   readonly query: (
     pattern: QueryPattern,
     basis?: ResolvedTemporalBasis,
-  ) => Effect.Effect<readonly TripleRow[], ReadError>;
-  readonly queryAsOf: (
-    pattern: QueryPattern,
-    asOf: number,
   ) => Effect.Effect<readonly TripleRow[], ReadError>;
   readonly history: (entityId: string) => Effect.Effect<readonly TripleRow[], ReadError>;
   readonly rawQuery: <T extends object>(

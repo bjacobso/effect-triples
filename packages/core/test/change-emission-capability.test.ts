@@ -24,7 +24,7 @@ function fakeTriple(overrides?: Partial<Triple>): Triple {
     entityId: ENTITY_ID,
     attribute: ATTRIBUTE,
     value: { type: "string", value: "Alice" },
-    createdAt: Date.now(),
+    recordedAt: Date.now(),
     createdBy: Option.none(),
     retractedAt: Option.none(),
     entityType: Option.some("Employee"),
@@ -51,6 +51,7 @@ function stubStore(triple: Triple | null): TriplesService {
     },
     get: () => Effect.succeed(triple),
     entity: () => Effect.succeed([]),
+    entities: () => Effect.succeed([]),
     match: () => Effect.succeed([]),
     matchAsOf: () => Effect.succeed([]),
     history: () => Effect.succeed([]),
@@ -82,8 +83,8 @@ function stubStore(triple: Triple | null): TriplesService {
             : [];
         }),
       }),
+    transactionsByCommand: () => Effect.succeed([]),
     transactions: () => Effect.succeed({ transactions: [] }),
-    entities: () => Effect.succeed([]),
     query: () => Effect.succeed({ results: [] }),
     queryPage: () => Effect.succeed({ results: [] }),
     explain: () => Effect.succeed({ queryPlan: { backend: "test", steps: [] } }),
@@ -252,7 +253,7 @@ describe("ChangeEmissionCapability", () => {
     it("uses triple metadata for assert event txId/timestamp", async () => {
       const store = stubStore(
         fakeTriple({
-          createdAt: 123,
+          recordedAt: 123,
           txId: Option.some("tx:meta"),
         }),
       );

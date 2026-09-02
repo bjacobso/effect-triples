@@ -145,13 +145,13 @@ export const makeSqliteAdapter = (config: SqliteAdapterConfig = {}) =>
             INSERT INTO triples (
               id, entity_id, attribute, value_type,
               value_string, value_number, value_boolean, value_datetime, value_json,
-              created_at, recorded_at, recorded_position, valid_from, valid_to,
+              recorded_at, recorded_position, valid_from, valid_to,
               created_by, entity_type, schema_version, tx_id
             ) VALUES (
               ${id}, ${input.entityId}, ${input.attribute}, ${packed.value_type},
               ${packed.value_string}, ${packed.value_number}, ${packed.value_boolean},
               ${packed.value_datetime}, ${packed.value_json},
-              ${timestamp}, ${timestamp}, ${position}, ${input.validFrom ?? timestamp}, ${input.validTo ?? null},
+              ${timestamp}, ${position}, ${input.validFrom ?? timestamp}, ${input.validTo ?? null},
               ${input.createdBy ?? null}, ${input.entityType ?? null}, ${1}, ${txId}
             )
           `.pipe(
@@ -174,15 +174,13 @@ export const makeSqliteAdapter = (config: SqliteAdapterConfig = {}) =>
               value_boolean: packed.value_boolean,
               value_datetime: packed.value_datetime,
               value_json: packed.value_json,
-              created_at: timestamp,
               recorded_at: timestamp,
               recorded_position: position,
               valid_from: input.validFrom ?? timestamp,
               valid_to: input.validTo ?? null,
               created_by: input.createdBy ?? null,
               retracted_at: null,
-              recorded_retracted_at: null,
-              recorded_retracted_position: null,
+              retracted_position: null,
               entity_type: input.entityType ?? null,
               schema_version: 1,
               tx_id: txId,
@@ -207,7 +205,7 @@ export const makeSqliteAdapter = (config: SqliteAdapterConfig = {}) =>
           );
         }
 
-        const BATCH_SIZE = 500; // 14 columns * 500 = 7000 params (SQLite 3.32+ supports 32766)
+        const BATCH_SIZE = 500; // 17 columns * 500 = 8500 params (SQLite 3.32+ supports 32766)
 
         // Determine if optimizations should be applied based on thresholds
         const shouldDropIndexes =
@@ -267,7 +265,7 @@ export const makeSqliteAdapter = (config: SqliteAdapterConfig = {}) =>
                   const params: unknown[] = [];
 
                   for (const { id, input, packed } of chunk) {
-                    placeholders.push("(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
+                    placeholders.push("(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
                     params.push(
                       id,
                       input.entityId,
@@ -278,7 +276,6 @@ export const makeSqliteAdapter = (config: SqliteAdapterConfig = {}) =>
                       packed.value_boolean,
                       packed.value_datetime,
                       packed.value_json,
-                      timestamp,
                       timestamp,
                       position,
                       input.validFrom ?? timestamp,
@@ -294,7 +291,7 @@ export const makeSqliteAdapter = (config: SqliteAdapterConfig = {}) =>
                   INSERT INTO triples (
                     id, entity_id, attribute, value_type,
                     value_string, value_number, value_boolean, value_datetime, value_json,
-                    created_at, recorded_at, recorded_position, valid_from, valid_to,
+                    recorded_at, recorded_position, valid_from, valid_to,
                     created_by, entity_type, schema_version, tx_id
                   ) VALUES ${placeholders.join(", ")}
                 `;
@@ -323,15 +320,13 @@ export const makeSqliteAdapter = (config: SqliteAdapterConfig = {}) =>
               value_boolean: packed.value_boolean,
               value_datetime: packed.value_datetime,
               value_json: packed.value_json,
-              created_at: timestamp,
               recorded_at: timestamp,
               recorded_position: position,
               valid_from: input.validFrom ?? timestamp,
               valid_to: input.validTo ?? null,
               created_by: input.createdBy ?? null,
               retracted_at: null,
-              recorded_retracted_at: null,
-              recorded_retracted_position: null,
+              retracted_position: null,
               entity_type: input.entityType ?? null,
               schema_version: 1,
               tx_id: txId,
@@ -355,7 +350,7 @@ export const makeSqliteAdapter = (config: SqliteAdapterConfig = {}) =>
           Effect.gen(function* () {
             const rows = yield* sql<{ readonly id: string }>`
             UPDATE triples
-            SET retracted_at = ${timestamp}, recorded_retracted_at = ${timestamp}, recorded_retracted_position = ${position ?? null}, retract_tx_id = ${txId ?? null}
+            SET retracted_at = ${timestamp}, retracted_position = ${position}, retract_tx_id = ${txId}
             WHERE id = ${id} AND retracted_at IS NULL
             RETURNING id
           `.pipe(
@@ -396,15 +391,27 @@ export const makeSqliteAdapter = (config: SqliteAdapterConfig = {}) =>
         );
 
       const temporalConditions = (
-        basis: { readonly recordedAt?: number; readonly validAt: number } | undefined,
+        basis:
+          | {
+              readonly recordedAt?: number;
+              readonly recordedPosition?: number;
+              readonly validAt: number;
+            }
+          | undefined,
         params: unknown[],
       ): string[] => {
-        if (basis === undefined) return ["recorded_retracted_at IS NULL"];
+        if (basis === undefined) return ["retracted_at IS NULL"];
         const conditions =
-          basis.recordedAt === undefined
-            ? ["recorded_retracted_at IS NULL"]
-            : ["recorded_at <= ?", "(recorded_retracted_at IS NULL OR recorded_retracted_at > ?)"];
-        if (basis.recordedAt !== undefined) params.push(basis.recordedAt, basis.recordedAt);
+          basis.recordedPosition !== undefined
+            ? ["recorded_position <= ?", "(retracted_position IS NULL OR retracted_position > ?)"]
+            : basis.recordedAt === undefined
+              ? ["retracted_at IS NULL"]
+              : ["recorded_at <= ?", "(retracted_at IS NULL OR retracted_at > ?)"];
+        if (basis.recordedPosition !== undefined) {
+          params.push(basis.recordedPosition, basis.recordedPosition);
+        } else if (basis.recordedAt !== undefined) {
+          params.push(basis.recordedAt, basis.recordedAt);
+        }
         conditions.push("valid_from <= ?", "(valid_to IS NULL OR valid_to > ?)");
         params.push(basis.validAt, basis.validAt);
         return conditions;
@@ -508,16 +515,13 @@ export const makeSqliteAdapter = (config: SqliteAdapterConfig = {}) =>
           }),
         );
 
-      const queryAsOf: StorageAdapterService["queryAsOf"] = (pattern, asOf) =>
-        query(pattern, { recordedAt: asOf, validAt: asOf });
-
       const history: StorageAdapterService["history"] = (entityId) =>
         provide(
           Effect.gen(function* () {
             const rows = yield* sql<TripleRow>`
             SELECT * FROM triples
             WHERE entity_id = ${entityId}
-            ORDER BY created_at ASC
+            ORDER BY recorded_at ASC
           `.pipe(
               Effect.mapError(
                 (error) =>
@@ -588,7 +592,6 @@ export const makeSqliteAdapter = (config: SqliteAdapterConfig = {}) =>
         getByEntity,
         getByEntities,
         query,
-        queryAsOf,
         history,
         rawQuery,
         initialize,

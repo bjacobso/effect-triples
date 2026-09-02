@@ -169,7 +169,7 @@ export function makeCloudflareAdapter(ctx: DOState): StorageAdapterService {
   // Write Operations
   // =========================================================================
 
-  const insert: StorageAdapterService["insert"] = (input, txId, timestamp, id) =>
+  const insert: StorageAdapterService["insert"] = (input, txId, timestamp, id, position) =>
     Effect.try({
       try: () => {
         const packed = packValue(input.value);
@@ -178,8 +178,9 @@ export function makeCloudflareAdapter(ctx: DOState): StorageAdapterService {
           `INSERT INTO triples (
             id, entity_id, attribute, value_type,
             value_string, value_number, value_boolean, value_datetime, value_json,
-            created_at, created_by, entity_type, schema_version, tx_id
-          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+            recorded_at, recorded_position, valid_from, valid_to,
+            created_by, entity_type, schema_version, tx_id
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
           id,
           input.entityId,
           input.attribute,
@@ -190,6 +191,9 @@ export function makeCloudflareAdapter(ctx: DOState): StorageAdapterService {
           packed.value_datetime,
           packed.value_json,
           timestamp,
+          position,
+          input.validFrom ?? timestamp,
+          input.validTo ?? null,
           input.createdBy ?? null,
           input.entityType ?? null,
           1, // schema_version
@@ -206,9 +210,14 @@ export function makeCloudflareAdapter(ctx: DOState): StorageAdapterService {
           value_boolean: packed.value_boolean,
           value_datetime: packed.value_datetime,
           value_json: packed.value_json,
-          created_at: timestamp,
+          recorded_at: timestamp,
+          recorded_position: position,
+          valid_from: input.validFrom ?? timestamp,
+          valid_to: input.validTo ?? null,
           created_by: input.createdBy ?? null,
           retracted_at: null,
+          retracted_position: null,
+          retract_tx_id: null,
           entity_type: input.entityType ?? null,
           schema_version: 1,
           tx_id: txId,
@@ -221,7 +230,13 @@ export function makeCloudflareAdapter(ctx: DOState): StorageAdapterService {
         }),
     });
 
-  const batchInsert: StorageAdapterService["batchInsert"] = (inputs, txId, timestamp, ids) => {
+  const batchInsert: StorageAdapterService["batchInsert"] = (
+    inputs,
+    txId,
+    timestamp,
+    ids,
+    position,
+  ) => {
     if (inputs.length === 0) return Effect.succeed([]);
     if (ids.length !== inputs.length) {
       return Effect.fail(
@@ -246,8 +261,9 @@ export function makeCloudflareAdapter(ctx: DOState): StorageAdapterService {
               `INSERT INTO triples (
                 id, entity_id, attribute, value_type,
                 value_string, value_number, value_boolean, value_datetime, value_json,
-                created_at, created_by, entity_type, schema_version, tx_id
-              ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+                recorded_at, recorded_position, valid_from, valid_to,
+                created_by, entity_type, schema_version, tx_id
+              ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
               id,
               input.entityId,
               input.attribute,
@@ -258,6 +274,9 @@ export function makeCloudflareAdapter(ctx: DOState): StorageAdapterService {
               packed.value_datetime,
               packed.value_json,
               timestamp,
+              position,
+              input.validFrom ?? timestamp,
+              input.validTo ?? null,
               input.createdBy ?? null,
               input.entityType ?? null,
               1,
@@ -274,9 +293,14 @@ export function makeCloudflareAdapter(ctx: DOState): StorageAdapterService {
               value_boolean: packed.value_boolean,
               value_datetime: packed.value_datetime,
               value_json: packed.value_json,
-              created_at: timestamp,
+              recorded_at: timestamp,
+              recorded_position: position,
+              valid_from: input.validFrom ?? timestamp,
+              valid_to: input.validTo ?? null,
               created_by: input.createdBy ?? null,
               retracted_at: null,
+              retracted_position: null,
+              retract_tx_id: null,
               entity_type: input.entityType ?? null,
               schema_version: 1,
               tx_id: txId,
@@ -294,13 +318,14 @@ export function makeCloudflareAdapter(ctx: DOState): StorageAdapterService {
     });
   };
 
-  const retract: StorageAdapterService["retract"] = (id, timestamp, txId) =>
+  const retract: StorageAdapterService["retract"] = (id, timestamp, txId, position) =>
     Effect.try({
       try: () => {
         const cursor = sqlStorage.exec(
-          `UPDATE triples SET retracted_at = ?, retract_tx_id = ? WHERE id = ? AND retracted_at IS NULL`,
+          `UPDATE triples SET retracted_at = ?, retracted_position = ?, retract_tx_id = ? WHERE id = ? AND retracted_at IS NULL`,
           timestamp,
-          txId ?? null,
+          position,
+          txId,
           id,
         );
         return cursor.rowsWritten > 0;
@@ -333,21 +358,8 @@ export function makeCloudflareAdapter(ctx: DOState): StorageAdapterService {
         }),
     });
 
-  const getByEntity: StorageAdapterService["getByEntity"] = (entityId) =>
-    Effect.try({
-      try: () => {
-        const cursor = sqlStorage.exec<TripleRow>(
-          `SELECT * FROM triples WHERE entity_id = ? AND retracted_at IS NULL`,
-          entityId,
-        );
-        return cursorToArray(cursor);
-      },
-      catch: (error) =>
-        new ReadError({
-          message: `Failed to get entity: ${String(error)}`,
-          cause: error,
-        }),
-    });
+  const getByEntity: StorageAdapterService["getByEntity"] = (entityId, basis) =>
+    query({ entityId }, basis);
 
   const getByEntities: StorageAdapterService["getByEntities"] = (entityIds, basis) => {
     if (entityIds.length === 0) return Effect.succeed(new Map());
@@ -360,12 +372,29 @@ export function makeCloudflareAdapter(ctx: DOState): StorageAdapterService {
     );
   };
 
-  const query: StorageAdapterService["query"] = (pattern) =>
+  const query: StorageAdapterService["query"] = (pattern, basis) =>
     Effect.try({
       try: () => {
         // Build dynamic query based on pattern
-        const conditions: string[] = ["retracted_at IS NULL"];
+        const conditions: string[] = [];
         const params: SqlStorageValue[] = [];
+
+        if (basis?.recordedPosition !== undefined) {
+          conditions.push(
+            "recorded_position <= ?",
+            "(retracted_position IS NULL OR retracted_position > ?)",
+          );
+          params.push(basis.recordedPosition, basis.recordedPosition);
+        } else if (basis?.recordedAt === undefined) {
+          conditions.push("retracted_at IS NULL");
+        } else {
+          conditions.push("recorded_at <= ?", "(retracted_at IS NULL OR retracted_at > ?)");
+          params.push(basis.recordedAt, basis.recordedAt);
+        }
+        if (basis !== undefined) {
+          conditions.push("valid_from <= ?", "(valid_to IS NULL OR valid_to > ?)");
+          params.push(basis.validAt, basis.validAt);
+        }
 
         if (typeof pattern.entityId === "string") {
           conditions.push(`entity_id = ?`);
@@ -422,49 +451,11 @@ export function makeCloudflareAdapter(ctx: DOState): StorageAdapterService {
         }),
     });
 
-  const queryAsOf: StorageAdapterService["queryAsOf"] = (pattern, asOf) =>
-    Effect.try({
-      try: () => {
-        const conditions: string[] = [
-          `created_at <= ?`,
-          `(retracted_at IS NULL OR retracted_at > ?)`,
-        ];
-        const params: SqlStorageValue[] = [asOf, asOf];
-
-        if (typeof pattern.entityId === "string") {
-          conditions.push(`entity_id = ?`);
-          params.push(pattern.entityId);
-        }
-
-        if (typeof pattern.attribute === "string") {
-          conditions.push(`attribute = ?`);
-          params.push(pattern.attribute);
-        }
-
-        if (pattern.entityType) {
-          conditions.push(`entity_type = ?`);
-          params.push(pattern.entityType);
-        }
-
-        const whereClause = conditions.join(" AND ");
-        const cursor = sqlStorage.exec<TripleRow>(
-          `SELECT * FROM triples WHERE ${whereClause}`,
-          ...params,
-        );
-        return cursorToArray(cursor);
-      },
-      catch: (error) =>
-        new ReadError({
-          message: `Failed to query triples as of: ${String(error)}`,
-          cause: error,
-        }),
-    });
-
   const history: StorageAdapterService["history"] = (entityId) =>
     Effect.try({
       try: () => {
         const cursor = sqlStorage.exec<TripleRow>(
-          `SELECT * FROM triples WHERE entity_id = ? ORDER BY created_at ASC`,
+          `SELECT * FROM triples WHERE entity_id = ? ORDER BY recorded_at ASC`,
           entityId,
         );
         return cursorToArray(cursor);
@@ -555,7 +546,6 @@ export function makeCloudflareAdapter(ctx: DOState): StorageAdapterService {
     getByEntity,
     getByEntities,
     query,
-    queryAsOf,
     history,
     rawQuery,
     initialize,

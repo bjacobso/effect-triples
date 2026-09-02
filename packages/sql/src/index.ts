@@ -16,19 +16,7 @@ export {
   ENTITY_SNAPSHOTS_TABLE_DDL,
   SNAPSHOT_INDEX_DDLS,
 } from "./schema.js";
-export {
-  packValue,
-  unpackValue,
-  rowToTriple,
-  insertTriple,
-  retractTriple,
-  getTripleById,
-  getEntityTriples,
-  queryByAttribute,
-  queryByEntityType,
-  getEntityAsOf,
-  getEntityHistory,
-} from "./queries.js";
+export { packValue } from "./queries.js";
 export { type Migration, migrations, runMigrations } from "./migrations.js";
 
 // SQL-based query executors

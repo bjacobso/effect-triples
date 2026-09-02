@@ -4,7 +4,6 @@ import { SqlClient } from "effect/unstable/sql";
 import { generateId } from "@bjacobso/triplex/internal";
 import { string, boolean, ref } from "@bjacobso/triplex";
 import type { EntityId } from "@bjacobso/triplex";
-import type { BulkInsertOptions } from "@bjacobso/triplex";
 import { writeFileSync } from "node:fs";
 import { arch, cpus, platform, totalmem } from "node:os";
 import {
@@ -23,7 +22,6 @@ import {
   cleanupAfter,
   getDatabaseSize,
   describeBackend,
-  supportsBulkOptions,
   getTriples,
   makeSqlLayer,
   getInsertBatchSize,
@@ -47,10 +45,8 @@ const SQL_LAYER = makeSqlLayer(BACKEND);
 const thresholds = getThresholds(BACKEND);
 
 // ============================================================================
-// SQLite-specific Optimization Flags
+// Stress test configuration
 // ============================================================================
-// STRESS_DROP_INDEXES=true     - Drop indexes during bulk insert (3-5x speedup, SQLite only)
-// STRESS_UNSAFE_MODE=true      - Use unsafe PRAGMA settings (1.2-2x speedup, SQLite only)
 // STRESS_TEST_KEEP_DB=true     - Keep database after test for inspection
 // STRESS_BACKEND=sqlite|pg|kv|fdb - Backend to test (default: sqlite)
 // STRESS_EMPLOYEE_COUNT=N          - Number of employees to generate (default: 100000)
@@ -62,9 +58,6 @@ const thresholds = getThresholds(BACKEND);
 // ============================================================================
 
 const JSON_OUTPUT = process.env["STRESS_JSON_OUTPUT"] === "true";
-const DROP_INDEXES = process.env["STRESS_DROP_INDEXES"] === "true";
-const UNSAFE_MODE = process.env["STRESS_UNSAFE_MODE"] === "true";
-
 // ============================================================================
 // Benchmark Results Accumulator
 // ============================================================================
@@ -87,23 +80,10 @@ const benchmarkResults: BenchmarkResults = {
   queries: [],
 };
 
-const BULK_OPTIONS: BulkInsertOptions = {
-  dropIndexes: DROP_INDEXES,
-  unsafeMode: UNSAFE_MODE,
-};
-
-// Log configuration at test start
-const sqliteOpts = supportsBulkOptions(BACKEND)
-  ? [DROP_INDEXES ? "dropIndexes" : null, UNSAFE_MODE ? "unsafeMode" : null]
-      .filter(Boolean)
-      .join(", ") || "default (no optimizations)"
-  : "N/A (not SQLite)";
-
 process.stderr.write(`\n  Backend: ${describeBackend(BACKEND)}\n`);
 process.stderr.write(`  Employees: ${EMPLOYEE_COUNT.toLocaleString()}\n`);
 process.stderr.write(`  Update rounds: ${UPDATE_ROUNDS}\n`);
 process.stderr.write(`  Insert batch size: ${INSERT_BATCH_SIZE.toLocaleString()} employees\n`);
-process.stderr.write(`  SQLite options: ${sqliteOpts}\n`);
 
 // ============================================================================
 // Tests
@@ -177,7 +157,7 @@ describe(`Triple Store Stress Test [${BACKEND}] - ${(EMPLOYEE_COUNT * TRIPLES_PE
             Math.min((i + INSERT_BATCH_SIZE) * TRIPLES_PER_EMPLOYEE, allTriples.length),
           );
 
-          yield* triples.assertBatch(batch, BULK_OPTIONS);
+          yield* triples.assertBatch(batch);
           stopStallLogger();
 
           const batchTime = Date.now() - batchStart;

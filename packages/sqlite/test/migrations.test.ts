@@ -23,95 +23,28 @@ describe("host-owned SQLite migrations", () => {
           SELECT version FROM triplex_schema_migrations ORDER BY version
         `;
         const columns = yield* sql.unsafe<{ name: string }>("PRAGMA table_info(triples)");
-        return { before, applied, columns };
+        const snapshotColumns = yield* sql.unsafe<{ name: string }>(
+          "PRAGMA table_info(entity_snapshots)",
+        );
+        return { before, applied, columns, snapshotColumns };
       }),
     );
 
     expect(result.before).toHaveLength(0);
-    expect(result.applied.map(({ version }) => version)).toEqual(
-      migrations.map(({ version }) => version),
-    );
+    expect(migrations.map(({ version }) => version)).toEqual([1]);
+    expect(result.applied.map(({ version }) => version)).toEqual([1]);
     expect(result.columns.map(({ name }) => name)).toEqual(
       expect.arrayContaining([
         "recorded_at",
         "recorded_position",
-        "recorded_retracted_at",
-        "recorded_retracted_position",
+        "retracted_at",
+        "retracted_position",
         "valid_from",
         "valid_to",
       ]),
     );
-  });
-
-  it("backfills temporal facts and snapshot source positions from the baseline", async () => {
-    const result = await runUnmigrated(
-      Effect.gen(function* () {
-        const sql = yield* SqlClient.SqlClient;
-        for (const statement of migrations[0]!.up) yield* sql.unsafe(statement);
-        yield* sql`
-          CREATE TABLE triplex_schema_migrations (
-            version INTEGER PRIMARY KEY,
-            name TEXT NOT NULL,
-            applied_at BIGINT NOT NULL
-          )
-        `;
-        yield* sql`
-          INSERT INTO triplex_schema_migrations (version, name, applied_at)
-          VALUES (1, 'triplex_baseline', 1000)
-        `;
-        yield* sql`
-          INSERT INTO triples (
-            id, entity_id, attribute, value_type, value_string,
-            created_at, retracted_at, retract_tx_id, tx_id
-          ) VALUES (
-            'old-fact', 'entity:1', ':entity/name', 'string', 'before',
-            1000, 2000, 'tx-retract', 'tx-assert'
-          )
-        `;
-        yield* sql`
-          INSERT INTO triples (
-            id, entity_id, attribute, value_type, value_number, created_at, tx_id
-          ) VALUES (
-            'old-position', 'tx-assert', ':_tx/position', 'number', 7, 1000, 'tx-assert'
-          )
-        `;
-        yield* sql`
-          INSERT INTO entity_blobs (hash, data, format_version, byte_size, ref_count)
-          VALUES ('hash', '[]', 2, 2, 1)
-        `;
-        yield* sql`
-          INSERT INTO entity_snapshots (entity_id, tx_id, hash, tx_time, entity_type)
-          VALUES ('entity:1', 'tx-assert', 'hash', 1000, 'Entity')
-        `;
-
-        yield* runMigrations;
-
-        const facts = yield* sql<{
-          recorded_at: number;
-          recorded_position: number;
-          recorded_retracted_at: number;
-          recorded_retracted_position: number | null;
-          valid_from: number;
-          valid_to: number | null;
-          retract_tx_id: string;
-        }>`SELECT recorded_at, recorded_position, recorded_retracted_at, recorded_retracted_position, valid_from, valid_to, retract_tx_id
-           FROM triples WHERE id = 'old-fact'`;
-        const snapshots = yield* sql<{ tx_position: number }>`
-          SELECT tx_position FROM entity_snapshots WHERE entity_id = 'entity:1'
-        `;
-        return { fact: facts[0]!, snapshot: snapshots[0]! };
-      }),
-    );
-
-    expect(result.fact).toEqual({
-      recorded_at: 1000,
-      recorded_position: 7,
-      recorded_retracted_at: 2000,
-      recorded_retracted_position: null,
-      valid_from: 1000,
-      valid_to: null,
-      retract_tx_id: "tx-retract",
-    });
-    expect(result.snapshot.tx_position).toBe(7);
+    expect(result.columns.map(({ name }) => name)).not.toContain("created_at");
+    expect(result.columns.map(({ name }) => name)).not.toContain("recorded_retracted_at");
+    expect(result.snapshotColumns.map(({ name }) => name)).toContain("tx_position");
   });
 });

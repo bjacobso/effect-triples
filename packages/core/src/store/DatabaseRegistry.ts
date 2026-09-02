@@ -110,9 +110,7 @@ export interface DatabaseRegistryService {
 
   /**
    * Check if a user has access to a database.
-   * Returns true if the user has an explicit access entry OR if the database
-   * has no access entries at all (backward compatible: unprotected databases
-   * are accessible to everyone).
+   * Access is fail-closed and requires an explicit grant.
    */
   readonly hasAccess: (
     userId: string,

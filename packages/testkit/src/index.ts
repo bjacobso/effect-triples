@@ -385,7 +385,7 @@ export const triplesConformanceCases: readonly ConformanceCase[] = [
             entityType: "Person",
           },
         ],
-        { user: "conformance-tester" },
+        { actor: "conformance-tester" },
       );
 
       const txTriples = yield* t.match({ entityId: result.txId });
@@ -395,8 +395,8 @@ export const triplesConformanceCases: readonly ConformanceCase[] = [
         "transact should write a :_tx/instant provenance datom",
       );
       yield* check(
-        attributes.has(":_tx/user"),
-        "transact should write a :_tx/user provenance datom when a user is given",
+        attributes.has(":_tx/actor"),
+        "transact should write a :_tx/actor provenance datom when an actor is given",
       );
     }),
   },
@@ -466,7 +466,7 @@ export const triplesConformanceCases: readonly ConformanceCase[] = [
         retraction?.value?.type === "string" &&
           retraction.value.value === "open" &&
           retraction.recordedAt === current.recordedAt &&
-          retraction.recordedRetractedAt === committed.instant &&
+          retraction.retractedAt === committed.instant &&
           retraction.retractionTxId === committed.txId,
         "a retraction journal entry must retain the old typed value and both recorded instants",
       );
@@ -759,7 +759,7 @@ export const triplesConformanceCases: readonly ConformanceCase[] = [
           validFrom: 3_000,
         },
       ]);
-      const rows = yield* t.entitiesById(
+      const rows = yield* t.entities(
         ["conf:batch:first", "conf:batch:missing", "conf:batch:future"] as EntityId[],
         { validAt: 2_000 },
       );

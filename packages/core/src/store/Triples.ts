@@ -23,11 +23,9 @@ import type {
   TransactionPrecondition,
 } from "../Triple.js";
 import type { Pattern } from "../types/Pattern.js";
-import type { QueryState } from "../types/QueryBuilder.js";
 import type {
   WriteError,
   ReadError,
-  QueryError,
   DatalogError,
   TransactionConflictError,
   PaginationCursorError,
@@ -62,8 +60,6 @@ export interface TransactionResult {
  * Transaction metadata options
  */
 export interface TransactionMeta {
-  /** @deprecated Prefer `actor`; retained for pre-1.0 source compatibility. */
-  readonly user?: string;
   readonly actor?: string;
   readonly commandId?: string;
   readonly correlationId?: string;
@@ -89,7 +85,7 @@ export interface TransactionChange {
   readonly validFrom?: number;
   readonly validTo?: number;
   readonly recordedAt?: number;
-  readonly recordedRetractedAt?: number;
+  readonly retractedAt?: number;
   readonly assertionTxId?: string;
   readonly retractionTxId?: string;
 }
@@ -120,36 +116,12 @@ export interface TransactionPage {
 }
 
 /**
- * Options for bulk insert operations to optimize performance.
- * These options trade safety for speed and should only be used for initial imports.
- */
-export interface BulkInsertOptions {
-  /**
-   * Drop indexes before bulk insert and recreate them after.
-   * Provides 3-5x speedup for large imports (10k+ triples).
-   * Database queries will be slow during the import.
-   * Default: false
-   */
-  readonly dropIndexes?: boolean;
-
-  /**
-   * Use unsafe PRAGMA settings for maximum speed.
-   * WARNING: Data may be lost if the process crashes during import.
-   * Only use for imports where data can be re-imported if lost.
-   * Default: false
-   */
-  readonly unsafeMode?: boolean;
-}
-
-/**
  * Options accepted by the Datalog read methods.
  */
 export interface QueryOptions {
   /** Include debug metrics (generated SQL, timings, plan) in the response. */
   readonly debug?: boolean;
-  /** Evaluate the complete query against facts valid at this epoch-millisecond instant. */
-  readonly asOf?: number;
-  /** Authoritative bitemporal read basis. Cannot be combined with `asOf`. */
+  /** Evaluate the complete query against one bitemporal basis. */
   readonly basis?: TemporalBasis;
 }
 
@@ -184,7 +156,6 @@ export interface TriplesService {
   readonly assert: (input: TripleInput) => Effect.Effect<Triple, WriteError>;
   readonly assertBatch: (
     inputs: readonly TripleInput[],
-    options?: BulkInsertOptions,
   ) => Effect.Effect<readonly Triple[], WriteError>;
   readonly retract: (id: TripleId) => Effect.Effect<void, WriteError>;
   readonly retractByPattern: (pattern: Pattern) => Effect.Effect<number, WriteError | ReadError>;
@@ -205,7 +176,7 @@ export interface TriplesService {
     basis?: TemporalBasis,
   ) => Effect.Effect<readonly Triple[], ReadError>;
   /** Batch entity materialization, preserving input order and missing entries. */
-  readonly entitiesById: (
+  readonly entities: (
     entityIds: readonly EntityId[],
     basis?: TemporalBasis,
   ) => Effect.Effect<readonly (readonly Triple[])[], ReadError>;
@@ -247,12 +218,6 @@ export interface TriplesService {
   readonly explain: (query: DatalogQuery) => Effect.Effect<ExplainResult, DatalogError>;
   /** Explain a wrapped Datalog query without executing it. */
   readonly explainPage: (query: WrappedQuery) => Effect.Effect<ExplainResult, DatalogError>;
-
-  // --- Fluent-builder execution -------------------------------------------
-  /** Execute a `Query.from(...)` builder state, returning whole entities. */
-  readonly entities: (
-    state: QueryState,
-  ) => Effect.Effect<readonly Triple[], ReadError | QueryError>;
 }
 
 /**

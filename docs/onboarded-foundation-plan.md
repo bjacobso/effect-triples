@@ -24,7 +24,7 @@ Triplex and stays application-independent.
       `validFrom`/`validTo` to public facts and storage rows.
 - [x] Default `validFrom` to the transaction instant and `validTo` to open-ended.
 - [x] Apply the same visibility rule to direct reads and all Datalog clauses.
-- [x] Implement KV encoding/index compatibility and SQL schema upgrade/backfill.
+- [x] Use one greenfield KV encoding and one complete SQL v1 schema.
 - [x] Add a differential temporal corpus for KV, SQLite, and PostgreSQL.
 
 ### 2. Durable audit journal
@@ -68,8 +68,7 @@ Triplex and stays application-independent.
 
 - [x] Export ordered, namespaced migration definitions and an explicit runner.
 - [x] Provide SQL layers and adapters that can opt out of automatic DDL.
-- [x] Verify idempotent fresh setup and upgrade/backfill from the `9c7dd80`
-      schema without losing transaction or retraction history.
+- [x] Verify idempotent fresh setup from the exported v1 migration.
 
 ### 7. Configuration foundation and adoption guide
 
@@ -88,7 +87,7 @@ Triplex and stays application-independent.
 - [x] `pnpm pack:check`
 - [x] `pnpm test:postgres:integration`
 - [x] KV/SQLite/PostgreSQL temporal and pagination differential suites
-- [x] Fresh and upgrade migration tests
+- [x] Fresh migration tests
 - [x] Package consumer installation checks
 - [x] Generated SQL reviewed for parameterization and database isolation
 
