@@ -14,6 +14,7 @@ import * as ContentIds from "../content/ContentId.js";
 import { Constant as ConstantSchema } from "../datalog/schema.js";
 import type { Constant, DatalogQuery } from "../datalog/types.js";
 import type {
+  CommandAlreadyCommittedError,
   DatalogError,
   ReadError,
   TransactionConflictError,
@@ -147,6 +148,7 @@ export type MaterializationError =
   | ReadError
   | WriteError
   | TransactionConflictError
+  | CommandAlreadyCommittedError
   | DatalogError
   | CandidateConflictError
   | CorruptMaterializationError

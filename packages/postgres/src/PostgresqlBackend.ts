@@ -103,7 +103,16 @@ const createSchemaLayer = (config: PostgresqlBackendConfig, schema: string) =>
     Layer.tap((ctx) =>
       Effect.gen(function* () {
         const sql = Context.get(ctx, SqlClient.SqlClient);
-        yield* sql.unsafe(`CREATE SCHEMA IF NOT EXISTS ${quoteIdentifier(schema)}`);
+        // A composed database layer may initialize an adapter pool and a query
+        // pool for the same new schema concurrently. PostgreSQL's `IF NOT
+        // EXISTS` check can still race at the namespace unique index, so lock
+        // this deterministic schema identity through creation.
+        yield* sql.withTransaction(
+          Effect.gen(function* () {
+            yield* sql`SELECT pg_advisory_xact_lock(hashtextextended(${schema}, 0))`;
+            yield* sql.unsafe(`CREATE SCHEMA IF NOT EXISTS ${quoteIdentifier(schema)}`);
+          }),
+        );
       }),
     ),
   );

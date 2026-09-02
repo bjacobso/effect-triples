@@ -22,6 +22,7 @@ import type { DatalogQuery, WrappedQuery } from "../datalog/types.js";
 import {
   WriteError,
   ReadError,
+  CommandAlreadyCommittedError,
   TransactionConflictError,
   PaginationCursorError,
 } from "../../errors/index.js";
@@ -36,6 +37,7 @@ import {
   makeTripleStoreRuntimeLayer,
 } from "../../store/TripleStoreRuntime.js";
 import {
+  invalidCommandId,
   livePreconditionIds,
   metadataInputs,
   transactionRecordFromTriples,
@@ -44,6 +46,7 @@ import {
   validatePreconditions,
 } from "../../store/transactionMetadata.js";
 import {
+  isJournalSuppressed,
   isSystemWriteAuthorized,
   reservedAssertError,
   reservedWriteError,
@@ -51,10 +54,33 @@ import {
 import { resolveTemporalBasis, type ResolvedTemporalBasis } from "../../Temporal.js";
 import { TxAttributes } from "../../utils/id.js";
 import { finishPagination, preparePagination } from "../../Pagination.js";
+import * as ContentIds from "../../content/ContentId.js";
 
 const COMMIT_POSITION_KEY = new Uint8Array([0x21]);
+const COMMAND_RECEIPT_PREFIX = 0x22;
 const textEncoder = new TextEncoder();
 const textDecoder = new TextDecoder();
+
+const commandReceiptKey = (commandId: string): Uint8Array => {
+  const digest = textEncoder.encode(ContentIds.hash(ContentIds.Domain.commandReceipt, commandId));
+  const key = new Uint8Array(digest.length + 1);
+  key[0] = COMMAND_RECEIPT_PREFIX;
+  key.set(digest, 1);
+  return key;
+};
+
+const claimKvCommand = (
+  tx: KvTransaction,
+  commandId: string,
+  transactionId: string,
+): Effect.Effect<string | null> =>
+  Effect.gen(function* () {
+    const key = commandReceiptKey(commandId);
+    const existing = yield* tx.get(key);
+    if (existing !== null) return textDecoder.decode(existing);
+    yield* tx.set(key, textEncoder.encode(transactionId));
+    return null;
+  });
 
 const nextKvCommitPosition = (tx: KvTransaction): Effect.Effect<number, WriteError> =>
   Effect.gen(function* () {
@@ -357,8 +383,27 @@ const makeKvTriplesService = Effect.gen(function* () {
                 }),
               );
             }
+            if (invalidCommandId(meta) !== undefined) {
+              return yield* Effect.fail(
+                new WriteError({
+                  message: "Command ID must contain between 1 and 1024 characters",
+                }),
+              );
+            }
             const txId = yield* runtime.nextTxId;
             const now = yield* runtime.now;
+            if (meta?.commandId !== undefined) {
+              const originalTransactionId = yield* claimKvCommand(tx, meta.commandId, txId);
+              if (originalTransactionId !== null) {
+                return yield* Effect.fail(
+                  new CommandAlreadyCommittedError({
+                    commandId: meta.commandId,
+                    transactionId: originalTransactionId,
+                    message: `Command ${meta.commandId} already committed as ${originalTransactionId}`,
+                  }),
+                );
+              }
+            }
             const position = yield* nextKvCommitPosition(tx);
             const actor = meta?.actor;
             const preconditionIds = livePreconditionIds(meta);
@@ -449,10 +494,12 @@ const makeKvTriplesService = Effect.gen(function* () {
               }
             }
 
-            for (const input of metadataInputs(txId, position, now, meta, changes)) {
-              yield* transactionStore.assert(
-                tripleInputToDatom(input, yield* runtime.nextTripleId, txId, now, position),
-              );
+            if (!isJournalSuppressed(meta)) {
+              for (const input of metadataInputs(txId, position, now, meta, changes)) {
+                yield* transactionStore.assert(
+                  tripleInputToDatom(input, yield* runtime.nextTripleId, txId, now, position),
+                );
+              }
             }
 
             return {
@@ -467,7 +514,9 @@ const makeKvTriplesService = Effect.gen(function* () {
         .pipe(
           Effect.ensuring(Effect.sync(() => hexaStore.clearCache())),
           Effect.catch((e) =>
-            e instanceof WriteError || e instanceof TransactionConflictError
+            e instanceof WriteError ||
+            e instanceof TransactionConflictError ||
+            e instanceof CommandAlreadyCommittedError
               ? Effect.fail(e)
               : Effect.fail(new WriteError({ message: `Transact failed: ${String(e)}`, cause: e })),
           ),
@@ -543,21 +592,16 @@ const makeKvTriplesService = Effect.gen(function* () {
         ),
       ),
 
-    transactionsByCommand: (commandId) =>
+    transactionByCommand: (commandId) =>
       Effect.gen(function* () {
         const commandFacts = yield* match({
           attribute: TxAttributes.COMMAND_ID,
           value: { type: "string", value: commandId },
         });
-        const records = yield* Effect.forEach(commandFacts, (fact) =>
-          Effect.gen(function* () {
-            const datoms = yield* hexaStore.scanCollectAsync({ entity: fact.entityId });
-            return transactionRecordFromTriples(fact.entityId, datoms.map(datomToTriple));
-          }),
-        );
-        return records
-          .filter((record): record is NonNullable<typeof record> => record !== null)
-          .sort((left, right) => left.position - right.position);
+        const fact = commandFacts[0];
+        if (fact === undefined) return null;
+        const datoms = yield* hexaStore.scanCollectAsync({ entity: fact.entityId });
+        return transactionRecordFromTriples(fact.entityId, datoms.map(datomToTriple));
       }).pipe(
         Effect.catch((e) =>
           Effect.fail(
@@ -592,6 +636,8 @@ const makeKvTriplesService = Effect.gen(function* () {
         }),
       );
     },
+
+    currentPosition: () => currentKvCommitPosition(kvBackend),
 
     // === Datalog reads =====================================================
 

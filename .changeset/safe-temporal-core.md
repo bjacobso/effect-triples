@@ -17,3 +17,5 @@ Remove redundant pre-release surfaces: the unused demo database schemas, transac
 Remove unused extension hooks and transport-specific errors, and collapse redundant `Triple`, `Snapshot`, and `types/Pattern` subpaths into the primary package export.
 
 Keep entity snapshots focused on content-addressed materialization by removing their duplicate raw-SQL transaction log and unused response schemas; transaction history remains available through the durable `Triples` journal.
+
+Make command IDs atomically unique per database with typed duplicate receipts, and add Datalog-queryable consumer checkpoints with optimistic advancement under the new `@bjacobso/triplex/operational` subpath.

@@ -12,6 +12,7 @@ import {
 } from "@bjacobso/triplex";
 import { ConfigNode, ConfigStore, TypeExpr } from "@bjacobso/triplex/config";
 import * as Derivation from "@bjacobso/triplex/derivation";
+import { ConsumerCheckpoint } from "@bjacobso/triplex/operational";
 
 const PLACEMENT_WORKER = ":placement/worker";
 const PLACEMENT_SITE = ":placement/site";
@@ -353,9 +354,9 @@ const program = Effect.gen(function* () {
       }
     });
 
-  // These two pieces are deliberately host-owned. Production implementations
-  // replace the maps/numbers with durable job and consumer-checkpoint records.
-  let consumerPosition = 0;
+  // Timer delivery remains host-owned. The feed cursor itself is a durable
+  // Triplex fact with optimistic concurrency.
+  const consumer = "demo/site-safety-materializer/v1";
   const scheduled = new Map<string, number>();
 
   const materializeAt = (validAt: number) =>
@@ -371,18 +372,30 @@ const program = Effect.gen(function* () {
 
   const consumeTransactions = (validAt: number) =>
     Effect.gen(function* () {
+      const checkpoint = yield* ConsumerCheckpoint.get(triples, consumer);
+      const expectedPosition = checkpoint?.position ?? 0;
+      let cursor = expectedPosition;
       let relevant = false;
       while (true) {
-        const page = yield* triples.transactions({ after: consumerPosition, limit: 100 });
+        const page = yield* triples.transactions({ after: cursor, limit: 100 });
         relevant ||= page.transactions.some((transaction) =>
           transaction.changes.some((change) =>
             definition.dependencies.attributes.includes(change.attribute),
           ),
         );
-        if (page.next !== undefined) consumerPosition = page.next;
+        if (page.next !== undefined) cursor = page.next;
         if (page.transactions.length < 100 || page.next === undefined) break;
       }
-      return relevant ? yield* materializeAt(validAt) : undefined;
+      const run = relevant ? yield* materializeAt(validAt) : undefined;
+      if (cursor > expectedPosition) {
+        yield* ConsumerCheckpoint.advance(triples, {
+          consumer,
+          expectedPosition,
+          nextPosition: cursor,
+          meta: { actor: "demo/transaction-consumer" },
+        });
+      }
+      return run;
     });
 
   const runDueWakeups = (validAt: number) =>
@@ -502,11 +515,13 @@ const program = Effect.gen(function* () {
     (transaction) => transaction.actor === "demo/requirement-reconciler",
   );
   ensure(reconcilerTransactions.length === 3, "open, satisfy, and reopen must be auditable");
+  const consumerCheckpoint = yield* ConsumerCheckpoint.get(triples, consumer);
+  ensure(consumerCheckpoint !== null, "the transaction consumer must persist its checkpoint");
 
   return {
     release: release.snapshot.id,
     definition: definition.id,
-    consumerPosition,
+    consumerPosition: consumerCheckpoint.position,
     previewCandidates: preview.candidates.length,
     occurrences,
     reconcilerTransactions: reconcilerTransactions.map((transaction) => ({

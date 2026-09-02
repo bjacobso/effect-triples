@@ -74,6 +74,21 @@ export const COMMIT_POSITION_TABLE_DDL = `
   )
 `;
 
+/**
+ * Atomic uniqueness index for command receipts.
+ *
+ * The corresponding `_Transaction` facts remain the public, queryable
+ * receipt. This table exists only to make first-writer-wins atomic across
+ * pooled SQL connections.
+ */
+export const COMMAND_RECEIPTS_TABLE_DDL = `
+  CREATE TABLE IF NOT EXISTS triplex_command_receipts (
+    command_id TEXT PRIMARY KEY NOT NULL,
+    transaction_id TEXT NOT NULL UNIQUE,
+    recorded_at BIGINT NOT NULL
+  )
+`;
+
 // =============================================================================
 // Index Definitions
 // =============================================================================

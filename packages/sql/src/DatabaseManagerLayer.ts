@@ -52,12 +52,17 @@ const CLEANUP_INTERVAL_MS = 60 * 1000; // Check every minute
 /**
  * Map any error to InternalError
  */
+const describeError = (error: unknown): string => {
+  if (typeof error !== "object" || error === null || !("cause" in error)) return String(error);
+  return `${String(error)}: ${describeError(error.cause)}`;
+};
+
 const mapToInternalError = <A, E, R>(
   effect: Effect.Effect<A, E, R>,
 ): Effect.Effect<A, InternalError, R> =>
   pipe(
     effect,
-    Effect.mapError((e) => new InternalError({ message: String(e) })),
+    Effect.mapError((e) => new InternalError({ message: describeError(e) })),
   );
 
 const validateDatabaseId = (name: string): Effect.Effect<DatabaseIdType, InternalError> =>

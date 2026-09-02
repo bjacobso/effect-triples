@@ -20,6 +20,16 @@ export interface StorageAdapterService {
   readonly nextCommitPosition: () => Effect.Effect<number, WriteError>;
   /** Read the latest committed position for an exact read snapshot boundary. */
   readonly currentCommitPosition: () => Effect.Effect<number, ReadError>;
+  /**
+   * Atomically reserve a command idempotency identity inside the current
+   * transaction. Returns the original transaction id when it was already
+   * reserved, or `null` when this transaction acquired it.
+   */
+  readonly claimCommand: (
+    commandId: string,
+    transactionId: string,
+    timestamp: number,
+  ) => Effect.Effect<string | null, WriteError>;
   readonly insert: (
     input: TripleInput,
     txId: string | null,

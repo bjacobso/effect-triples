@@ -27,6 +27,7 @@ import type {
   WriteError,
   ReadError,
   DatalogError,
+  CommandAlreadyCommittedError,
   TransactionConflictError,
   PaginationCursorError,
 } from "../errors/index.js";
@@ -61,6 +62,7 @@ export interface TransactionResult {
  */
 export interface TransactionMeta {
   readonly actor?: string;
+  /** Atomically unique idempotency identity within this Triplex database. */
   readonly commandId?: string;
   readonly correlationId?: string;
   readonly causationId?: string;
@@ -163,7 +165,10 @@ export interface TriplesService {
   readonly transact: (
     operations: readonly TransactOp[],
     meta?: TransactionMeta,
-  ) => Effect.Effect<TransactionResult, WriteError | ReadError | TransactionConflictError>;
+  ) => Effect.Effect<
+    TransactionResult,
+    WriteError | ReadError | TransactionConflictError | CommandAlreadyCommittedError
+  >;
   // --- Triple-level reads --------------------------------------------------
   /** Fetch a single triple by id. */
   readonly get: (id: TripleId) => Effect.Effect<Triple | null, ReadError>;
@@ -186,14 +191,16 @@ export interface TriplesService {
   readonly history: (entityId: EntityId) => Effect.Effect<readonly Triple[], ReadError>;
   /** Read a persisted causal transaction envelope and its fact changes. */
   readonly transaction: (txId: string) => Effect.Effect<TransactionRecord | null, ReadError>;
-  /** Lookup every transaction carrying a command ID; command IDs are not unique. */
-  readonly transactionsByCommand: (
+  /** Lookup the durable receipt for an atomically unique command ID. */
+  readonly transactionByCommand: (
     commandId: string,
-  ) => Effect.Effect<readonly TransactionRecord[], ReadError>;
+  ) => Effect.Effect<TransactionRecord | null, ReadError>;
   /** Read ordered transaction envelopes after a durable resume position. */
   readonly transactions: (
     request?: TransactionPageRequest,
   ) => Effect.Effect<TransactionPage, ReadError>;
+  /** Latest committed backend position, including internal maintenance writes. */
+  readonly currentPosition: () => Effect.Effect<number, ReadError>;
 
   // --- Datalog reads -------------------------------------------------------
   /** Execute a Datalog query. */

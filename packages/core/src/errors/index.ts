@@ -42,6 +42,18 @@ export class TransactionConflictError extends Data.TaggedError("TransactionConfl
   readonly message: string;
 }> {}
 
+/**
+ * A command with this idempotency identity already committed.
+ *
+ * The original transaction remains the durable receipt. Callers should return
+ * or inspect that result rather than execute the command again.
+ */
+export class CommandAlreadyCommittedError extends Data.TaggedError("CommandAlreadyCommittedError")<{
+  readonly commandId: string;
+  readonly transactionId: string;
+  readonly message: string;
+}> {}
+
 // Read operation errors
 export class ReadError extends Data.TaggedError("ReadError")<{
   readonly message: string;
@@ -150,7 +162,8 @@ export type WriteErrorUnion =
   | DuplicateTripleError
   | InvalidTripleError
   | TransactionError
-  | TransactionConflictError;
+  | TransactionConflictError
+  | CommandAlreadyCommittedError;
 
 export type ReadErrorUnion = ReadError | EntityNotFoundError | TripleNotFoundError;
 

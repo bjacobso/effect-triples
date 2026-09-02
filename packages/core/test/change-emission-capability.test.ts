@@ -82,8 +82,9 @@ function stubStore(triple: Triple | null): TriplesService {
             : [];
         }),
       }),
-    transactionsByCommand: () => Effect.succeed([]),
+    transactionByCommand: () => Effect.succeed(null),
     transactions: () => Effect.succeed({ transactions: [] }),
+    currentPosition: () => Effect.succeed(0),
     query: () => Effect.succeed({ results: [] }),
     queryPage: () => Effect.succeed({ results: [] }),
     explain: () => Effect.succeed({ queryPlan: { backend: "test", steps: [] } }),

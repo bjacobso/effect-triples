@@ -36,11 +36,13 @@ import {
   WriteError,
   ReadError,
   DatalogError,
+  CommandAlreadyCommittedError,
   TransactionConflictError,
   PaginationCursorError,
 } from "../errors/index.js";
 import { TripleStoreRuntime } from "./TripleStoreRuntime.js";
 import {
+  invalidCommandId,
   livePreconditionIds,
   metadataInputs,
   transactionRecordFromTriples,
@@ -49,6 +51,7 @@ import {
   validatePreconditions,
 } from "./transactionMetadata.js";
 import {
+  isJournalSuppressed,
   isSystemWriteAuthorized,
   reservedAssertError,
   reservedWriteError,
@@ -233,7 +236,10 @@ export const TriplesLive = Layer.effect(
     const transact = (
       operations: readonly TransactOp[],
       meta?: TransactionMeta,
-    ): Effect.Effect<TransactionResult, WriteError | ReadError | TransactionConflictError> =>
+    ): Effect.Effect<
+      TransactionResult,
+      WriteError | ReadError | TransactionConflictError | CommandAlreadyCommittedError
+    > =>
       adapter.withTransaction(
         Effect.gen(function* () {
           if (!isSystemWriteAuthorized(meta)) {
@@ -248,8 +254,31 @@ export const TriplesLive = Layer.effect(
               }),
             );
           }
+          if (invalidCommandId(meta) !== undefined) {
+            return yield* Effect.fail(
+              new WriteError({
+                message: "Command ID must contain between 1 and 1024 characters",
+              }),
+            );
+          }
           const txId = yield* nextTxId;
           const timestamp = yield* now;
+          if (meta?.commandId !== undefined) {
+            const originalTransactionId = yield* adapter.claimCommand(
+              meta.commandId,
+              txId,
+              timestamp,
+            );
+            if (originalTransactionId !== null) {
+              return yield* Effect.fail(
+                new CommandAlreadyCommittedError({
+                  commandId: meta.commandId,
+                  transactionId: originalTransactionId,
+                  message: `Command ${meta.commandId} already committed as ${originalTransactionId}`,
+                }),
+              );
+            }
+          }
           const position = yield* adapter.nextCommitPosition();
           const actor = meta?.actor;
           const preconditionIds = livePreconditionIds(meta);
@@ -354,8 +383,10 @@ export const TriplesLive = Layer.effect(
             );
           }
 
-          for (const input of metadataInputs(txId, position, timestamp, meta, changes)) {
-            yield* adapter.insert(input, txId, timestamp, yield* nextTripleId, position);
+          if (!isJournalSuppressed(meta)) {
+            for (const input of metadataInputs(txId, position, timestamp, meta, changes)) {
+              yield* adapter.insert(input, txId, timestamp, yield* nextTripleId, position);
+            }
           }
 
           return { txId, position, instant: timestamp, triples, retracted: retractedCount };
@@ -440,17 +471,12 @@ export const TriplesLive = Layer.effect(
         .query({ entityId: txId, entityType: "_Transaction" })
         .pipe(Effect.map((rows) => transactionRecordFromTriples(txId, rows.map(rowToTriple))));
 
-    const transactionsByCommand: TriplesService["transactionsByCommand"] = (commandId) =>
+    const transactionByCommand: TriplesService["transactionByCommand"] = (commandId) =>
       adapter
         .query({ attribute: TxAttributes.COMMAND_ID, value: { type: "string", value: commandId } })
         .pipe(
           Effect.flatMap((rows) =>
-            Effect.forEach(rows, (row) => transaction(row.entity_id), { concurrency: 16 }),
-          ),
-          Effect.map((records) =>
-            records
-              .filter((record): record is NonNullable<typeof record> => record !== null)
-              .sort((left, right) => left.position - right.position),
+            rows[0] === undefined ? Effect.succeed(null) : transaction(rows[0].entity_id),
           ),
         );
 
@@ -550,8 +576,9 @@ export const TriplesLive = Layer.effect(
       match,
       history,
       transaction,
-      transactionsByCommand,
+      transactionByCommand,
       transactions,
+      currentPosition: adapter.currentCommitPosition,
       query,
       queryPage,
       explain,

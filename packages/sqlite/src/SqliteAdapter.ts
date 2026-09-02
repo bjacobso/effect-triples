@@ -12,6 +12,7 @@ import {
   StorageAdapter,
   type StorageAdapterService,
   type TripleRow,
+  CommandAlreadyCommittedError,
   TransactionConflictError,
   WriteError,
   ReadError,
@@ -88,7 +89,9 @@ export const makeSqliteAdapter = (config: SqliteAdapterConfig = {}) =>
       const withTransaction: StorageAdapterService["withTransaction"] = (effect) =>
         sql.withTransaction(effect).pipe(
           Effect.mapError((error) =>
-            error instanceof WriteError || error instanceof TransactionConflictError
+            error instanceof WriteError ||
+            error instanceof TransactionConflictError ||
+            error instanceof CommandAlreadyCommittedError
               ? error
               : new WriteError({
                   message: `Transaction failed: ${String(error)}`,
@@ -128,6 +131,47 @@ export const makeSqliteAdapter = (config: SqliteAdapterConfig = {}) =>
                   message: `Failed to read commit position: ${String(error)}`,
                   cause: error,
                 }),
+            ),
+          ),
+        );
+
+      const claimCommand: StorageAdapterService["claimCommand"] = (
+        commandId,
+        transactionId,
+        timestamp,
+      ) =>
+        provide(
+          Effect.gen(function* () {
+            const inserted = yield* sql<{ readonly transaction_id: string }>`
+              INSERT INTO triplex_command_receipts (command_id, transaction_id, recorded_at)
+              VALUES (${commandId}, ${transactionId}, ${timestamp})
+              ON CONFLICT(command_id) DO NOTHING
+              RETURNING transaction_id
+            `;
+            if (inserted.length > 0) return null;
+
+            const existing = yield* sql<{ readonly transaction_id: string }>`
+              SELECT transaction_id
+              FROM triplex_command_receipts
+              WHERE command_id = ${commandId}
+            `;
+            const original = existing[0]?.transaction_id;
+            if (original === undefined) {
+              return yield* Effect.fail(
+                new WriteError({
+                  message: `Command receipt ${commandId} conflicted without an original transaction`,
+                }),
+              );
+            }
+            return original;
+          }).pipe(
+            Effect.mapError((error) =>
+              error instanceof WriteError
+                ? error
+                : new WriteError({
+                    message: `Failed to claim command ${commandId}: ${String(error)}`,
+                    cause: error,
+                  }),
             ),
           ),
         );
@@ -585,6 +629,7 @@ export const makeSqliteAdapter = (config: SqliteAdapterConfig = {}) =>
         withTransaction,
         nextCommitPosition,
         currentCommitPosition,
+        claimCommand,
         insert,
         batchInsert,
         retract,

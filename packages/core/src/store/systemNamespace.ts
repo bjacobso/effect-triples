@@ -5,13 +5,18 @@ import { WriteError } from "../errors/index.js";
 import type { TransactionMeta, TransactionResult, TriplesService } from "./Triples.js";
 
 const systemWriteAuthorization: unique symbol = Symbol("triplex/SystemWriteAuthorization");
+const journalSuppression: unique symbol = Symbol("triplex/JournalSuppression");
 
 export type InternalTransactionMeta = TransactionMeta & {
   readonly [systemWriteAuthorization]?: true;
+  readonly [journalSuppression]?: true;
 };
 
 export const isSystemWriteAuthorized = (meta: TransactionMeta | undefined): boolean =>
   (meta as InternalTransactionMeta | undefined)?.[systemWriteAuthorization] === true;
+
+export const isJournalSuppressed = (meta: TransactionMeta | undefined): boolean =>
+  (meta as InternalTransactionMeta | undefined)?.[journalSuppression] === true;
 
 /** Internal-only entry point for core services that own reserved facts. */
 export const transactSystem = (
@@ -25,6 +30,21 @@ export const transactSystem = (
   triples.transact(operations, {
     ...meta,
     [systemWriteAuthorization]: true,
+  } as InternalTransactionMeta);
+
+/**
+ * Internal maintenance write that must not recursively appear in the ordered
+ * application transaction feed. Used for the feed's own consumer cursors.
+ */
+export const transactSystemUnjournaled = (
+  triples: TriplesService,
+  operations: readonly TransactOp[],
+  meta?: TransactionMeta,
+): ReturnType<typeof transactSystem> =>
+  triples.transact(operations, {
+    ...meta,
+    [systemWriteAuthorization]: true,
+    [journalSuppression]: true,
   } as InternalTransactionMeta);
 
 export const isReservedEntityId = (entityId: string): boolean => entityId.startsWith("_triplex/");

@@ -45,6 +45,14 @@ export const COMMIT_POSITION_TABLE_DDL = `
   )
 `;
 
+export const COMMAND_RECEIPTS_TABLE_DDL = `
+  CREATE TABLE IF NOT EXISTS triplex_command_receipts (
+    command_id TEXT PRIMARY KEY NOT NULL,
+    transaction_id TEXT NOT NULL UNIQUE,
+    recorded_at BIGINT NOT NULL
+  )
+`;
+
 export const INDEX_DDLS = [
   "CREATE INDEX IF NOT EXISTS idx_entity ON triples(entity_id) WHERE retracted_at IS NULL",
   "CREATE INDEX IF NOT EXISTS idx_attribute ON triples(attribute) WHERE retracted_at IS NULL",

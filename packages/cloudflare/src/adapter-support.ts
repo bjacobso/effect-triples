@@ -9,7 +9,14 @@ import {
 
 export { StorageAdapter, type StorageAdapterService, MigrationError, ReadError, WriteError };
 
-export { TRIPLES_TABLE_DDL, MIGRATIONS_TABLE_DDL, INDEX_DDLS, INDEX_NAMES } from "./schema.js";
+export {
+  TRIPLES_TABLE_DDL,
+  MIGRATIONS_TABLE_DDL,
+  COMMIT_POSITION_TABLE_DDL,
+  COMMAND_RECEIPTS_TABLE_DDL,
+  INDEX_DDLS,
+  INDEX_NAMES,
+} from "./schema.js";
 export { migrations, type Migration } from "./migrations.js";
 
 export const packValue = (

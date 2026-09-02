@@ -9,8 +9,9 @@ are implemented, including a backend-issued commit cursor and resumable transact
 portable derivation candidates and their immutable, freshness-aware materialization runs are also
 implemented, including durable temporal wakeups for future-effective and expiring evidence. The
 wrapped Datalog API now has typed, scope-bound, commit-position-stable keyset cursors. The next
-reliability milestone is indexed consumer checkpoints and command receipts, followed by graph
-constraints.
+reliability milestone is indexed dependency schedules and projection freshness, followed by graph
+constraints. Command receipts are atomically unique and durable consumer checkpoints are available
+through the `operational` subpath.
 
 ## Immediate correctness gate: backend parity
 

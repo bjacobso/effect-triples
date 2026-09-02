@@ -468,20 +468,41 @@ Effect.gen(function* () {
 Each `transact` writes a synthetic `_Transaction` entity containing a backend-issued
 `:_tx/position`, `:_tx/instant`, actor, command, correlation, causation, governing config snapshot,
 and JSON change facts. Read one typed envelope with `triples.transaction(txId)`, query the reserved
-attributes through Datalog, or catch up in commit order:
+attributes through Datalog, or find the receipt with
+`triples.transactionByCommand(commandId)`. A `commandId` is atomically unique within one Triplex
+database. A retry fails with `CommandAlreadyCommittedError`, which identifies the original
+transaction, and commits none of the repeated operations.
+
+Catch up in commit order and persist the position only after the page's effects are durable:
 
 ```ts
-const page = yield * triples.transactions({ after: checkpoint, limit: 100 });
+import { ConsumerCheckpoint } from "@bjacobso/triplex/operational";
+
+const consumer = "search-index/v1";
+const checkpoint = yield * ConsumerCheckpoint.get(triples, consumer);
+const after = checkpoint?.position ?? 0;
+const page = yield * triples.transactions({ after, limit: 100 });
+
 for (const transaction of page.transactions) {
   yield * handleAtLeastOnce(transaction);
 }
-const nextCheckpoint = page.next ?? checkpoint;
+
+if (page.next !== undefined) {
+  yield *
+    ConsumerCheckpoint.advance(triples, {
+      consumer,
+      expectedPosition: after,
+      nextPosition: page.next,
+    });
+}
 ```
 
 The cursor is committed atomically with the journal, so a failed transaction cannot appear in the
-feed. The feed covers `transact`; standalone low-level writes do not create envelopes.
-Best-effort `ChangeEmitter` notifications are kept separate and should only wake a consumer that
-then catches up from its durable checkpoint.
+feed. Consumer checkpoint maintenance is an atomic reserved fact update and is deliberately omitted
+from the feed so a consumer cannot recursively consume its own cursor writes. Concurrent checkpoint
+movement uses compare-and-retract and returns `ConsumerCheckpointConflictError` to the stale worker.
+Best-effort `ChangeEmitter` notifications remain only a wake-up hint; consumers always catch up from
+their durable checkpoint.
 
 ### Conditional transactions
 
@@ -515,11 +536,11 @@ yield *
   );
 ```
 
-This is the primitive used by config-ref and entity-validation-head movement. It is suitable for
-task claims, leases, idempotent commands, and optimistic form updates. `Triples.transact` is atomic
-on both SQL and KV backends; the in-memory KV backend also serializes concurrent transactions.
-Standalone `assert`, `assertBatch`, and `retract` remain low-level writes and do not create the full
-causal envelope, so operational commands should use `transact`.
+This is the primitive used by config-ref, entity-validation-head, and consumer-checkpoint movement.
+It is suitable for task claims, leases, and optimistic form updates. `Triples.transact` is atomic on
+both SQL and KV backends; the in-memory KV backend also serializes concurrent transactions. Use
+`transact` with causal metadata for operational commands; the convenience write methods still use
+the same atomic boundary but do not accept that metadata.
 
 ## Datalog queries
 
@@ -769,7 +790,8 @@ tag. For manual wiring, provide `TriplesLive` over a `StorageAdapter`, a
 The package root exports the triples, query, entity-snapshot, and subscription APIs.
 Typed configuration stays under `@bjacobso/triplex/config`, and shared content-addressing
 primitives stay under `@bjacobso/triplex/content`. Portable derivations stay under
-`@bjacobso/triplex/derivation`, keeping these entrypoints tree-shakeable.
+`@bjacobso/triplex/derivation`, while durable feed-consumer primitives stay under
+`@bjacobso/triplex/operational`, keeping these entrypoints tree-shakeable.
 
 The core package also exposes tree-shakeable ESM subpaths for focused schemas and
 types:
@@ -781,6 +803,7 @@ import { SubscriptionManager } from "@bjacobso/triplex/subscriptions";
 import { ConfigStore, TypeExpr } from "@bjacobso/triplex/config";
 import { ContentId } from "@bjacobso/triplex/content";
 import * as Derivation from "@bjacobso/triplex/derivation";
+import { ConsumerCheckpoint } from "@bjacobso/triplex/operational";
 ```
 
 The root exports the `Triples` and `SnapshotService` runtime tags and their domain types.

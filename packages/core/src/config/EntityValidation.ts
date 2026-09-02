@@ -11,6 +11,7 @@ import { Context, Data, Effect, Layer, Result, Schema, SchemaIssue } from "effec
 
 import type { DatalogQuery } from "../datalog/types.js";
 import type {
+  CommandAlreadyCommittedError,
   DatalogError,
   ReadError,
   TransactionConflictError,
@@ -166,6 +167,7 @@ export type RevalidateError =
   | ReadError
   | WriteError
   | TransactionConflictError
+  | CommandAlreadyCommittedError
   | ConfigStore.LoadError
   | UnknownValidationRefError
   | InvalidEntitySchemaError

@@ -17,10 +17,12 @@ import {
   number,
   ref,
   string,
+  CommandAlreadyCommittedError,
   TransactionConflictError,
   Triples,
   type EntityId,
 } from "@bjacobso/triplex";
+import { ConsumerCheckpoint } from "@bjacobso/triplex/operational";
 
 // ─── Lightweight fixture descriptors (unchanged) ────────────────────────────
 
@@ -477,26 +479,160 @@ export const triplesConformanceCases: readonly ConformanceCase[] = [
           assertion.assertionTxId === committed.txId,
         "an assertion journal entry must retain its typed value, validity, and asserting transaction",
       );
-      yield* t.transact(
-        [
-          {
-            op: "assert",
-            entityId: "conf:conditional:receipt",
-            attribute: ":status",
-            value: string("observed"),
-          },
-        ],
-        { commandId: "conf:claim:1" },
-      );
-      const receipts = yield* t.transactionsByCommand("conf:claim:1");
+      const duplicate = yield* t
+        .transact(
+          [
+            {
+              op: "assert",
+              entityId: "conf:conditional:receipt",
+              attribute: ":status",
+              value: string("observed"),
+            },
+          ],
+          { commandId: "conf:claim:1" },
+        )
+        .pipe(Effect.flip);
       yield* check(
-        receipts.length === 2 && receipts[0]?.txId === committed.txId,
-        "command lookup must be indexed, ordered, and must not assume command IDs are unique",
+        duplicate instanceof CommandAlreadyCommittedError &&
+          duplicate.transactionId === committed.txId,
+        "a duplicate command must fail with the original durable receipt",
+      );
+      const receipt = yield* t.transactionByCommand("conf:claim:1");
+      yield* check(
+        receipt?.txId === committed.txId,
+        "command lookup must return the unique durable receipt",
+      );
+      const duplicateWrites = yield* t.match({ entityId: "conf:conditional:receipt" });
+      yield* check(duplicateWrites.length === 0, "a duplicate command must commit no writes");
+
+      const races = yield* Effect.all(
+        ["left", "right"].map((side) =>
+          t
+            .transact(
+              [
+                {
+                  op: "assert" as const,
+                  entityId: `conf:command-race:${side}`,
+                  attribute: ":status",
+                  value: string("won"),
+                },
+              ],
+              { commandId: "conf:command-race" },
+            )
+            .pipe(
+              Effect.match({
+                onFailure: (error) => ({ _tag: "failed" as const, error }),
+                onSuccess: (transaction) => ({ _tag: "committed" as const, transaction }),
+              }),
+            ),
+        ),
+        { concurrency: "unbounded" },
+      );
+      yield* check(
+        races.filter((result) => result._tag === "committed").length === 1 &&
+          races.filter(
+            (result) =>
+              result._tag === "failed" && result.error instanceof CommandAlreadyCommittedError,
+          ).length === 1,
+        "exactly one concurrent execution may claim a command ID",
       );
       const page = yield* t.transactions({ after: committed.position - 1, limit: 1 });
       yield* check(
         page.transactions[0]?.txId === committed.txId && page.next === committed.position,
         "transaction journals should be resumable from an ordered commit position",
+      );
+    }),
+  },
+  {
+    name: "consumer checkpoints advance atomically and remain queryable",
+    run: Effect.gen(function* () {
+      const t = yield* Triples;
+      const consumer = "conf:consumer:projection";
+      yield* check(
+        (yield* ConsumerCheckpoint.get(t, consumer)) === null,
+        "a new consumer must start without a checkpoint",
+      );
+
+      const source = yield* t.transact(
+        [
+          {
+            op: "assert",
+            entityId: "conf:checkpoint:source",
+            attribute: ":status",
+            value: string("ready"),
+          },
+        ],
+        { commandId: "conf:checkpoint:source" },
+      );
+
+      const initial = yield* ConsumerCheckpoint.advance(t, {
+        consumer,
+        expectedPosition: 0,
+        nextPosition: source.position,
+        meta: { actor: "conformance-worker" },
+      });
+      yield* check(
+        initial.position === source.position,
+        "the first checkpoint should retain the processed source position",
+      );
+
+      const candidates = yield* Effect.all(
+        ["left", "right"].map((side) =>
+          t.transact(
+            [
+              {
+                op: "assert" as const,
+                entityId: `conf:checkpoint:${side}`,
+                attribute: ":status",
+                value: string("ready"),
+              },
+            ],
+            { commandId: `conf:checkpoint:${side}` },
+          ),
+        ),
+      );
+
+      const races = yield* Effect.all(
+        candidates.map(({ position: nextPosition }) =>
+          ConsumerCheckpoint.advance(t, {
+            consumer,
+            expectedPosition: source.position,
+            nextPosition,
+          }).pipe(
+            Effect.match({
+              onFailure: (error) => ({ _tag: "failed" as const, error }),
+              onSuccess: (checkpoint) => ({ _tag: "advanced" as const, checkpoint }),
+            }),
+          ),
+        ),
+        { concurrency: "unbounded" },
+      );
+      yield* check(
+        races.filter((result) => result._tag === "advanced").length === 1 &&
+          races.filter(
+            (result) =>
+              result._tag === "failed" &&
+              result.error instanceof ConsumerCheckpoint.ConsumerCheckpointConflictError,
+          ).length === 1,
+        "exactly one worker may advance a checkpoint from the same source position",
+      );
+
+      const current = yield* ConsumerCheckpoint.get(t, consumer);
+      const feed = yield* t.transactions({ after: source.position, limit: 10 });
+      const { results } = yield* t.query({
+        find: ["?position"],
+        where: [
+          ["?checkpoint", ConsumerCheckpoint.System.attribute.consumer, consumer],
+          ["?checkpoint", ConsumerCheckpoint.System.attribute.position, "?position"],
+        ],
+      });
+      yield* check(
+        current !== null &&
+          candidates.some((candidate) => candidate.position === current.position) &&
+          feed.transactions.length === 2 &&
+          results.length === 1 &&
+          results[0]?.["?position"] === current.position,
+        "the checkpoint should be queryable without recursively appearing in its own feed",
       );
     }),
   },

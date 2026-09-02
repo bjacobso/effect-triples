@@ -41,7 +41,12 @@ hosts typed configuration as a modular layer over the same core.
   into optimistic concurrency boundaries. Every successful `transact` persists a causal envelope
   and asserted/retracted change descriptions as ordinary `_Transaction` facts. The backend also
   allocates a monotonic commit position in that atomic boundary; `Triples.transactions` pages the
-  journal from a durable resume cursor.
+  journal from a durable resume cursor. Command IDs are atomically unique per database through a
+  backend-local claim index, while the corresponding `_Transaction` remains the queryable receipt.
+- The `operational` subpath owns consumer checkpoints as reserved, Datalog-queryable facts.
+  Compare-and-retract prevents stale workers from overwriting a newer position. Checkpoint
+  maintenance is the one unjournaled internal mutation: emitting it into the feed would cause a
+  consumer to recursively consume and checkpoint its own cursor update.
 - Wrapped Datalog pagination uses versioned opaque cursors whose content-addressed fingerprints bind
   the canonical query, complete projected-row keyset order, temporal basis, and database scope.
   Facts retain assertion and retraction commit positions internally, so subsequent pages read the

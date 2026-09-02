@@ -430,7 +430,7 @@ describe("Triples", () => {
             corrected,
             createdRecord: yield* store.transaction(created.txId),
             correctedRecord: yield* store.transaction(corrected.txId),
-            commandRecords: yield* store.transactionsByCommand("person:create"),
+            commandRecord: yield* store.transactionByCommand("person:create"),
             page: yield* store.transactions({ after: created.position }),
           };
         }).pipe(Effect.provide(TestLayer)),
@@ -466,7 +466,7 @@ describe("Triples", () => {
           ]),
         }),
       );
-      expect(result.commandRecords.map((record) => record.txId)).toEqual([result.created.txId]);
+      expect(result.commandRecord?.txId).toBe(result.created.txId);
       expect(result.page.transactions.map((record) => record.txId)).toEqual([
         result.corrected.txId,
       ]);

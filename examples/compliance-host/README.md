@@ -6,7 +6,7 @@ site. The host application:
 
 - publishes a content-addressed configuration release;
 - writes operational placement and evidence facts with causal metadata;
-- consumes the ordered transaction feed from a durable-style cursor;
+- consumes the ordered transaction feed from a durable `ConsumerCheckpoint`;
 - materializes a Datalog derivation and reconciles it into durable requirement occurrences;
 - previews a submission through a read-only hypothetical overlay;
 - schedules the materializer at `nextTemporalBoundary`; and
@@ -23,10 +23,11 @@ The demo is self-verifying and also runs during `pnpm test`.
 ## What belongs where
 
 Triplex owns facts, temporal Datalog, configuration identity, candidate provenance, immutable
-materialization runs, reconciliation diffs, and temporal-boundary discovery. The example host owns
-the feed cursor, timer delivery, requirement occurrence lifecycle, command IDs, and the meaning of
-"satisfied" versus "open".
+materialization runs, reconciliation diffs, atomically unique command receipts, durable consumer
+checkpoints, and temporal-boundary discovery. The example host owns timer delivery, requirement
+occurrence lifecycle, command naming, and the meaning of "satisfied" versus "open".
 
-The in-memory cursor and scheduler make those boundaries easy to see. A production host should
-replace them with durable database records and an at-least-once job system. Reconciliation remains
-idempotent: it inspects durable requirement facts before opening, closing, or revising work.
+The in-memory scheduler makes that boundary easy to see. A production host should replace it with
+an at-least-once job system. The feed cursor is already a reserved Triplex fact and advances only
+after reconciliation succeeds. Reconciliation remains idempotent: it inspects durable requirement
+facts before opening, closing, or revising work.

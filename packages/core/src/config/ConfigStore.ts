@@ -10,6 +10,7 @@
 import { Context, Data, Effect, Layer } from "effect";
 
 import type {
+  CommandAlreadyCommittedError,
   DatalogError,
   ReadError,
   TransactionConflictError,
@@ -77,6 +78,7 @@ export type CommitError =
   | LoadError
   | WriteError
   | TransactionConflictError
+  | CommandAlreadyCommittedError
   | InMemoryConfigStore.DanglingRefError
   | InMemoryConfigStore.DuplicateObjectError
   | InMemoryConfigStore.UnknownSnapshotError
@@ -103,7 +105,11 @@ export interface ConfigStoreService {
     snapshotId: InMemoryConfigStore.ConfigSnapshot["id"],
   ) => Effect.Effect<
     InMemoryConfigStore.ConfigSnapshot,
-    LoadError | WriteError | TransactionConflictError | InMemoryConfigStore.UnknownSnapshotError
+    | LoadError
+    | WriteError
+    | TransactionConflictError
+    | CommandAlreadyCommittedError
+    | InMemoryConfigStore.UnknownSnapshotError
   >;
   readonly resolveRef: (
     name: string,

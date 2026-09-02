@@ -8,6 +8,7 @@ import {
   ENTITY_SNAPSHOTS_TABLE_DDL,
   SNAPSHOT_INDEX_DDLS,
   COMMIT_POSITION_TABLE_DDL,
+  COMMAND_RECEIPTS_TABLE_DDL,
 } from "./schema.js";
 
 export interface Migration {
@@ -33,6 +34,7 @@ export const migrations: readonly Migration[] = [
       ENTITY_SNAPSHOTS_TABLE_DDL,
       ...SNAPSHOT_INDEX_DDLS,
       COMMIT_POSITION_TABLE_DDL,
+      COMMAND_RECEIPTS_TABLE_DDL,
     ],
   },
 ];

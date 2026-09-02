@@ -139,6 +139,13 @@ export const transactionRecordsFromTriples = (
 export const livePreconditionIds = (meta?: TransactionMeta): ReadonlySet<string> =>
   new Set(meta?.preconditions?.map((condition) => condition.id) ?? []);
 
+export const invalidCommandId = (meta?: TransactionMeta): string | undefined => {
+  const commandId = meta?.commandId;
+  return commandId !== undefined && (commandId.length === 0 || commandId.length > 1_024)
+    ? commandId
+    : undefined;
+};
+
 export const validatePreconditions = (
   operations: readonly { readonly op: string; readonly id?: string }[],
   meta?: TransactionMeta,

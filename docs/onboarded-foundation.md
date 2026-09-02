@@ -110,6 +110,9 @@ transaction-ID tie-breaker, and rebuild Triplex `_Transaction` envelopes from th
 transaction entities plus the copied rows' `tx_id`/`retract_tx_id`. Old
 `effect-triples/transaction/*` and `effect-triples/entity/revision` facts are application data, not
 Triplex's reserved journal format; translate them rather than renaming their attributes in place.
+Populate `triplex_command_receipts` from the rebuilt envelopes' command IDs. Treat duplicate legacy
+command IDs as a migration error requiring an explicit application decision; never select one
+receipt silently.
 
 Before cutover, compare per organization:
 
@@ -176,16 +179,17 @@ and call one `Triples.transact` with:
 Use the returned transaction ID with `transaction(txId)` to construct the API audit result. Each
 retraction change includes the old typed value and original assertion transaction; assertion
 changes include the replacement. Durable workers page `transactions({ after: checkpoint })`, do
-idempotent work, and advance a host-owned checkpoint only after side effects commit. Command IDs
-are searchable but not uniquely enforced by Triplex, so Onboarded must retain its atomic command
-receipt for exactly-once command acceptance.
+idempotent work, and call `ConsumerCheckpoint.advance` only after side effects commit. Command IDs
+are atomically unique per organization database; a duplicate returns the original transaction ID
+through `CommandAlreadyCommittedError`, and `transactionByCommand` loads the receipt. Onboarded can
+therefore wrap this primitive rather than maintaining a second command-claim table, while retaining
+its product-specific response cache and authorization checks.
 
 ## Remaining limitations
 
 - Cross-entity cardinality, uniqueness, required relationships, reference integrity, and
   authorization are not transactionally enforced by core.
-- Command IDs are not unique. Consumer checkpoints, inbox/outbox records, retry policy, and timer
-  delivery remain host-owned.
+- Inbox/outbox records, response caching, retry policy, and timer delivery remain host-owned.
 - Derivation provenance currently rejects recursive rules, disjunction, aggregation, and dynamic
   attributes rather than returning an incomplete explanation.
 - Entity snapshots and derivation materializations are projections; callers must inspect their

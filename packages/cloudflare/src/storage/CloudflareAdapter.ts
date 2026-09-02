@@ -165,6 +165,44 @@ export function makeCloudflareAdapter(ctx: DOState): StorageAdapterService {
         }),
     });
 
+  const claimCommand: StorageAdapterService["claimCommand"] = (
+    commandId,
+    transactionId,
+    timestamp,
+  ) =>
+    Effect.try({
+      try: () => {
+        const inserted = sqlStorage
+          .exec<{ readonly transaction_id: string }>(
+            `INSERT INTO triplex_command_receipts (command_id, transaction_id, recorded_at)
+             VALUES (?, ?, ?)
+             ON CONFLICT(command_id) DO NOTHING
+             RETURNING transaction_id`,
+            commandId,
+            transactionId,
+            timestamp,
+          )
+          .toArray();
+        if (inserted.length > 0) return null;
+
+        const existing = sqlStorage
+          .exec<{ readonly transaction_id: string }>(
+            "SELECT transaction_id FROM triplex_command_receipts WHERE command_id = ?",
+            commandId,
+          )
+          .one();
+        if (existing === null) {
+          throw new Error(`Command receipt ${commandId} has no original transaction`);
+        }
+        return existing.transaction_id;
+      },
+      catch: (error) =>
+        new WriteError({
+          message: `Failed to claim command ${commandId}: ${String(error)}`,
+          cause: error,
+        }),
+    });
+
   // =========================================================================
   // Write Operations
   // =========================================================================
@@ -539,6 +577,7 @@ export function makeCloudflareAdapter(ctx: DOState): StorageAdapterService {
     withTransaction,
     nextCommitPosition,
     currentCommitPosition,
+    claimCommand,
     insert,
     batchInsert,
     retract,

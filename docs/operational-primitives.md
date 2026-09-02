@@ -42,8 +42,11 @@ Every successful `transact` persists an `_Transaction` entity with:
 - one `:_tx/change` JSON fact for every asserted or retracted application fact.
 
 `Triples.transaction(txId)` reconstructs the typed envelope. The same facts remain available to
-Datalog for application-specific audit queries. A command ID is an idempotency identity, not yet
-an enforced uniqueness constraint.
+Datalog for application-specific audit queries. A command ID is an atomically unique idempotency
+identity within one Triplex database. Concurrent attempts acquire a backend-local claim inside the
+same transaction as the facts and envelope; exactly one commits. A loser receives
+`CommandAlreadyCommittedError` with the original transaction ID, and
+`Triples.transactionByCommand(commandId)` loads that durable receipt.
 
 ### Ordered transaction feed
 
@@ -53,9 +56,23 @@ envelopes in that order and exposes the last position as the next durable resume
 transactions publish neither facts nor a position. This avoids treating timestamps or
 client-generated ULIDs as commit order under concurrency.
 
-The feed covers every successful public write. Delivery built on repeated page reads is at least
+The feed covers every successful application fact write. Delivery built on repeated page reads is at least
 once, so consumers retain a checkpoint and deduplicate by command or transaction identity.
 `ChangeEmitter` remains a best-effort wake-up mechanism and never replaces catch-up reads.
+
+### Consumer checkpoints
+
+`@bjacobso/triplex/operational` stores one reserved, queryable checkpoint entity per named
+consumer. `ConsumerCheckpoint.advance` accepts the position read before processing and the final
+position whose effects completed. Moving it uses compare-and-retract, never moves backwards, and
+returns a typed conflict to a stale worker. The initial write is protected by the same atomic
+command-claim mechanism, so concurrent initialization cannot create two live positions.
+
+Checkpoint maintenance is atomically persisted but intentionally omitted from the transaction
+feed. Otherwise an idle consumer would observe its own cursor update, advance past it by writing
+another cursor update, and repeat forever. These unjournaled system writes still allocate commit
+positions, so recorded snapshot ordering remains total; application commands remain fully
+journaled.
 
 ### Snapshot-stable Datalog pages
 
@@ -132,11 +149,11 @@ implemented.
 
 ## Next primitives
 
-### Consumer checkpoints and command receipts
+### Inboxes and outboxes
 
-Define conventional first-class entities for consumer checkpoints, command receipts, inboxes, and
-outboxes. Their movement should use compare-and-retract, while the ordered transaction feed
-remains the source of catch-up truth.
+Define conventional first-class inbox and outbox records without embedding delivery vendors or
+retry policy in core. Command receipts and consumer checkpoints now provide the atomic identities
+and durable resume positions beneath them.
 
 ### Graph constraints
 
