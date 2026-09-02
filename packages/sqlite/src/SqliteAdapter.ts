@@ -116,11 +116,27 @@ export const makeSqliteAdapter = (config: SqliteAdapterConfig = {}) =>
           ),
         );
 
+      const currentCommitPosition: StorageAdapterService["currentCommitPosition"] = () =>
+        provide(
+          sql<{ readonly position: number }>`
+            SELECT position FROM triplex_commit_position WHERE singleton = 1
+          `.pipe(
+            Effect.map((rows) => Number(rows[0]?.position ?? 0)),
+            Effect.mapError(
+              (error) =>
+                new ReadError({
+                  message: `Failed to read commit position: ${String(error)}`,
+                  cause: error,
+                }),
+            ),
+          ),
+        );
+
       // =========================================================================
       // Write Operations
       // =========================================================================
 
-      const insert: StorageAdapterService["insert"] = (input, txId, timestamp, id) =>
+      const insert: StorageAdapterService["insert"] = (input, txId, timestamp, id, position) =>
         provide(
           Effect.gen(function* () {
             const packed = packValue(input.value);
@@ -129,13 +145,13 @@ export const makeSqliteAdapter = (config: SqliteAdapterConfig = {}) =>
             INSERT INTO triples (
               id, entity_id, attribute, value_type,
               value_string, value_number, value_boolean, value_datetime, value_json,
-              created_at, recorded_at, valid_from, valid_to,
+              created_at, recorded_at, recorded_position, valid_from, valid_to,
               created_by, entity_type, schema_version, tx_id
             ) VALUES (
               ${id}, ${input.entityId}, ${input.attribute}, ${packed.value_type},
               ${packed.value_string}, ${packed.value_number}, ${packed.value_boolean},
               ${packed.value_datetime}, ${packed.value_json},
-              ${timestamp}, ${timestamp}, ${input.validFrom ?? timestamp}, ${input.validTo ?? null},
+              ${timestamp}, ${timestamp}, ${position}, ${input.validFrom ?? timestamp}, ${input.validTo ?? null},
               ${input.createdBy ?? null}, ${input.entityType ?? null}, ${1}, ${txId}
             )
           `.pipe(
@@ -160,11 +176,13 @@ export const makeSqliteAdapter = (config: SqliteAdapterConfig = {}) =>
               value_json: packed.value_json,
               created_at: timestamp,
               recorded_at: timestamp,
+              recorded_position: position,
               valid_from: input.validFrom ?? timestamp,
               valid_to: input.validTo ?? null,
               created_by: input.createdBy ?? null,
               retracted_at: null,
               recorded_retracted_at: null,
+              recorded_retracted_position: null,
               entity_type: input.entityType ?? null,
               schema_version: 1,
               tx_id: txId,
@@ -173,7 +191,13 @@ export const makeSqliteAdapter = (config: SqliteAdapterConfig = {}) =>
           }),
         );
 
-      const batchInsert: StorageAdapterService["batchInsert"] = (inputs, txId, timestamp, ids) => {
+      const batchInsert: StorageAdapterService["batchInsert"] = (
+        inputs,
+        txId,
+        timestamp,
+        ids,
+        position,
+      ) => {
         if (inputs.length === 0) return Effect.succeed([]);
         if (ids.length !== inputs.length) {
           return Effect.fail(
@@ -243,7 +267,7 @@ export const makeSqliteAdapter = (config: SqliteAdapterConfig = {}) =>
                   const params: unknown[] = [];
 
                   for (const { id, input, packed } of chunk) {
-                    placeholders.push("(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
+                    placeholders.push("(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
                     params.push(
                       id,
                       input.entityId,
@@ -256,6 +280,7 @@ export const makeSqliteAdapter = (config: SqliteAdapterConfig = {}) =>
                       packed.value_json,
                       timestamp,
                       timestamp,
+                      position,
                       input.validFrom ?? timestamp,
                       input.validTo ?? null,
                       input.createdBy ?? null,
@@ -269,7 +294,7 @@ export const makeSqliteAdapter = (config: SqliteAdapterConfig = {}) =>
                   INSERT INTO triples (
                     id, entity_id, attribute, value_type,
                     value_string, value_number, value_boolean, value_datetime, value_json,
-                    created_at, recorded_at, valid_from, valid_to,
+                    created_at, recorded_at, recorded_position, valid_from, valid_to,
                     created_by, entity_type, schema_version, tx_id
                   ) VALUES ${placeholders.join(", ")}
                 `;
@@ -300,11 +325,13 @@ export const makeSqliteAdapter = (config: SqliteAdapterConfig = {}) =>
               value_json: packed.value_json,
               created_at: timestamp,
               recorded_at: timestamp,
+              recorded_position: position,
               valid_from: input.validFrom ?? timestamp,
               valid_to: input.validTo ?? null,
               created_by: input.createdBy ?? null,
               retracted_at: null,
               recorded_retracted_at: null,
+              recorded_retracted_position: null,
               entity_type: input.entityType ?? null,
               schema_version: 1,
               tx_id: txId,
@@ -323,12 +350,12 @@ export const makeSqliteAdapter = (config: SqliteAdapterConfig = {}) =>
         );
       };
 
-      const retract: StorageAdapterService["retract"] = (id, timestamp, txId) =>
+      const retract: StorageAdapterService["retract"] = (id, timestamp, txId, position) =>
         provide(
           Effect.gen(function* () {
             const rows = yield* sql<{ readonly id: string }>`
             UPDATE triples
-            SET retracted_at = ${timestamp}, recorded_retracted_at = ${timestamp}, retract_tx_id = ${txId ?? null}
+            SET retracted_at = ${timestamp}, recorded_retracted_at = ${timestamp}, recorded_retracted_position = ${position ?? null}, retract_tx_id = ${txId ?? null}
             WHERE id = ${id} AND retracted_at IS NULL
             RETURNING id
           `.pipe(
@@ -553,6 +580,7 @@ export const makeSqliteAdapter = (config: SqliteAdapterConfig = {}) =>
       return {
         withTransaction,
         nextCommitPosition,
+        currentCommitPosition,
         insert,
         batchInsert,
         retract,

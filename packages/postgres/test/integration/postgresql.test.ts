@@ -132,6 +132,38 @@ describe("PostgreSQL Integration", () => {
               false,
             );
 
+            yield* Effect.all([
+              acme.assert({
+                entityId: "acme:worker:second",
+                entityType: "Worker",
+                attribute: ":worker/name",
+                value: string("Zed at Acme"),
+              }),
+              globex.assert({
+                entityId: "globex:worker:second",
+                entityType: "Worker",
+                attribute: ":worker/name",
+                value: string("Zed at Globex"),
+              }),
+            ]);
+            const pageRequest = {
+              inner: {
+                find: ["?worker", "?name"],
+                where: [["?worker", ":worker/name", "?name"]],
+              },
+              orderBy: [{ variable: "?name" as const, direction: "asc" as const }],
+              limit: 1,
+            } as const;
+            const acmePage = yield* acme.queryPage(pageRequest);
+            expect(acmePage.nextCursor).toBeDefined();
+            const crossScope = yield* globex
+              .queryPage({ ...pageRequest, cursor: acmePage.nextCursor })
+              .pipe(Effect.flip);
+            expect(crossScope).toMatchObject({
+              _tag: "PaginationCursorError",
+              reason: "scope_mismatch",
+            });
+
             const commitConfig = (triples: typeof acme, label: string) =>
               Effect.gen(function* () {
                 const node = yield* ConfigNode.make({

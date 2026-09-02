@@ -67,6 +67,36 @@ export const migrations: readonly Migration[] = [
       "CREATE INDEX IF NOT EXISTS idx_snapshot_position ON entity_snapshots(entity_id, tx_position DESC, tx_time DESC)",
     ],
   },
+  {
+    version: 4,
+    name: "fact_commit_positions",
+    up: [
+      "ALTER TABLE triples ADD COLUMN recorded_position BIGINT",
+      "ALTER TABLE triples ADD COLUMN recorded_retracted_position BIGINT",
+      `UPDATE triples
+       SET recorded_position = (
+         SELECT value_number
+         FROM triples AS transaction_position
+         WHERE transaction_position.entity_id = triples.tx_id
+           AND transaction_position.attribute = ':_tx/position'
+         ORDER BY transaction_position.recorded_at DESC
+         LIMIT 1
+       )
+       WHERE recorded_position IS NULL`,
+      `UPDATE triples
+       SET recorded_retracted_position = (
+         SELECT value_number
+         FROM triples AS transaction_position
+         WHERE transaction_position.entity_id = triples.retract_tx_id
+           AND transaction_position.attribute = ':_tx/position'
+         ORDER BY transaction_position.recorded_at DESC
+         LIMIT 1
+       )
+       WHERE recorded_retracted_position IS NULL
+         AND retract_tx_id IS NOT NULL`,
+      "CREATE INDEX IF NOT EXISTS idx_recorded_position ON triples(recorded_position, recorded_retracted_position)",
+    ],
+  },
 ];
 
 export const runMigrations = Effect.gen(function* () {

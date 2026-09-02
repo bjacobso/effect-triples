@@ -465,7 +465,7 @@ export const WrapperFilter = Schema.Struct({
  *   orderBy: [{ variable: "?name", direction: "asc" }],
  *   filters: [{ column: "?name", op: "ilike", value: "%smith%" }],
  *   limit: 20,
- *   cursor: "eyI/bmFtZSI6IlNtaXRoIn0=",  // Base64 encoded cursor from previous page
+ *   cursor: firstPage.nextCursor, // Opaque cursor returned by queryPage
  *   includeCount: true
  * }
  * ```
@@ -481,7 +481,7 @@ export const WrappedQuery = Schema.Struct({
   limit: Schema.optional(
     Schema.Number.pipe(Schema.check(Schema.isInt()), Schema.check(Schema.isGreaterThan(0))),
   ),
-  /** Cursor for keyset pagination (base64 encoded, more efficient than offset) */
+  /** Opaque, versioned keyset cursor returned by `Triples.queryPage` */
   cursor: Schema.optional(Schema.String),
   /** Whether to include total count of filtered results */
   includeCount: Schema.optional(Schema.Boolean),

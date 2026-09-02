@@ -103,6 +103,61 @@ describe("KvTriples (merged service)", () => {
     expect(result.empty).toEqual({ transactions: [] });
   });
 
+  it("keeps paged results stable when every transaction has the same millisecond", async () => {
+    let id = 0;
+    const nextId = () => String(++id).padStart(26, "0");
+    const layer = KvTriplesLive.pipe(
+      Layer.provide(Layer.succeed(KvBackend, makeTestKvBackend())),
+      Layer.provide(
+        Layer.succeed(TripleStoreRuntime, {
+          scope: "test:pagination-position",
+          now: Effect.succeed(1_800_000_000_000),
+          nextTxId: Effect.sync(() => `_tx/${nextId()}`),
+          nextTripleId: Effect.sync(() => nextId() as TripleId),
+        }),
+      ),
+    );
+
+    const pages = await Effect.runPromise(
+      Effect.gen(function* () {
+        const t = yield* Triples;
+        const seeded = yield* t.assertBatch(
+          ["a", "b", "c", "d"].map((suffix, index) => ({
+            entityId: `same-time:${suffix}`,
+            attribute: ":page/rank",
+            value: { type: "number" as const, value: index === 3 ? 2 : 1 },
+          })),
+        );
+        const query = {
+          inner: {
+            find: ["?entity", "?rank"],
+            where: [["?entity", ":page/rank", "?rank"]],
+          },
+          orderBy: [{ variable: "?rank", direction: "asc" }],
+          limit: 2,
+        } as const;
+        const first = yield* t.queryPage(query);
+        yield* t.assert({
+          entityId: "same-time:later",
+          attribute: ":page/rank",
+          value: { type: "number", value: 0 },
+        });
+        yield* t.retract(seeded[2]!.id);
+        const second = yield* t.queryPage({ ...query, cursor: first.nextCursor });
+        return { first, second };
+      }).pipe(Effect.provide(layer)),
+    );
+
+    expect(pages.first.results.map((row) => row["?entity"])).toEqual([
+      "same-time:a",
+      "same-time:b",
+    ]);
+    expect(pages.second.results.map((row) => row["?entity"])).toEqual([
+      "same-time:c",
+      "same-time:d",
+    ]);
+  });
+
   it("persists a causal transaction journal and rejects stale replacements", async () => {
     const result = await run(
       Effect.gen(function* () {
@@ -179,6 +234,7 @@ describe("KvTriples (merged service)", () => {
       Layer.provide(Layer.succeed(KvBackend, makeTestKvBackend())),
       Layer.provide(
         Layer.succeed(TripleStoreRuntime, {
+          scope: "test:kv",
           now: Effect.succeed(1_800_000_000_000),
           nextTxId: Effect.succeed("_tx/01AAAAAAAAAAAAAAAAAAAAAAAA"),
           nextTripleId: Effect.sync(() => {

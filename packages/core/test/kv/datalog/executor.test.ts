@@ -26,8 +26,14 @@ const makeDatom = (overrides: Partial<Datom> = {}): Datom => ({
   value: str("v"),
   txId: "tx:1",
   createdAt: 1000,
+  recordedAt: 1000,
+  recordedPosition: 1,
+  validFrom: 1000,
+  validTo: null,
   createdBy: null,
   retractedAt: null,
+  recordedRetractedAt: null,
+  recordedRetractedPosition: null,
   retractTxId: null,
   entityType: null,
   ...overrides,
@@ -655,7 +661,7 @@ describe("wrapped query", () => {
     expect(result.results.length).toBe(2); // Alice, Charlie
   });
 
-  it("provides cursor for pagination", async () => {
+  it("applies decoded cursor values for pagination", async () => {
     const query: WrappedQuery = {
       inner: {
         find: ["?name", "?age"],
@@ -665,20 +671,15 @@ describe("wrapped query", () => {
         ],
       },
       orderBy: [{ variable: "?name", direction: "asc" }],
-      limit: 2,
+      limit: 3,
     };
 
     const page1 = await run(executeWrappedQuery(store, query));
-    expect(page1.results.length).toBe(2);
-    expect(page1.nextCursor).toBeDefined();
+    expect(page1.results.length).toBe(3);
 
-    // Use cursor for page 2
-    const page2 = await run(
-      executeWrappedQuery(store, {
-        ...query,
-        cursor: page1.nextCursor,
-      }),
-    );
+    // The Triples boundary owns opaque cursor encoding; the executor consumes
+    // only the already-decoded deterministic ordering tuple.
+    const page2 = await run(executeWrappedQuery(store, query, [], { cursorValues: ["Bob", 25] }));
     expect(page2.results.length).toBe(1);
     expect(page2.results[0]!["?name"]).toBe("Charlie");
   });

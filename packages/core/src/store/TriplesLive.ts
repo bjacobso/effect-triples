@@ -41,6 +41,7 @@ import {
   QueryError,
   DatalogError,
   TransactionConflictError,
+  PaginationCursorError,
 } from "../errors/index.js";
 import type { SqlDialect } from "../dialects/index.js";
 import { CurrentDialect } from "../dialects/index.js";
@@ -62,6 +63,7 @@ import {
 } from "./systemNamespace.js";
 import { basisFromAsOf, resolveTemporalBasis } from "../Temporal.js";
 import { TxAttributes } from "../utils/id.js";
+import { finishPagination, preparePagination } from "../Pagination.js";
 
 // =============================================================================
 // Row to Triple Conversion
@@ -317,6 +319,7 @@ export const TriplesLive = Layer.effect(
       assertOps: readonly TransactOp[],
       txId: string,
       timestamp: number,
+      position: number,
       actor?: string,
     ): Effect.Effect<Triple[], WriteError> =>
       Effect.gen(function* () {
@@ -336,7 +339,13 @@ export const TriplesLive = Layer.effect(
         });
 
         if (inputs.length === 1) {
-          const row = yield* adapter.insert(inputs[0]!, txId, timestamp, yield* nextTripleId);
+          const row = yield* adapter.insert(
+            inputs[0]!,
+            txId,
+            timestamp,
+            yield* nextTripleId,
+            position,
+          );
           return [rowToTriple(row)];
         }
 
@@ -345,6 +354,7 @@ export const TriplesLive = Layer.effect(
           txId,
           timestamp,
           yield* Effect.all(inputs.map(() => nextTripleId)),
+          position,
         );
         return rows.map(rowToTriple);
       });
@@ -386,7 +396,13 @@ export const TriplesLive = Layer.effect(
             }
 
             if (pendingAsserts.length > 0) {
-              const batch = yield* flushAssertBatch(pendingAsserts, txId, timestamp, actor);
+              const batch = yield* flushAssertBatch(
+                pendingAsserts,
+                txId,
+                timestamp,
+                position,
+                actor,
+              );
               triples.push(...batch);
               changes.push(
                 ...batch.map((triple) =>
@@ -407,7 +423,12 @@ export const TriplesLive = Layer.effect(
                   });
                   if (reserved) return yield* Effect.fail(reserved);
                 }
-                const didRetract = yield* adapter.retract(op.id as string, timestamp, txId);
+                const didRetract = yield* adapter.retract(
+                  op.id as string,
+                  timestamp,
+                  txId,
+                  position,
+                );
                 if (!didRetract && preconditionIds.has(op.id as string)) {
                   return yield* Effect.fail(
                     new TransactionConflictError({
@@ -440,7 +461,7 @@ export const TriplesLive = Layer.effect(
                   }
                 }
                 for (const row of matched) {
-                  if (yield* adapter.retract(row.id, timestamp, txId)) {
+                  if (yield* adapter.retract(row.id, timestamp, txId, position)) {
                     retractedCount++;
                     changes.push(
                       transactionChangeFromTriple("retract", rowToTriple(row), txId, timestamp),
@@ -453,7 +474,7 @@ export const TriplesLive = Layer.effect(
           }
 
           if (pendingAsserts.length > 0) {
-            const batch = yield* flushAssertBatch(pendingAsserts, txId, timestamp, actor);
+            const batch = yield* flushAssertBatch(pendingAsserts, txId, timestamp, position, actor);
             triples.push(...batch);
             changes.push(
               ...batch.map((triple) =>
@@ -463,7 +484,7 @@ export const TriplesLive = Layer.effect(
           }
 
           for (const input of metadataInputs(txId, position, timestamp, meta, changes)) {
-            yield* adapter.insert(input, txId, timestamp, yield* nextTripleId);
+            yield* adapter.insert(input, txId, timestamp, yield* nextTripleId, position);
           }
 
           return { txId, position, instant: timestamp, triples, retracted: retractedCount };
@@ -708,16 +729,34 @@ export const TriplesLive = Layer.effect(
 
     const queryPage = (q: WrappedQuery, options?: QueryOptions) =>
       Effect.gen(function* () {
-        if (options?.basis !== undefined && options.asOf !== undefined) {
-          return yield* Effect.fail(
-            new ReadError({ message: "Use either basis or asOf, not both" }),
-          );
-        }
-        const basis = resolveTemporalBasis(
-          options?.basis ?? (options?.asOf === undefined ? undefined : basisFromAsOf(options.asOf)),
-          yield* now,
+        const currentTime = yield* now;
+        const recordedPosition = yield* adapter.currentCommitPosition();
+        const prepared = yield* Effect.try({
+          try: () =>
+            preparePagination({
+              query: q,
+              ...(options?.basis === undefined ? {} : { basis: options.basis }),
+              ...(options?.asOf === undefined ? {} : { asOf: options.asOf }),
+              now: currentTime,
+              recordedPosition,
+              scope: runtime.scope,
+            }),
+          catch: (cause) =>
+            cause instanceof PaginationCursorError
+              ? cause
+              : new PaginationCursorError({
+                  reason: "malformed",
+                  message: `Failed to prepare pagination: ${String(cause)}`,
+                  cause,
+                }),
+        });
+        const result = yield* executor.executePage(
+          prepared.query,
+          options?.debug ?? false,
+          prepared.basis,
+          prepared.cursorValues,
         );
-        return yield* executor.executePage(q, options?.debug ?? false, basis);
+        return finishPagination(prepared, result);
       }).pipe(Effect.withSpan("triples.queryPage"));
 
     const explain = (q: DatalogQuery) =>

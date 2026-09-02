@@ -874,6 +874,7 @@ describe("StoreCapability composition", () => {
       const sqliteLayer = SqliteClient.layer({ filename: ":memory:" });
       const adapterLayer = SqliteAdapterLive.pipe(Layer.provide(sqliteLayer));
       const runtimeLayer = Layer.succeed(TripleStoreRuntime, {
+        scope: "test:snapshots",
         now: Effect.succeed(1234567890),
         nextTripleId: Effect.sync(
           (() => {

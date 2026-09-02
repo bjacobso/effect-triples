@@ -18,22 +18,27 @@ export interface StorageAdapterService {
   readonly withTransaction: <A, E>(effect: Effect.Effect<A, E>) => Effect.Effect<A, E | WriteError>;
   /** Allocate the next ordered commit position inside the current transaction. */
   readonly nextCommitPosition: () => Effect.Effect<number, WriteError>;
+  /** Read the latest committed position for an exact read snapshot boundary. */
+  readonly currentCommitPosition: () => Effect.Effect<number, ReadError>;
   readonly insert: (
     input: TripleInput,
     txId: string | null,
     timestamp: number,
     id: string,
+    position: number,
   ) => Effect.Effect<TripleRow, WriteError>;
   readonly batchInsert: (
     inputs: readonly TripleInput[],
     txId: string,
     timestamp: number,
     ids: readonly string[],
+    position: number,
   ) => Effect.Effect<readonly TripleRow[], WriteError>;
   readonly retract: (
     id: string,
     timestamp: number,
     txId?: string,
+    position?: number,
   ) => Effect.Effect<boolean, WriteError>;
   readonly getById: (id: string) => Effect.Effect<TripleRow | null, ReadError>;
   readonly getByEntity: (

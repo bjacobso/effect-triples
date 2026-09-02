@@ -17,6 +17,8 @@ export type TemporalBasis = typeof TemporalBasis.Type;
 /** A basis whose business-time instant has been resolved by the caller. */
 export interface ResolvedTemporalBasis {
   readonly recordedAt?: number;
+  /** Internal exact commit cut used by snapshot-stable pagination. */
+  readonly recordedPosition?: number;
   readonly validAt: number;
 }
 

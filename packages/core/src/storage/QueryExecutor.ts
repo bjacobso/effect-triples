@@ -14,6 +14,7 @@ import { Context, Effect } from "effect";
 import type { ReadError } from "../errors/index.js";
 import type { DatalogQuery, WrappedQuery } from "../datalog/types.js";
 import type { ResolvedTemporalBasis } from "../Temporal.js";
+import type { PaginationValue } from "../Pagination.js";
 
 /**
  * Variable-to-value binding from query execution
@@ -136,6 +137,7 @@ export interface QueryExecutorService {
     query: WrappedQuery,
     debug?: boolean,
     basis?: ResolvedTemporalBasis,
+    cursorValues?: readonly PaginationValue[],
   ) => Effect.Effect<WrappedQueryResult, ReadError>;
 
   /**

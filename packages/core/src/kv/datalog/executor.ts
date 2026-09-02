@@ -15,7 +15,7 @@
  * and wrapper queries with cursor-based keyset pagination.
  */
 
-import { Effect, Result, Encoding, Stream } from "effect";
+import { Effect, Stream } from "effect";
 import type { KvTripleStore } from "../hexastore/KvTripleStore.js";
 import type { TripleValue } from "../../Value.js";
 import type { ResolvedTemporalBasis } from "../../Temporal.js";
@@ -48,6 +48,7 @@ import {
 import { executePattern } from "./pattern.js";
 import { evaluatePredicate } from "./predicate.js";
 import { normalizeOrAlternatives } from "../../datalog/schema.js";
+import type { PaginationValue } from "../../Pagination.js";
 
 // ─── Clause execution ──────────────────────────────────────────────────────
 
@@ -582,25 +583,47 @@ const applyHaving = (results: readonly Context[], having: readonly HavingClause[
 const applyOrderBy = (results: Context[], orderBy: readonly OrderBySpec[]): Context[] => {
   return results.sort((a, b) => {
     for (const { variable, direction } of orderBy) {
-      const aVal = a[variable];
-      const bVal = b[variable];
-
-      if (aVal === bVal) continue;
-      if (aVal === undefined) return 1;
-      if (bVal === undefined) return -1;
-
-      let cmp = 0;
-      if (typeof aVal === "number" && typeof bVal === "number") {
-        cmp = aVal - bVal;
-      } else {
-        cmp = String(aVal) < String(bVal) ? -1 : 1;
-      }
-
-      if ((direction ?? "asc") === "desc") cmp = -cmp;
+      const cmp = comparePaginationValues(
+        a[variable] ?? null,
+        b[variable] ?? null,
+        direction ?? "asc",
+      );
       if (cmp !== 0) return cmp;
     }
     return 0;
   });
+};
+
+type ComparablePaginationValue = Constant | null;
+
+const paginationCategory = (value: ComparablePaginationValue): number => {
+  if (value === null) return 3;
+  if (typeof value === "number") return 0;
+  if (typeof value === "boolean") return 1;
+  return 2;
+};
+
+const comparePaginationValues = (
+  left: ComparablePaginationValue,
+  right: ComparablePaginationValue,
+  direction: "asc" | "desc",
+): number => {
+  if (left === right) return 0;
+  const leftCategory = paginationCategory(left);
+  const rightCategory = paginationCategory(right);
+  if (leftCategory !== rightCategory) return leftCategory - rightCategory;
+  if (left === null) return 0;
+
+  let comparison: number;
+  if (typeof left === "number" && typeof right === "number") comparison = left - right;
+  else if (typeof left === "boolean" && typeof right === "boolean") {
+    comparison = Number(left) - Number(right);
+  } else {
+    const leftText = typeof left === "object" ? JSON.stringify(left) : String(left);
+    const rightText = typeof right === "object" ? JSON.stringify(right) : String(right);
+    comparison = leftText < rightText ? -1 : 1;
+  }
+  return direction === "desc" ? -comparison : comparison;
 };
 
 // ─── LIMIT / OFFSET ───────────────────────────────────────────────────────
@@ -704,7 +727,10 @@ export const executeWrappedQuery = (
   store: KvTripleStore,
   query: WrappedQuery,
   rules: readonly Rule[] = [],
-  options: { readonly basis?: ResolvedTemporalBasis } = {},
+  options: {
+    readonly basis?: ResolvedTemporalBasis;
+    readonly cursorValues?: readonly PaginationValue[];
+  } = {},
 ): Effect.Effect<WrappedQueryResult> => {
   return Effect.gen(function* () {
     // 1. Execute inner query
@@ -725,29 +751,19 @@ export const executeWrappedQuery = (
     }
 
     // 5. Cursor-based pagination
-    if (query.cursor) {
-      results = applyCursor(results, query.cursor, query.orderBy ?? []);
+    if (options.cursorValues) {
+      results = applyCursor(results, options.cursorValues, query.orderBy ?? []);
     }
 
     // 6. Limit (fetch one extra to determine if there's a next page)
     const limit = query.limit;
-    let nextCursor: string | undefined;
-
     if (limit !== undefined) {
-      if (results.length > limit) {
-        results = results.slice(0, limit);
-        // Encode cursor from the last result's order-by values
-        const lastResult = results[results.length - 1];
-        if (lastResult) {
-          nextCursor = encodeCursor(lastResult, query.orderBy ?? []);
-        }
-      }
+      results = results.slice(0, limit);
     }
 
     return {
       results,
       ...(totalCount !== undefined ? { totalCount } : {}),
-      ...(nextCursor !== undefined ? { nextCursor } : {}),
     };
   });
 };
@@ -846,46 +862,15 @@ const likeMatch = (value: string, pattern: string, caseInsensitive: boolean): bo
 
 // ─── Cursor-based pagination ───────────────────────────────────────────────
 
-const textEncoder = new TextEncoder();
-const textDecoder = new TextDecoder();
-
-const encodeBase64Url = (bytes: Uint8Array): string => Encoding.encodeBase64Url(bytes);
-
-const decodeBase64Url = (base64url: string): Uint8Array =>
-  Result.getOrThrow(Encoding.decodeBase64Url(base64url));
-
-/**
- * Encode a cursor from a result row.
- * The cursor captures the values of the ORDER BY columns for keyset pagination.
- */
-const encodeCursor = (row: Context, orderBy: readonly OrderBySpec[]): string => {
-  const values = orderBy.map(({ variable }) => row[variable] ?? null);
-  const bytes = textEncoder.encode(JSON.stringify(values));
-  return encodeBase64Url(bytes);
-};
-
-/**
- * Decode a cursor back to ORDER BY values.
- */
-const decodeCursor = (cursor: string): Constant[] => {
-  try {
-    const bytes = decodeBase64Url(cursor);
-    return JSON.parse(textDecoder.decode(bytes)) as Constant[];
-  } catch {
-    return [];
-  }
-};
-
 /**
  * Apply cursor-based keyset pagination.
  * Filters results to only those "after" the cursor position.
  */
 const applyCursor = (
   results: Context[],
-  cursor: string,
+  cursorValues: readonly PaginationValue[],
   orderBy: readonly OrderBySpec[],
 ): Context[] => {
-  const cursorValues = decodeCursor(cursor);
   if (cursorValues.length === 0 || orderBy.length === 0) return results;
 
   return results.filter((row) => {
@@ -894,18 +879,9 @@ const applyCursor = (
       const rowVal = row[variable];
       const curVal = cursorValues[i];
 
-      if (rowVal === curVal) continue;
-      if (rowVal === undefined) return false;
-      if (curVal === undefined || curVal === null) return true;
-
-      const isAsc = (direction ?? "asc") === "asc";
-
-      if (typeof rowVal === "number" && typeof curVal === "number") {
-        return isAsc ? rowVal > curVal : rowVal < curVal;
-      }
-
-      const cmp = String(rowVal) < String(curVal) ? -1 : 1;
-      return isAsc ? cmp > 0 : cmp < 0;
+      const cmp = comparePaginationValues(rowVal ?? null, curVal ?? null, direction ?? "asc");
+      if (cmp === 0) continue;
+      return cmp > 0;
     }
     return false; // All values equal to cursor — skip (already returned)
   });

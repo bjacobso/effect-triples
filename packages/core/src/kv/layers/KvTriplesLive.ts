@@ -22,13 +22,22 @@ import {
 } from "../../store/Triples.js";
 import type { QueryDebugInfo, QueryMetrics, QueryResult } from "../../storage/QueryExecutor.js";
 import type { DatalogQuery, WrappedQuery } from "../datalog/types.js";
-import { WriteError, ReadError, TransactionConflictError } from "../../errors/index.js";
+import {
+  WriteError,
+  ReadError,
+  TransactionConflictError,
+  PaginationCursorError,
+} from "../../errors/index.js";
 import { KvBackend, type KvBackendService, type KvTransaction } from "../kv/KvBackend.js";
 import { makeTestKvBackend } from "../kv/InMemoryKvBackend.js";
 import { createKvTripleStore, type Datom } from "../hexastore/KvTripleStore.js";
 import type { ScanPattern } from "../hexastore/scan.js";
 import { executeQuery, executeWrappedQuery } from "../datalog/executor.js";
-import { TripleStoreRuntime, TripleStoreRuntimeLayer } from "../../store/TripleStoreRuntime.js";
+import {
+  TripleStoreRuntime,
+  TripleStoreRuntimeLayer,
+  makeTripleStoreRuntimeLayer,
+} from "../../store/TripleStoreRuntime.js";
 import {
   livePreconditionIds,
   metadataInputs,
@@ -44,6 +53,7 @@ import {
 } from "../../store/systemNamespace.js";
 import { basisFromAsOf, resolveTemporalBasis, type ResolvedTemporalBasis } from "../../Temporal.js";
 import { TxAttributes } from "../../utils/id.js";
+import { finishPagination, preparePagination } from "../../Pagination.js";
 
 const COMMIT_POSITION_KEY = new Uint8Array([0x21]);
 const textEncoder = new TextEncoder();
@@ -62,6 +72,21 @@ const nextKvCommitPosition = (tx: KvTransaction): Effect.Effect<number, WriteErr
     yield* tx.set(COMMIT_POSITION_KEY, textEncoder.encode(String(next)));
     return next;
   });
+
+const currentKvCommitPosition = (backend: KvBackendService): Effect.Effect<number, ReadError> =>
+  backend.get(COMMIT_POSITION_KEY).pipe(
+    Effect.flatMap((stored) => {
+      const position = stored === null ? 0 : Number(textDecoder.decode(stored));
+      return Number.isSafeInteger(position) && position >= 0
+        ? Effect.succeed(position)
+        : Effect.fail(new ReadError({ message: "Invalid KV commit-position counter" }));
+    }),
+    Effect.mapError((cause) =>
+      cause instanceof ReadError
+        ? cause
+        : new ReadError({ message: `Failed to read KV commit position: ${String(cause)}`, cause }),
+    ),
+  );
 
 // ─── Datom ↔ Triple conversion ─────────────────────────────────────────────
 
@@ -89,6 +114,7 @@ const tripleInputToDatom = (
   tripleId: string,
   txId: string,
   createdAt: number,
+  recordedPosition: number,
 ): Datom => ({
   tripleId,
   entity: input.entityId,
@@ -97,11 +123,13 @@ const tripleInputToDatom = (
   txId,
   createdAt,
   recordedAt: createdAt,
+  recordedPosition,
   validFrom: input.validFrom ?? createdAt,
   validTo: input.validTo ?? null,
   createdBy: input.createdBy ?? null,
   retractedAt: null,
   recordedRetractedAt: null,
+  recordedRetractedPosition: null,
   retractTxId: null,
   entityType: input.entityType ?? null,
 });
@@ -483,6 +511,7 @@ const makeKvTriplesService = Effect.gen(function* () {
                     yield* runtime.nextTripleId,
                     txId,
                     now,
+                    position,
                   );
                   yield* transactionStore.assert(datom);
                   const triple = datomToTriple(datom);
@@ -500,7 +529,7 @@ const makeKvTriplesService = Effect.gen(function* () {
                     });
                     if (reserved) return yield* Effect.fail(reserved);
                   }
-                  const ok = yield* transactionStore.retract(op.id, now, txId);
+                  const ok = yield* transactionStore.retract(op.id, now, txId, position);
                   if (!ok && preconditionIds.has(op.id)) {
                     return yield* Effect.fail(
                       new TransactionConflictError({
@@ -536,7 +565,7 @@ const makeKvTriplesService = Effect.gen(function* () {
                     }
                   }
                   for (const datom of datoms) {
-                    const ok = yield* transactionStore.retract(datom.tripleId, now, txId);
+                    const ok = yield* transactionStore.retract(datom.tripleId, now, txId, position);
                     if (ok) {
                       retractedCount++;
                       changes.push(
@@ -551,7 +580,7 @@ const makeKvTriplesService = Effect.gen(function* () {
 
             for (const input of metadataInputs(txId, position, now, meta, changes)) {
               yield* transactionStore.assert(
-                tripleInputToDatom(input, yield* runtime.nextTripleId, txId, now),
+                tripleInputToDatom(input, yield* runtime.nextTripleId, txId, now, position),
               );
             }
 
@@ -748,24 +777,45 @@ const makeKvTriplesService = Effect.gen(function* () {
 
     queryPage: (q: WrappedQuery, options?: QueryOptions) =>
       Effect.gen(function* () {
-        if (options?.basis !== undefined && options.asOf !== undefined) {
-          return yield* Effect.fail(
-            new ReadError({ message: "Use either basis or asOf, not both" }),
-          );
-        }
-        const basis = resolveTemporalBasis(
-          options?.basis ?? (options?.asOf === undefined ? undefined : basisFromAsOf(options.asOf)),
-          yield* runtime.now,
+        const currentTime = yield* runtime.now;
+        const recordedPosition = yield* currentKvCommitPosition(kvBackend);
+        const prepared = yield* Effect.try({
+          try: () =>
+            preparePagination({
+              query: q,
+              ...(options?.basis === undefined ? {} : { basis: options.basis }),
+              ...(options?.asOf === undefined ? {} : { asOf: options.asOf }),
+              now: currentTime,
+              recordedPosition,
+              scope: runtime.scope,
+            }),
+          catch: (cause) =>
+            cause instanceof PaginationCursorError
+              ? cause
+              : new PaginationCursorError({
+                  reason: "malformed",
+                  message: `Failed to prepare pagination: ${String(cause)}`,
+                  cause,
+                }),
+        });
+        const result = yield* executeWrappedQuery(
+          hexaStore,
+          prepared.query,
+          prepared.query.inner.rules ?? [],
+          {
+            basis: prepared.basis,
+            ...(prepared.cursorValues === undefined ? {} : { cursorValues: prepared.cursorValues }),
+          },
         );
-        return yield* executeWrappedQuery(hexaStore, q, q.inner.rules ?? [], { basis });
-      }).pipe(
-        Effect.map((result) => ({
+        return finishPagination(prepared, {
           results: result.results as unknown as QueryResult,
           ...(result.totalCount !== undefined ? { totalCount: result.totalCount } : {}),
-          ...(result.nextCursor !== undefined ? { nextCursor: result.nextCursor } : {}),
-        })),
-        Effect.mapError(
-          (e) => new ReadError({ message: `Wrapped query failed: ${String(e)}`, cause: e }),
+        });
+      }).pipe(
+        Effect.mapError((e) =>
+          e instanceof PaginationCursorError
+            ? e
+            : new ReadError({ message: `Wrapped query failed: ${String(e)}`, cause: e }),
         ),
       ),
 
@@ -919,4 +969,11 @@ export const KvTriples = {
     Layer.provide(Layer.sync(KvBackend, makeTestKvBackend)),
     Layer.provide(TripleStoreRuntimeLayer),
   ),
+
+  /** Fresh in-memory store with an explicit opaque-cursor scope identity. */
+  layerWithScope: (scope: string) =>
+    KvTriplesLive.pipe(
+      Layer.provide(Layer.sync(KvBackend, makeTestKvBackend)),
+      Layer.provide(makeTripleStoreRuntimeLayer(`kv:memory:${scope}`)),
+    ),
 } as const;

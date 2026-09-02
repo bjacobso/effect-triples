@@ -18,7 +18,7 @@ import type { SqlDialect } from "../dialects/index.js";
 import { SqliteDialect } from "../dialects/sqlite.js";
 import { createParamCollector, type ParamCollector } from "../params.js";
 import type { WrappedQuery, WrapperFilter, WrapperFilterOp, OrderBySpec } from "./types.js";
-import type { PaginationCursorData } from "../Branded.js";
+import type { PaginationValue } from "../Pagination.js";
 
 // =============================================================================
 // Types
@@ -132,12 +132,83 @@ const compileFilters = (
 /**
  * Compile wrapper order by to SQL clause
  */
-const compileOrderBy = (orderBy: readonly OrderBySpec[] | undefined): string => {
+interface SortComponent {
+  readonly expression: string;
+  readonly direction: "asc" | "desc";
+  readonly value: PaginationValue | undefined;
+}
+
+const quoted = (name: string): string => `"${name}"`;
+
+const valueCategory = (value: PaginationValue): number => {
+  if (value === null) return 3;
+  if (typeof value === "number") return 0;
+  if (typeof value === "boolean") return 1;
+  return 2;
+};
+
+const sortComponents = (
+  orderBy: readonly OrderBySpec[],
+  compiled: CompiledQuery,
+  cursor?: readonly PaginationValue[],
+): readonly SortComponent[] =>
+  orderBy.flatMap(({ variable, direction = "asc" }, index) => {
+    const value = cursor?.[index];
+    const columns = compiled.valueColumnMap.get(variable);
+    if (!columns) {
+      return [
+        {
+          expression: `CASE WHEN ${quoted(variable)} IS NULL THEN 1 ELSE 0 END`,
+          direction: "asc" as const,
+          value: cursor === undefined ? undefined : value === null ? 1 : 0,
+        },
+        {
+          expression: quoted(variable),
+          direction,
+          value,
+        },
+      ];
+    }
+
+    const type = quoted(columns.type);
+    const numeric = `COALESCE(${quoted(columns.number)}, ${quoted(columns.datetime)})`;
+    const boolean = quoted(columns.boolean);
+    const text = `COALESCE(${quoted(columns.string)}, ${quoted(columns.json)})`;
+    const category = `CASE WHEN ${type} IN ('number', 'datetime') THEN 0 WHEN ${type} = 'boolean' THEN 1 WHEN ${type} IS NULL THEN 3 ELSE 2 END`;
+    return [
+      {
+        expression: category,
+        direction: "asc" as const,
+        value: cursor === undefined ? undefined : valueCategory(value ?? null),
+      },
+      {
+        expression: numeric,
+        direction,
+        value: cursor === undefined ? undefined : typeof value === "number" ? value : null,
+      },
+      {
+        expression: boolean,
+        direction,
+        value:
+          cursor === undefined ? undefined : typeof value === "boolean" ? (value ? 1 : 0) : null,
+      },
+      {
+        expression: text,
+        direction,
+        value: cursor === undefined ? undefined : typeof value === "string" ? value : null,
+      },
+    ];
+  });
+
+const compileOrderBy = (
+  orderBy: readonly OrderBySpec[] | undefined,
+  compiled: CompiledQuery,
+): string => {
   if (!orderBy || orderBy.length === 0) {
     return "";
   }
-  const parts = orderBy.map(
-    ({ variable, direction = "asc" }) => `"${variable}" ${direction.toUpperCase()}`,
+  const parts = sortComponents(orderBy, compiled).map(
+    ({ expression, direction }) => `${expression} ${direction.toUpperCase()}`,
   );
   return `ORDER BY ${parts.join(", ")}`;
 };
@@ -145,13 +216,6 @@ const compileOrderBy = (orderBy: readonly OrderBySpec[] | undefined): string => 
 // =============================================================================
 // Cursor/Keyset Pagination
 // =============================================================================
-
-/**
- * Decode a base64-encoded cursor string to PaginationCursorData
- */
-const decodeCursor = (cursor: string): PaginationCursorData => {
-  return JSON.parse(atob(cursor)) as PaginationCursorData;
-};
 
 /**
  * Generate keyset WHERE clause for cursor pagination
@@ -170,38 +234,40 @@ const decodeCursor = (cursor: string): PaginationCursorData => {
  * multi-column sort orders with mixed directions.
  */
 const compileKeysetClause = (
-  orderBy: readonly OrderBySpec[],
-  cursor: PaginationCursorData,
+  components: readonly SortComponent[],
   collector: ParamCollector,
 ): string => {
-  if (orderBy.length === 0) return "";
-
-  // Single column case: simple comparison
-  if (orderBy.length === 1) {
-    const first = orderBy[0]!;
-    const { variable, direction = "asc" } = first;
-    const op = direction === "asc" ? ">" : "<";
-    return `"${variable}" ${op} ${collector.add(cursor[variable])}`;
-  }
+  if (components.length === 0) return "";
 
   // Multi-column: compound OR conditions
   // For [{a, asc}, {b, desc}]: (a > ?) OR (a = ? AND b < ?)
   const conditions: string[] = [];
-  for (let i = 0; i < orderBy.length; i++) {
+  for (let i = 0; i < components.length; i++) {
+    const current = components[i]!;
+    const currentValue = current.value;
+    // A null storage component has no strict successor of its own. Skip the
+    // branch before collecting equality parameters for earlier components so
+    // the parameter list remains aligned with the generated SQL.
+    if (currentValue === null || currentValue === undefined) continue;
+
     const parts: string[] = [];
     // Equality for all previous columns
     for (let j = 0; j < i; j++) {
-      const prev = orderBy[j]!;
-      parts.push(`"${prev.variable}" = ${collector.add(cursor[prev.variable])}`);
+      const prev = components[j]!;
+      const previousValue = prev.value;
+      parts.push(
+        previousValue === null
+          ? `${prev.expression} IS NULL`
+          : `${prev.expression} = ${collector.add(previousValue)}`,
+      );
     }
     // Comparison for current column
-    const current = orderBy[i]!;
-    const { variable, direction = "asc" } = current;
+    const { expression, direction } = current;
     const op = direction === "asc" ? ">" : "<";
-    parts.push(`"${variable}" ${op} ${collector.add(cursor[variable])}`);
+    parts.push(`${expression} ${op} ${collector.add(currentValue)}`);
     conditions.push(`(${parts.join(" AND ")})`);
   }
-  return `(${conditions.join(" OR ")})`;
+  return conditions.length === 0 ? "0 = 1" : `(${conditions.join(" OR ")})`;
 };
 
 // =============================================================================
@@ -220,9 +286,9 @@ const compileKeysetClause = (
 export const compileWrapped = (
   query: WrappedQuery,
   dialect: SqlDialect = SqliteDialect,
-  options: CompileOptions = {},
+  options: CompileOptions & { readonly cursorValues?: readonly PaginationValue[] } = {},
 ): CompiledWrappedQuery => {
-  const { inner, filters, orderBy, limit, cursor, includeCount } = query;
+  const { inner, filters, orderBy, limit, includeCount } = query;
 
   // 1. Compile inner query (without wrapper's orderBy/limit/cursor)
   const innerCompiled: CompiledQuery = compile(inner, dialect, false, options);
@@ -268,9 +334,11 @@ export const compileWrapped = (
   }
 
   // Add cursor keyset condition (requires orderBy to be specified)
-  if (cursor && orderBy && orderBy.length > 0) {
-    const cursorData = decodeCursor(cursor);
-    const keysetCondition = compileKeysetClause(orderBy, cursorData, mainCollector);
+  if (options.cursorValues && orderBy && orderBy.length > 0) {
+    const keysetCondition = compileKeysetClause(
+      sortComponents(orderBy, innerCompiled, options.cursorValues),
+      mainCollector,
+    );
     if (keysetCondition) {
       whereConditions.push(keysetCondition);
     }
@@ -280,7 +348,7 @@ export const compileWrapped = (
   const whereClause = whereConditions.length > 0 ? `WHERE ${whereConditions.join(" AND ")}` : "";
 
   // 5. Build wrapper ORDER BY
-  const orderByClause = compileOrderBy(orderBy);
+  const orderByClause = compileOrderBy(orderBy, innerCompiled);
 
   // 6. Build wrapper LIMIT (no offset - cursor pagination uses keyset)
   const limitClause = limit ? dialect.limitOffset(limit, undefined) : "";

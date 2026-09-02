@@ -148,6 +148,23 @@ export function makeCloudflareAdapter(ctx: DOState): StorageAdapterService {
         }),
     });
 
+  const currentCommitPosition: StorageAdapterService["currentCommitPosition"] = () =>
+    Effect.try({
+      try: () =>
+        Number(
+          sqlStorage
+            .exec<{ readonly position: number }>(
+              "SELECT position FROM triplex_commit_position WHERE singleton = 1",
+            )
+            .one()?.position ?? 0,
+        ),
+      catch: (error) =>
+        new ReadError({
+          message: `Failed to read commit position: ${String(error)}`,
+          cause: error,
+        }),
+    });
+
   // =========================================================================
   // Write Operations
   // =========================================================================
@@ -530,6 +547,7 @@ export function makeCloudflareAdapter(ctx: DOState): StorageAdapterService {
   return {
     withTransaction,
     nextCommitPosition,
+    currentCommitPosition,
     insert,
     batchInsert,
     retract,

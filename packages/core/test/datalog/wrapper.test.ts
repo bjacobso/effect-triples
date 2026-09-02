@@ -204,7 +204,10 @@ describe("Datalog Wrapper Compiler", () => {
 
       const result = compileWrapped(query);
 
-      expect(result.sql).toContain('ORDER BY "?name" ASC');
+      expect(result.sql).toContain('ORDER BY CASE WHEN "_triplex_value_0_type"');
+      expect(result.sql).toContain(
+        'COALESCE("_triplex_value_0_string", "_triplex_value_0_json") ASC',
+      );
     });
 
     it("should handle multiple order by columns", () => {
@@ -225,7 +228,12 @@ describe("Datalog Wrapper Compiler", () => {
 
       const result = compileWrapped(query);
 
-      expect(result.sql).toContain('ORDER BY "?dept" ASC, "?age" DESC');
+      expect(result.sql).toContain(
+        'COALESCE("_triplex_value_2_string", "_triplex_value_2_json") ASC',
+      );
+      expect(result.sql).toContain(
+        'COALESCE("_triplex_value_1_number", "_triplex_value_1_datetime") DESC',
+      );
     });
   });
 
@@ -353,45 +361,44 @@ describe("Datalog Wrapper Compiler", () => {
 
   describe("cursor pagination", () => {
     it("should compile single-column cursor keyset clause", () => {
-      const cursor = btoa(JSON.stringify({ "?name": "Smith" }));
       const query: WrappedQuery = {
         inner: {
           find: ["?name"],
           where: [["?person", ":name", "?name"]],
         },
         orderBy: [{ variable: "?name", direction: "asc" }],
-        cursor,
         limit: 20,
       };
 
-      const result = compileWrapped(query);
+      const result = compileWrapped(query, undefined, { cursorValues: ["Smith"] });
 
-      // Should have keyset WHERE clause with > for ascending
-      expect(result.sql).toContain('WHERE "?name" > ?');
+      // Keyset comparisons use typed storage columns, preserving values such
+      // as the string "007" rather than ordering their display coercion.
+      expect(result.sql).toContain(
+        'COALESCE("_triplex_value_0_string", "_triplex_value_0_json") > ?',
+      );
       expect(result.params).toContain("Smith");
     });
 
     it("should compile single-column cursor with descending order", () => {
-      const cursor = btoa(JSON.stringify({ "?age": 30 }));
       const query: WrappedQuery = {
         inner: {
           find: ["?age"],
           where: [["?person", ":age", "?age"]],
         },
         orderBy: [{ variable: "?age", direction: "desc" }],
-        cursor,
         limit: 20,
       };
 
-      const result = compileWrapped(query);
+      const result = compileWrapped(query, undefined, { cursorValues: [30] });
 
-      // Should have keyset WHERE clause with < for descending
-      expect(result.sql).toContain('WHERE "?age" < ?');
+      expect(result.sql).toContain(
+        'COALESCE("_triplex_value_0_number", "_triplex_value_0_datetime") < ?',
+      );
       expect(result.params).toContain(30);
     });
 
     it("should compile multi-column cursor keyset clause", () => {
-      const cursor = btoa(JSON.stringify({ "?dept": "Engineering", "?age": 30 }));
       const query: WrappedQuery = {
         inner: {
           find: ["?name", "?dept", "?age"],
@@ -405,24 +412,27 @@ describe("Datalog Wrapper Compiler", () => {
           { variable: "?dept", direction: "asc" },
           { variable: "?age", direction: "desc" },
         ],
-        cursor,
         limit: 20,
       };
 
-      const result = compileWrapped(query);
+      const result = compileWrapped(query, undefined, {
+        cursorValues: ["Engineering", 30],
+      });
 
-      // Should have compound OR condition for multi-column keyset
-      // ("?dept" > ?) OR ("?dept" = ? AND "?age" < ?)
+      // The typed components still form a lexicographic keyset condition.
       expect(result.sql).toContain("WHERE");
-      expect(result.sql).toMatch(/"[?]dept" > [?]/);
       expect(result.sql).toMatch(/OR/);
-      expect(result.sql).toMatch(/"[?]dept" = [?] AND "[?]age" < [?]/);
+      expect(result.sql).toContain(
+        'COALESCE("_triplex_value_1_string", "_triplex_value_1_json") > ?',
+      );
+      expect(result.sql).toContain(
+        'COALESCE("_triplex_value_2_number", "_triplex_value_2_datetime") < ?',
+      );
       expect(result.params).toContain("Engineering");
       expect(result.params).toContain(30);
     });
 
     it("should combine cursor with filters", () => {
-      const cursor = btoa(JSON.stringify({ "?name": "Smith" }));
       const query: WrappedQuery = {
         inner: {
           find: ["?name", "?dept"],
@@ -433,33 +443,32 @@ describe("Datalog Wrapper Compiler", () => {
         },
         orderBy: [{ variable: "?name", direction: "asc" }],
         filters: [{ column: "?dept", op: "=", value: "Engineering" }],
-        cursor,
         limit: 20,
       };
 
-      const result = compileWrapped(query);
+      const result = compileWrapped(query, undefined, { cursorValues: ["Smith"] });
 
       // Should have both filter and cursor conditions combined with AND
       expect(result.sql).toContain('WHERE "?dept" = ?');
-      expect(result.sql).toContain('AND "?name" > ?');
+      expect(result.sql).toContain(
+        'COALESCE("_triplex_value_0_string", "_triplex_value_0_json") > ?',
+      );
       expect(result.params).toContain("Engineering");
       expect(result.params).toContain("Smith");
     });
 
     it("should not include cursor in count query", () => {
-      const cursor = btoa(JSON.stringify({ "?name": "Smith" }));
       const query: WrappedQuery = {
         inner: {
           find: ["?name"],
           where: [["?person", ":name", "?name"]],
         },
         orderBy: [{ variable: "?name", direction: "asc" }],
-        cursor,
         limit: 20,
         includeCount: true,
       };
 
-      const result = compileWrapped(query);
+      const result = compileWrapped(query, undefined, { cursorValues: ["Smith"] });
 
       // Count query should not have cursor keyset condition
       // (we want total count of all matching rows, not count from cursor)

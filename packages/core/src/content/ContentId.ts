@@ -48,6 +48,8 @@ export const Domain = {
   derivationCandidate: "triplex/derivation-candidate",
   derivationRun: "triplex/derivation-run",
   derivationOverlayFact: "triplex/derivation-overlay-fact",
+  paginationCursor: "triplex/pagination-cursor",
+  paginationScope: "triplex/pagination-scope",
 } as const;
 
 export type Domain = (typeof Domain)[keyof typeof Domain];

@@ -117,6 +117,22 @@ export class DatalogValidationError extends Data.TaggedError("DatalogValidationE
   readonly cause?: unknown;
 }> {}
 
+/**
+ * A paged-query cursor could not be decoded or does not belong to the query,
+ * temporal snapshot, or database scope in which it was presented.
+ */
+export class PaginationCursorError extends Data.TaggedError("PaginationCursorError")<{
+  readonly reason:
+    | "malformed"
+    | "unsupported_version"
+    | "query_mismatch"
+    | "scope_mismatch"
+    | "basis_mismatch"
+    | "invalid_ordering";
+  readonly message: string;
+  readonly cause?: unknown;
+}> {}
+
 // Migration errors
 export class MigrationError extends Data.TaggedError("MigrationError")<{
   readonly version: number;
@@ -152,7 +168,8 @@ export type DatalogErrorUnion =
   | DatalogError
   | UnboundVariableError
   | InvalidPredicateError
-  | DatalogValidationError;
+  | DatalogValidationError
+  | PaginationCursorError;
 
 export type TripleStoreError =
   | WriteErrorUnion

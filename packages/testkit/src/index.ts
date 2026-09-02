@@ -798,6 +798,76 @@ export const triplesConformanceCases: readonly ConformanceCase[] = [
       yield* check(matched.length === 0, "match must not see the retracted fact either");
     }),
   },
+  {
+    name: "paged queries use deterministic snapshot-stable cursors",
+    run: Effect.gen(function* () {
+      const t = yield* Triples;
+      const seeded = yield* t.assertBatch([
+        {
+          entityId: "conf:page:1",
+          attribute: ":conf/page-rank",
+          value: number(1),
+        },
+        {
+          entityId: "conf:page:2",
+          attribute: ":conf/page-rank",
+          value: number(1),
+        },
+        {
+          entityId: "conf:page:3",
+          attribute: ":conf/page-rank",
+          value: number(1),
+        },
+        {
+          entityId: "conf:page:4",
+          attribute: ":conf/page-rank",
+          value: number(2),
+        },
+      ]);
+      const request = {
+        inner: {
+          find: ["?entity", "?rank"],
+          where: [["?entity", ":conf/page-rank", "?rank"]],
+        },
+        orderBy: [{ variable: "?rank" as const, direction: "asc" as const }],
+        limit: 2,
+        includeCount: true,
+      } as const;
+
+      const first = yield* t.queryPage(request);
+      yield* check(
+        first.results.map((row) => row["?entity"]).join(",") === "conf:page:1,conf:page:2",
+        "equal primary values must use the projected row as a deterministic tie-breaker",
+      );
+      yield* check(first.totalCount === 4, "the first page should report the full count");
+      yield* check(first.nextCursor !== undefined, "a non-final page must return a cursor");
+
+      // Deliberately mutate immediately: recorded milliseconds may be equal,
+      // so snapshot stability must come from the atomic commit position.
+      yield* t.assert({
+        entityId: "conf:page:later",
+        attribute: ":conf/page-rank",
+        value: number(0),
+      });
+      yield* t.retract(seeded[2]!.id);
+
+      const second = yield* t.queryPage({ ...request, cursor: first.nextCursor });
+      yield* check(
+        second.results.map((row) => row["?entity"]).join(",") === "conf:page:3,conf:page:4",
+        "later assertions and retractions must not alter the cursor's recorded snapshot",
+      );
+      yield* check(second.totalCount === 4, "every page should retain the snapshot count");
+      yield* check(second.nextCursor === undefined, "the final page must not return a cursor");
+
+      const malformed = yield* t
+        .queryPage({ ...request, cursor: "not-a-cursor" })
+        .pipe(Effect.flip);
+      yield* check(
+        malformed._tag === "PaginationCursorError",
+        "malformed cursors must fail through the typed error channel",
+      );
+    }),
+  },
 ];
 
 /**

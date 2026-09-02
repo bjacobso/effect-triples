@@ -30,6 +30,7 @@ import type {
   QueryError,
   DatalogError,
   TransactionConflictError,
+  PaginationCursorError,
 } from "../errors/index.js";
 import type { DatalogQuery, WrappedQuery } from "../datalog/types.js";
 import type { TemporalBasis } from "../Temporal.js";
@@ -241,7 +242,7 @@ export interface TriplesService {
   readonly queryPage: (
     query: WrappedQuery,
     options?: QueryOptions,
-  ) => Effect.Effect<PagedQueryResponse, ReadError | DatalogError>;
+  ) => Effect.Effect<PagedQueryResponse, ReadError | DatalogError | PaginationCursorError>;
   /** Explain a Datalog query without executing it. */
   readonly explain: (query: DatalogQuery) => Effect.Effect<ExplainResult, DatalogError>;
   /** Explain a wrapped Datalog query without executing it. */

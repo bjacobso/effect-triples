@@ -32,7 +32,14 @@ describe("host-owned SQLite migrations", () => {
       migrations.map(({ version }) => version),
     );
     expect(result.columns.map(({ name }) => name)).toEqual(
-      expect.arrayContaining(["recorded_at", "recorded_retracted_at", "valid_from", "valid_to"]),
+      expect.arrayContaining([
+        "recorded_at",
+        "recorded_position",
+        "recorded_retracted_at",
+        "recorded_retracted_position",
+        "valid_from",
+        "valid_to",
+      ]),
     );
   });
 
@@ -81,11 +88,13 @@ describe("host-owned SQLite migrations", () => {
 
         const facts = yield* sql<{
           recorded_at: number;
+          recorded_position: number;
           recorded_retracted_at: number;
+          recorded_retracted_position: number | null;
           valid_from: number;
           valid_to: number | null;
           retract_tx_id: string;
-        }>`SELECT recorded_at, recorded_retracted_at, valid_from, valid_to, retract_tx_id
+        }>`SELECT recorded_at, recorded_position, recorded_retracted_at, recorded_retracted_position, valid_from, valid_to, retract_tx_id
            FROM triples WHERE id = 'old-fact'`;
         const snapshots = yield* sql<{ tx_position: number }>`
           SELECT tx_position FROM entity_snapshots WHERE entity_id = 'entity:1'
@@ -96,7 +105,9 @@ describe("host-owned SQLite migrations", () => {
 
     expect(result.fact).toEqual({
       recorded_at: 1000,
+      recorded_position: 7,
       recorded_retracted_at: 2000,
+      recorded_retracted_position: null,
       valid_from: 1000,
       valid_to: null,
       retract_tx_id: "tx-retract",

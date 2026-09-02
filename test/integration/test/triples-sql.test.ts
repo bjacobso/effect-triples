@@ -233,6 +233,7 @@ describe("Triples", () => {
       let tripleCounter = 0;
 
       const RuntimeLayer = Layer.succeed(TripleStoreRuntime, {
+        scope: "test:triples-sql",
         now: Effect.sync(() => {
           now += 10;
           return now;
@@ -324,6 +325,57 @@ describe("Triples", () => {
           expect(tx.triples[0]!.id).toBe("_triple/unit-000005");
         }).pipe(Effect.provide(makeRuntimeTestLayer(RuntimeLayer))),
       );
+    });
+
+    it("keeps paged results stable when every transaction has the same millisecond", async () => {
+      let txCounter = 0;
+      let tripleCounter = 0;
+      const RuntimeLayer = Layer.succeed(TripleStoreRuntime, {
+        scope: "test:sqlite-pagination-position",
+        now: Effect.succeed(1_800_000_000_000),
+        nextTripleId: Effect.sync(() => `triple:page-${++tripleCounter}` as TripleId),
+        nextTxId: Effect.sync(() => `tx:page-${++txCounter}`),
+      });
+
+      const pages = await Effect.runPromise(
+        Effect.gen(function* () {
+          const store = yield* Triples;
+          const seeded = yield* store.assertBatch(
+            ["a", "b", "c", "d"].map((suffix, index) => ({
+              entityId: `same-time:${suffix}`,
+              attribute: ":page/rank",
+              value: number(index === 3 ? 2 : 1),
+            })),
+          );
+          const query = {
+            inner: {
+              find: ["?entity", "?rank"],
+              where: [["?entity", ":page/rank", "?rank"]],
+            },
+            orderBy: [{ variable: "?rank", direction: "asc" }],
+            limit: 2,
+          } as const;
+
+          const first = yield* store.queryPage(query);
+          yield* store.assert({
+            entityId: "same-time:later",
+            attribute: ":page/rank",
+            value: number(0),
+          });
+          yield* store.retract(seeded[2]!.id);
+          const second = yield* store.queryPage({ ...query, cursor: first.nextCursor });
+          return { first, second };
+        }).pipe(Effect.provide(makeRuntimeTestLayer(RuntimeLayer))),
+      );
+
+      expect(pages.first.results.map((row) => row["?entity"])).toEqual([
+        "same-time:a",
+        "same-time:b",
+      ]);
+      expect(pages.second.results.map((row) => row["?entity"])).toEqual([
+        "same-time:c",
+        "same-time:d",
+      ]);
     });
   });
 

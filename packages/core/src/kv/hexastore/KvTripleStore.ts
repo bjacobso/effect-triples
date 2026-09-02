@@ -49,11 +49,13 @@ export interface Datom {
   readonly txId: string;
   readonly createdAt: number;
   readonly recordedAt: number;
+  readonly recordedPosition: number;
   readonly validFrom: number;
   readonly validTo: number | null;
   readonly createdBy: string | null;
   readonly retractedAt: number | null;
   readonly recordedRetractedAt: number | null;
+  readonly recordedRetractedPosition: number | null;
   readonly retractTxId: string | null;
   readonly entityType: string | null;
 }
@@ -85,7 +87,7 @@ const asciiToBytes = (s: string): Uint8Array => {
 // Eliminates 2 allocations per triple (JSON string + textEncoder.encode).
 //
 // Layout (all multi-byte integers are big-endian):
-//   [1 byte]  format version (0x02)
+//   [1 byte]  format version (0x04)
 //   [4 bytes] tripleId length, then [N bytes] tripleId (UTF-8)
 //   [4 bytes] entity length, then [N bytes] entity
 //   [4 bytes] attribute length, then [N bytes] attribute
@@ -98,6 +100,14 @@ const asciiToBytes = (s: string): Uint8Array => {
 //   [conditional] retractedAt: [8 bytes] float64
 //   [conditional] retractTxId: [4 bytes] length + [N bytes] string
 //   [conditional] entityType: [4 bytes] length + [N bytes] string
+//   [8 bytes] recordedAt (float64)
+//   [8 bytes] validFrom (float64)
+//   [1 byte] temporal flags: bit0 = hasValidTo, bit1 = hasRecordedRetractedAt
+//   [conditional] validTo: [8 bytes]
+//   [conditional] recordedRetractedAt: [8 bytes]
+//   [8 bytes] recordedPosition (float64)
+//   [1 byte] hasRecordedRetractedPosition
+//   [conditional: 8 bytes recordedRetractedPosition]
 //
 // Value payloads:
 //   string/ref/blob: [4 bytes] length + [N bytes] UTF-8
@@ -108,7 +118,8 @@ const asciiToBytes = (s: string): Uint8Array => {
 //         + [8 bytes] size (float64) + [1 byte] hasFilename + [conditional: 4 bytes len + N bytes]
 
 const LEGACY_BINARY_FORMAT_VERSION = 0x01;
-const FORMAT_VERSION = 0x03;
+const FORMAT_VERSION = 0x04;
+const PRE_POSITION_FORMAT_VERSION = 0x03;
 const PRE_BITEMPORAL_FORMAT_VERSION = 0x02;
 
 // Value type tags for binary format
@@ -293,6 +304,17 @@ const serializeDatom = (datom: Datom): Uint8Array => {
     offset += 8;
   }
 
+  // Exact transaction-position cut for snapshot-stable pagination (v4+).
+  ensureCapacity(9, offset);
+  _writeDV.setFloat64(offset, datom.recordedPosition, false);
+  offset += 8;
+  _writeBuf[offset++] = datom.recordedRetractedPosition === null ? 0 : 1;
+  if (datom.recordedRetractedPosition !== null) {
+    ensureCapacity(8, offset);
+    _writeDV.setFloat64(offset, datom.recordedRetractedPosition, false);
+    offset += 8;
+  }
+
   // Copy out the result (cannot share the reusable buffer)
   const result = new Uint8Array(offset);
   result.set(_writeBuf.subarray(0, offset));
@@ -333,6 +355,7 @@ const deserializeDatom = (bytes: Uint8Array): Datom => {
   const version = bytes[0];
   if (
     version !== FORMAT_VERSION &&
+    version !== PRE_POSITION_FORMAT_VERSION &&
     version !== PRE_BITEMPORAL_FORMAT_VERSION &&
     version !== LEGACY_BINARY_FORMAT_VERSION
   ) {
@@ -448,7 +471,7 @@ const deserializeDatom = (bytes: Uint8Array): Datom => {
   let validFrom = createdAt;
   let validTo: number | null = null;
   let recordedRetractedAt = retractedAt;
-  if (version === FORMAT_VERSION) {
+  if (version === FORMAT_VERSION || version === PRE_POSITION_FORMAT_VERSION) {
     recordedAt = dv.getFloat64(offset, false);
     offset += 8;
     validFrom = dv.getFloat64(offset, false);
@@ -460,6 +483,17 @@ const deserializeDatom = (bytes: Uint8Array): Datom => {
     }
     if ((temporalFlags & 0x02) !== 0) {
       recordedRetractedAt = dv.getFloat64(offset, false);
+      offset += 8;
+    }
+  }
+
+  let recordedPosition = 0;
+  let recordedRetractedPosition: number | null = null;
+  if (version === FORMAT_VERSION) {
+    recordedPosition = dv.getFloat64(offset, false);
+    offset += 8;
+    if (bytes[offset++]! !== 0) {
+      recordedRetractedPosition = dv.getFloat64(offset, false);
     }
   }
 
@@ -471,11 +505,13 @@ const deserializeDatom = (bytes: Uint8Array): Datom => {
     txId,
     createdAt,
     recordedAt,
+    recordedPosition,
     validFrom,
     validTo,
     createdBy,
     retractedAt,
     recordedRetractedAt,
+    recordedRetractedPosition,
     retractTxId,
     entityType,
   };
@@ -638,7 +674,12 @@ export class KvTripleStore {
    * Retract a triple by ID.
    * Updates the META record with retractedAt -- does NOT remove index keys.
    */
-  retract(tripleId: string, retractedAt: number, retractTxId?: string): Effect.Effect<boolean> {
+  retract(
+    tripleId: string,
+    retractedAt: number,
+    retractTxId?: string,
+    recordedRetractedPosition?: number,
+  ): Effect.Effect<boolean> {
     const key = metaKey(tripleId);
     return Effect.gen({ self: this }, function* () {
       // Try cache first
@@ -654,6 +695,7 @@ export class KvTripleStore {
         ...datom,
         retractedAt,
         recordedRetractedAt: retractedAt,
+        recordedRetractedPosition: recordedRetractedPosition ?? null,
         retractTxId: retractTxId ?? null,
       };
 
@@ -960,10 +1002,18 @@ const matchesPattern = (datom: Datom, pattern: ScanPattern): boolean => {
 
 const visibleAt = (datom: Datom, basis: ResolvedTemporalBasis): boolean => {
   const recordedVisible =
-    basis.recordedAt === undefined
-      ? datom.recordedRetractedAt === null
-      : datom.recordedAt <= basis.recordedAt &&
-        (datom.recordedRetractedAt === null || datom.recordedRetractedAt > basis.recordedAt);
+    basis.recordedPosition !== undefined
+      ? (datom.recordedPosition === 0
+          ? basis.recordedAt === undefined || datom.recordedAt <= basis.recordedAt
+          : datom.recordedPosition <= basis.recordedPosition) &&
+        (datom.recordedRetractedAt === null ||
+          (datom.recordedRetractedPosition === null
+            ? basis.recordedAt !== undefined && datom.recordedRetractedAt > basis.recordedAt
+            : datom.recordedRetractedPosition > basis.recordedPosition))
+      : basis.recordedAt === undefined
+        ? datom.recordedRetractedAt === null
+        : datom.recordedAt <= basis.recordedAt &&
+          (datom.recordedRetractedAt === null || datom.recordedRetractedAt > basis.recordedAt);
   return (
     recordedVisible &&
     datom.validFrom <= basis.validAt &&

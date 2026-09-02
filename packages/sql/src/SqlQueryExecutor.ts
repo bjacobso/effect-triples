@@ -23,7 +23,6 @@ import {
   type CompiledQuery,
   type CompiledWrappedQuery,
   SqliteDialect,
-  createPaginationCursor,
 } from "@bjacobso/triplex/internal";
 
 // =============================================================================
@@ -226,12 +225,20 @@ export const SqlQueryExecutorLive = Layer.effect(
         return { results: results as QueryResult };
       });
 
-    const executePage: QueryExecutorService["executePage"] = (q, debug = false, basis) =>
+    const executePage: QueryExecutorService["executePage"] = (
+      q,
+      debug = false,
+      basis,
+      cursorValues,
+    ) =>
       Effect.gen(function* () {
         // 1. Compile to SQL with CTE wrapper
         let compiled: CompiledWrappedQuery;
         try {
-          compiled = compileWrapped(q, dialect, basis === undefined ? {} : { basis });
+          compiled = compileWrapped(q, dialect, {
+            ...(basis === undefined ? {} : { basis }),
+            ...(cursorValues === undefined ? {} : { cursorValues }),
+          });
         } catch (error) {
           return yield* Effect.fail(
             new ReadError({
@@ -268,7 +275,9 @@ export const SqlQueryExecutorLive = Layer.effect(
                   }),
               ),
             );
-          totalCount = countRows[0]?.total ?? 0;
+          // PostgreSQL returns COUNT(*) as int8 text while SQLite returns a
+          // number. Keep the public result identical across both backends.
+          totalCount = toNumber(countRows[0]?.total) ?? 0;
         }
 
         // 4. Convert rows to QueryContext objects
@@ -276,17 +285,7 @@ export const SqlQueryExecutorLive = Layer.effect(
           rowToContext(row, compiled.columnMap, compiled.valueColumnMap, compiled.numericColumns),
         );
 
-        // 5. Compute nextCursor
-        let nextCursor: string | undefined;
-        if (q.orderBy && q.orderBy.length > 0 && q.limit && results.length === q.limit) {
-          const lastRow = results[results.length - 1]!;
-          nextCursor = createPaginationCursor(
-            lastRow as Record<string, string | number | boolean>,
-            q.orderBy,
-          );
-        }
-
-        // 6. Build result
+        // 5. Build result. The Triples boundary owns the opaque cursor envelope.
         const debugInfo: QueryDebugInfo | undefined = debug
           ? {
               metrics: {
@@ -322,7 +321,6 @@ export const SqlQueryExecutorLive = Layer.effect(
         return {
           results: results as QueryResult,
           ...(totalCount !== undefined && { totalCount }),
-          ...(nextCursor !== undefined && { nextCursor }),
           ...(debugInfo !== undefined && { debug: debugInfo }),
         };
       });

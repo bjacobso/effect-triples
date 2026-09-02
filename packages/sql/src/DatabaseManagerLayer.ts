@@ -109,7 +109,6 @@ export const DatabaseManagerLive = Layer.effect(
     const runtime = yield* getTripleStoreRuntime;
     const ids = yield* IdGenerator;
     const runtimeNow = runtime.now;
-    const runtimeLayer = Layer.succeed(TripleStoreRuntime, runtime);
     // Resolve injectable features (optional -- empty if not provided)
     const externalFeatures = yield* Effect.serviceOption(DatabaseFeatures).pipe(
       Effect.map((opt) => (opt._tag === "Some" ? opt.value.features : [])),
@@ -147,6 +146,10 @@ export const DatabaseManagerLive = Layer.effect(
      * Produces: Triples + SnapshotWriter + SnapshotService
      */
     const buildDatabaseLayer = (database: DatabaseIdType) => {
+      const runtimeLayer = Layer.succeed(TripleStoreRuntime, {
+        ...runtime,
+        scope: `database:${database}`,
+      });
       const adapterLayer = backend.createAdapterLayer(database);
       const sqlLayer = backend.createDatabaseClient(database);
       const dialectLayer = Layer.succeed(CurrentDialect, backend.dialect);

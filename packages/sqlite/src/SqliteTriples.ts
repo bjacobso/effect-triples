@@ -18,7 +18,7 @@ import type { SqlClient } from "effect/unstable/sql";
 import {
   TriplesLive,
   CurrentDialect,
-  TripleStoreRuntimeLayer,
+  makeTripleStoreRuntimeLayer,
   RuntimeServicesLive,
 } from "@bjacobso/triplex/internal";
 import { SqlQueryExecutorLive } from "@bjacobso/triplex-sql";
@@ -29,22 +29,26 @@ import { makeSqliteLayer, SqliteTestLayer } from "./SqliteLayer.js";
 const dialectLayer = Layer.succeed(CurrentDialect, SqliteDialect);
 
 /** Build a `Triples` layer from a `SqlClient` layer (migrations already tapped in). */
-const make = <E, R>(clientLayer: Layer.Layer<SqlClient.SqlClient, E, R>) =>
+const make = <E, R>(clientLayer: Layer.Layer<SqlClient.SqlClient, E, R>, scope: string) =>
   TriplesLive.pipe(
     Layer.provideMerge(SqlQueryExecutorLive),
     Layer.provideMerge(SqliteAdapterLive),
     Layer.provideMerge(dialectLayer),
     Layer.provideMerge(clientLayer),
-    Layer.provide(TripleStoreRuntimeLayer),
+    Layer.provide(makeTripleStoreRuntimeLayer(scope)),
     Layer.provideMerge(RuntimeServicesLive),
   );
 
 export const SqliteTriples = {
   /** File-backed `Triples` (WAL mode, migrations applied). */
-  layer: (config: { filename: string }) => make(makeSqliteLayer(config.filename)),
+  layer: (config: { filename: string }) =>
+    make(makeSqliteLayer(config.filename), `sqlite:${config.filename}`),
 
   /** In-memory `Triples` — ideal for tests and ephemeral workloads. */
-  layerMemory: make(SqliteTestLayer),
+  layerMemory: make(SqliteTestLayer, "sqlite::memory:"),
+
+  /** Named in-memory store whose opaque cursors cannot cross another scope. */
+  layerMemoryWithScope: (scope: string) => make(SqliteTestLayer, `sqlite::memory:${scope}`),
 } as const;
 
 export type SqliteTriplesLayer = ReturnType<typeof SqliteTriples.layer>;

@@ -69,6 +69,7 @@ export {
   TripleStoreRuntimeLive,
   TripleStoreRuntimeFromServicesLive,
   TripleStoreRuntimeLayer,
+  makeTripleStoreRuntimeLayer,
   getTripleStoreRuntime,
   DeterministicTripleStoreRuntimeLive,
   type DeterministicTripleStoreRuntimeOptions,
@@ -99,6 +100,13 @@ export {
 export { compileWrapped, type CompiledWrappedQuery } from "./datalog/wrapper.js";
 export { type SqlDialect, CurrentDialect, SqliteDialect } from "./dialects/index.js";
 export { createParamCollector, type ParamCollector } from "./params.js";
+export {
+  preparePagination,
+  finishPagination,
+  normalizePaginationOrder,
+  type PaginationValue,
+  type PreparedPagination,
+} from "./Pagination.js";
 
 export {
   KvBackend,

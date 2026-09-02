@@ -161,7 +161,11 @@ export interface CompileOptions {
   /** @deprecated Use `basis`. */
   readonly asOf?: number;
   /** Evaluate every triple alias against this bitemporal basis. */
-  readonly basis?: { readonly recordedAt?: number; readonly validAt: number };
+  readonly basis?: {
+    readonly recordedAt?: number;
+    readonly recordedPosition?: number;
+    readonly validAt: number;
+  };
 }
 
 const applyTemporalBasis = (
@@ -176,9 +180,11 @@ const applyTemporalBasis = (
     /\b([A-Za-z_][A-Za-z0-9_]*)\.retracted_at IS NULL/g,
     (_condition, alias: string) => {
       const recorded =
-        resolved.recordedAt === undefined
-          ? `${alias}.recorded_retracted_at IS NULL`
-          : `${alias}.recorded_at <= ${resolved.recordedAt} AND (${alias}.recorded_retracted_at IS NULL OR ${alias}.recorded_retracted_at > ${resolved.recordedAt})`;
+        resolved.recordedPosition !== undefined
+          ? `((${alias}.recorded_position IS NOT NULL AND ${alias}.recorded_position <= ${resolved.recordedPosition}) OR (${alias}.recorded_position IS NULL AND ${alias}.recorded_at <= ${resolved.recordedAt})) AND (${alias}.recorded_retracted_at IS NULL OR (${alias}.recorded_retracted_position IS NOT NULL AND ${alias}.recorded_retracted_position > ${resolved.recordedPosition}) OR (${alias}.recorded_retracted_position IS NULL AND ${alias}.recorded_retracted_at > ${resolved.recordedAt}))`
+          : resolved.recordedAt === undefined
+            ? `${alias}.recorded_retracted_at IS NULL`
+            : `${alias}.recorded_at <= ${resolved.recordedAt} AND (${alias}.recorded_retracted_at IS NULL OR ${alias}.recorded_retracted_at > ${resolved.recordedAt})`;
       return `${recorded} AND ${alias}.valid_from <= ${validAt} AND (${alias}.valid_to IS NULL OR ${alias}.valid_to > ${validAt})`;
     },
   );

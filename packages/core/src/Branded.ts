@@ -1,4 +1,4 @@
-import { Schema, SchemaTransformation } from "effect";
+import { Schema } from "effect";
 
 export const TripleId = Schema.String.pipe(
   Schema.check(Schema.isPattern(/^[0-9A-Z]{26}$/)),
@@ -48,38 +48,6 @@ export const TransactionId = Schema.String.pipe(
 );
 export type TransactionId = typeof TransactionId.Type;
 
-export type PaginationCursorData = {
-  readonly [variable: string]: string | number | boolean | null;
-};
-
-const PaginationCursorDataSchema = Schema.Record(
-  Schema.String,
-  Schema.Union([Schema.String, Schema.Number, Schema.Boolean, Schema.Null]),
-);
-
-export const PaginationCursor = Schema.String.pipe(
-  Schema.decodeTo(
-    PaginationCursorDataSchema,
-    SchemaTransformation.transform({
-      decode: (encoded) => JSON.parse(atob(encoded)) as PaginationCursorData,
-      encode: (data) => btoa(JSON.stringify(data)),
-    }),
-  ),
-  Schema.brand("PaginationCursor"),
-);
-export type PaginationCursor = typeof PaginationCursor.Type;
-
-export const createPaginationCursor = (
-  row: Record<string, unknown>,
-  orderBy: readonly { variable: string }[],
-): string => {
-  const data: Record<string, string | number | boolean | null> = {};
-  for (const { variable } of orderBy) {
-    data[variable] = row[variable] as string | number | boolean | null;
-  }
-  return btoa(JSON.stringify(data));
-};
-
 export const decode = {
   tripleId: (s: string) => Schema.decodeEffect(TripleId)(s),
   entityId: EntityId.decode,
@@ -87,7 +55,6 @@ export const decode = {
   databaseName: (s: string) => Schema.decodeEffect(DatabaseName)(s),
   databaseId: DatabaseId.decode,
   transactionId: (s: string) => Schema.decodeEffect(TransactionId)(s),
-  paginationCursor: (s: string) => Schema.decodeEffect(PaginationCursor)(s),
 };
 
 export const unsafe = {
@@ -97,5 +64,4 @@ export const unsafe = {
   databaseName: (s: string) => Schema.decodeSync(DatabaseName)(s),
   databaseId: DatabaseId.make,
   transactionId: (s: string) => Schema.decodeSync(TransactionId)(s),
-  paginationCursor: (s: string) => Schema.decodeSync(PaginationCursor)(s),
 };
