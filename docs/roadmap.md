@@ -17,9 +17,12 @@ unique and durable consumer checkpoints are available through the `operational` 
 ## Immediate correctness gate: backend parity
 
 - The conformance corpus now runs identical typed projections, scalar joins, predicates, negation,
-  booleans, ref joins, recursive transitive closure, bitemporal reads, and snapshot-stable
-  pagination against KV, SQLite, and PostgreSQL. Grow it with every query-engine bug.
-- Cover every value type, aggregation, unbound variables, pagination, and hostile schema-valid
+  booleans, ref joins, recursive transitive closure, grouped aggregation, bitemporal reads, and
+  snapshot-stable pagination against KV, SQLite, and PostgreSQL. Grow it with every query-engine
+  bug.
+- Datalog conjunctions are clause-order independent across engines: positive relations establish
+  outer bindings and patterns inside negation establish local bindings before predicates run.
+- Cover every value type, truly unbound variables, pagination edge cases, and hostile schema-valid
   inputs.
 - SQL projection now carries hidden storage tags through execution, so strings such as `"007"`,
   numeric-looking entity IDs and refs, datetimes, booleans, and JSON are decoded without guessing.

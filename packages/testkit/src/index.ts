@@ -416,6 +416,88 @@ export const triplesConformanceCases: readonly ConformanceCase[] = [
     }),
   },
   {
+    name: "datalog aggregations group, filter, and order consistently",
+    run: Effect.gen(function* () {
+      const t = yield* Triples;
+      yield* t.assertBatch([
+        { entityId: "conf:aggregate:alice", attribute: ":conf/team", value: ref("east") },
+        { entityId: "conf:aggregate:alice", attribute: ":conf/score", value: number(10) },
+        { entityId: "conf:aggregate:bob", attribute: ":conf/team", value: ref("east") },
+        { entityId: "conf:aggregate:bob", attribute: ":conf/score", value: number(10) },
+        { entityId: "conf:aggregate:carol", attribute: ":conf/team", value: ref("west") },
+        { entityId: "conf:aggregate:carol", attribute: ":conf/score", value: number(5) },
+      ]);
+
+      const { results } = yield* t.query({
+        find: ["?team", "?count", "?sum", "?average", "?minimum", "?maximum"],
+        where: [
+          ["?member", ":conf/team", "?team"],
+          ["?member", ":conf/score", "?score"],
+        ],
+        aggregate: [
+          ["count", "?member", "?count"],
+          ["sum", "?score", "?sum"],
+          ["avg", "?score", "?average"],
+          ["min", "?score", "?minimum"],
+          ["max", "?score", "?maximum"],
+        ],
+        having: [[">=", "?count", 2]],
+        orderBy: [{ variable: "?sum", direction: "desc" }],
+      });
+
+      yield* check(results.length === 1, "HAVING should keep only the two-member team");
+      yield* check(results[0]?.["?team"] === "east", "aggregation should retain group values");
+      yield* check(results[0]?.["?count"] === 2, "count should include both team members");
+      yield* check(results[0]?.["?sum"] === 20, "sum should include equal numeric values");
+      yield* check(results[0]?.["?average"] === 10, "average should remain numeric");
+      yield* check(results[0]?.["?minimum"] === 10, "minimum should remain numeric");
+      yield* check(results[0]?.["?maximum"] === 10, "maximum should remain numeric");
+    }),
+  },
+  {
+    name: "datalog conjunctions establish bindings independent of clause order",
+    run: Effect.gen(function* () {
+      const t = yield* Triples;
+      yield* t.assertBatch([
+        {
+          entityId: "conf:clause-order:blocked",
+          attribute: ":conf/order-score",
+          value: number(12),
+        },
+        {
+          entityId: "conf:clause-order:blocked",
+          attribute: ":conf/blocked-at",
+          value: number(20),
+        },
+        {
+          entityId: "conf:clause-order:eligible",
+          attribute: ":conf/order-score",
+          value: number(15),
+        },
+        {
+          entityId: "conf:clause-order:low",
+          attribute: ":conf/order-score",
+          value: number(5),
+        },
+      ]);
+
+      const { results } = yield* t.query({
+        find: ["?member"],
+        where: [
+          ["not", [">=", "?blockedAt", 15], ["?member", ":conf/blocked-at", "?blockedAt"]],
+          [">=", "?score", 10],
+          ["?member", ":conf/order-score", "?score"],
+        ],
+      });
+
+      yield* check(
+        JSON.stringify(results.map((row) => row["?member"])) ===
+          JSON.stringify(["conf:clause-order:eligible"]),
+        "patterns should bind outer and negation-local variables before predicates run",
+      );
+    }),
+  },
+  {
     name: "datalog untyped strings match string and ref values while typed refs stay exact",
     run: Effect.gen(function* () {
       const t = yield* Triples;

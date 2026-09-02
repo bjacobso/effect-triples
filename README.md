@@ -637,6 +637,10 @@ triples.query({
 
 ### Negation and disjunction
 
+`where` is declarative: positive patterns establish bindings before predicates, negation, and
+disjunction regardless of their written order. Patterns inside a conjunctive `not` likewise bind
+its local variables before local predicates run.
+
 ```ts
 // people who are NOT inactive
 where: [
@@ -660,7 +664,8 @@ where: [
 
 `aggregate` clauses are `[op, sourceVar, targetVar]` with `count`, `sum`, `avg`, `min`,
 `max`; grouping is implicit over the non-aggregated `find` variables. `having`,
-`orderBy`, `limit`, and `offset` are also supported.
+`orderBy`, `limit`, and `offset` are also supported. Grouping, all five aggregate operators, and
+`having` share one conformance contract across KV, SQLite, and PostgreSQL.
 
 ```ts
 triples.query({

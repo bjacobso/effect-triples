@@ -65,14 +65,22 @@ const innerClausesMatchContext = (
 ): Effect.Effect<boolean> => {
   return Effect.gen(function* () {
     let current: Context[] = [context];
+    const patterns = clauses.filter(
+      (clause): clause is PatternClause => !isPredicateClause(clause as Clause),
+    );
+    const predicates = clauses.filter((clause): clause is PredicateClause =>
+      isPredicateClause(clause as Clause),
+    );
 
-    for (const clause of clauses) {
-      if (isPredicateClause(clause as Clause)) {
-        current = current.filter((ctx) => evaluatePredicate(clause as PredicateClause, ctx));
-      } else {
-        current = yield* executePattern(store, clause as PatternClause, current, asOf);
-      }
+    // Datalog clauses are declarative. Establish every local binding before
+    // evaluating predicates, matching the SQL NOT EXISTS compiler.
+    for (const pattern of patterns) {
+      current = yield* executePattern(store, pattern, current, asOf);
+      if (current.length === 0) return false;
+    }
 
+    for (const predicate of predicates) {
+      current = current.filter((ctx) => evaluatePredicate(predicate, ctx));
       if (current.length === 0) return false;
     }
 
@@ -343,8 +351,32 @@ const executeWhere = (
 ): Effect.Effect<Context[]> => {
   return Effect.gen(function* () {
     let contexts: Context[] = [emptyContext];
+    const patterns: Clause[] = [];
+    const ruleApplications: Clause[] = [];
+    const predicates: Clause[] = [];
+    const notClauses: Clause[] = [];
+    const orClauses: Clause[] = [];
 
     for (const clause of clauses) {
+      if (isPredicateClause(clause)) predicates.push(clause);
+      else if (isNotClause(clause)) notClauses.push(clause);
+      else if (isOrClause(clause)) orClauses.push(clause);
+      else if (isRuleApplication(clause)) ruleApplications.push(clause);
+      else patterns.push(clause);
+    }
+
+    // Datalog conjunction is declarative rather than procedural. Positive
+    // relations establish bindings before filters and anti/semi joins, just
+    // as the SQL compiler does regardless of source-clause order.
+    const executionOrder = [
+      ...patterns,
+      ...ruleApplications,
+      ...predicates,
+      ...notClauses,
+      ...orClauses,
+    ];
+
+    for (const clause of executionOrder) {
       contexts = yield* executeClause(store, clause, contexts, rules, asOf);
       if (contexts.length === 0) break;
     }

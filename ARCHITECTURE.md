@@ -9,8 +9,10 @@ hosts typed configuration as a modular layer over the same core.
   its implementations: `TriplesLive` (over `StorageAdapter` + the `QueryExecutor` SPI) and
   `KvTriplesLive` (a single hexastore handle over any `KvBackend`). The Datalog-over-SQL wiring
   now lives in core (`TriplesLive` + the `QueryExecutor` SPI), not in the SQL package. Recursive
-  rule closure is covered by the shared KV/SQLite/PostgreSQL corpus; SQL rule identifiers are
-  validated and quoted, while every rule value and recursion bound is parameterized.
+  rule closure, grouped aggregation, and declarative clause ordering are covered by the shared
+  KV/SQLite/PostgreSQL corpus; SQL rule identifiers are validated and quoted, while every rule
+  value and recursion bound is parameterized. KV establishes positive and negation-local bindings
+  before predicates so written clause order cannot change query meaning.
 - Core's `content` module owns deterministic canonical encoding, domain-separated browser-safe
   SHA-256, and the shared `ContentId` format. Entity snapshots and configuration use distinct
   domains over this one foundation.
