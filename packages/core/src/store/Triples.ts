@@ -33,6 +33,7 @@ import type {
 } from "../errors/index.js";
 import type { DatalogQuery, WrappedQuery } from "../datalog/types.js";
 import type { TemporalBasis } from "../Temporal.js";
+import type { TripleValue } from "../Value.js";
 import type {
   QueryResult,
   QueryDebugInfo,
@@ -80,6 +81,16 @@ export interface TransactionChange {
   readonly tripleId: string;
   readonly entityId: string;
   readonly attribute: string;
+  /** Present on journals written by the bitemporal journal format. */
+  readonly entityType?: string;
+  /** The complete typed value, retained for assertions and retractions. */
+  readonly value?: TripleValue;
+  readonly validFrom?: number;
+  readonly validTo?: number;
+  readonly recordedAt?: number;
+  readonly recordedRetractedAt?: number;
+  readonly assertionTxId?: string;
+  readonly retractionTxId?: string;
 }
 
 export interface TransactionRecord {
@@ -211,6 +222,10 @@ export interface TriplesService {
   readonly history: (entityId: EntityId) => Effect.Effect<readonly Triple[], ReadError>;
   /** Read a persisted causal transaction envelope and its fact changes. */
   readonly transaction: (txId: string) => Effect.Effect<TransactionRecord | null, ReadError>;
+  /** Lookup every transaction carrying a command ID; command IDs are not unique. */
+  readonly transactionsByCommand: (
+    commandId: string,
+  ) => Effect.Effect<readonly TransactionRecord[], ReadError>;
   /** Read ordered transaction envelopes after a durable resume position. */
   readonly transactions: (
     request?: TransactionPageRequest,

@@ -29,11 +29,11 @@ Triplex and stays application-independent.
 
 ### 2. Durable audit journal
 
-- [ ] Persist complete typed fact data in assertion and retraction changes.
-- [ ] Preserve actor, command, correlation, causation, config snapshot, commit
+- [x] Persist complete typed fact data in assertion and retraction changes.
+- [x] Preserve actor, command, correlation, causation, config snapshot, commit
       position, and transaction instant.
-- [ ] Add parameterized command-ID lookup without claiming uniqueness.
-- [ ] Test a historical correction as a complete who/what/when/why timeline.
+- [x] Add parameterized/indexed command-ID lookup without claiming uniqueness.
+- [x] Test a historical correction as a complete who/what/when/why timeline.
 
 ### 3. Database-per-organization isolation
 

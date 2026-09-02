@@ -1,8 +1,29 @@
 import type { Triple, TripleInput } from "../Triple.js";
 import { TxAttributes } from "../utils/id.js";
 import type { TransactionChange, TransactionMeta, TransactionRecord } from "./Triples.js";
+import { Option } from "effect";
 
 const text = (value: string) => ({ type: "string" as const, value });
+
+export const transactionChangeFromTriple = (
+  op: "assert" | "retract",
+  triple: Triple,
+  transactionId: string,
+  transactionInstant: number,
+): TransactionChange => ({
+  op,
+  tripleId: triple.id,
+  entityId: triple.entityId,
+  attribute: triple.attribute,
+  ...(Option.isSome(triple.entityType) ? { entityType: triple.entityType.value } : {}),
+  value: triple.value,
+  validFrom: triple.validFrom,
+  ...(Option.isSome(triple.validTo) ? { validTo: triple.validTo.value } : {}),
+  recordedAt: triple.recordedAt,
+  ...(op === "retract" ? { recordedRetractedAt: transactionInstant } : {}),
+  ...(Option.isSome(triple.txId) ? { assertionTxId: triple.txId.value } : {}),
+  ...(op === "retract" ? { retractionTxId: transactionId } : {}),
+});
 
 export const metadataInputs = (
   txId: string,

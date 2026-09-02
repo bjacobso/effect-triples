@@ -52,6 +52,7 @@ import {
   metadataInputs,
   transactionRecordFromTriples,
   transactionRecordsFromTriples,
+  transactionChangeFromTriple,
   validatePreconditions,
 } from "./transactionMetadata.js";
 import {
@@ -60,6 +61,7 @@ import {
   reservedWriteError,
 } from "./systemNamespace.js";
 import { basisFromAsOf, resolveTemporalBasis } from "../Temporal.js";
+import { TxAttributes } from "../utils/id.js";
 
 // =============================================================================
 // Row to Triple Conversion
@@ -106,14 +108,16 @@ const rowToTriple = (row: TripleRow): Triple => {
     entityId: row.entity_id as EntityId,
     attribute: row.attribute as Attribute,
     value,
-    createdAt: row.created_at,
-    recordedAt: row.recorded_at,
-    validFrom: row.valid_from,
-    validTo: row.valid_to !== null ? Option.some(row.valid_to) : Option.none(),
+    createdAt: Number(row.created_at),
+    recordedAt: Number(row.recorded_at),
+    validFrom: Number(row.valid_from),
+    validTo: row.valid_to !== null ? Option.some(Number(row.valid_to)) : Option.none(),
     createdBy: row.created_by ? Option.some(row.created_by) : Option.none(),
-    retractedAt: row.retracted_at ? Option.some(row.retracted_at) : Option.none(),
+    retractedAt: row.retracted_at ? Option.some(Number(row.retracted_at)) : Option.none(),
     recordedRetractedAt:
-      row.recorded_retracted_at !== null ? Option.some(row.recorded_retracted_at) : Option.none(),
+      row.recorded_retracted_at !== null
+        ? Option.some(Number(row.recorded_retracted_at))
+        : Option.none(),
     entityType: row.entity_type ? Option.some(row.entity_type) : Option.none(),
     schemaVersion: row.schema_version ? Option.some(row.schema_version) : Option.none(),
     txId: row.tx_id ? Option.some(row.tx_id) : Option.none(),
@@ -351,12 +355,7 @@ export const TriplesLive = Layer.effect(
           const preconditionIds = livePreconditionIds(meta);
 
           const triples: Triple[] = [];
-          const changes: Array<{
-            readonly op: "assert" | "retract";
-            readonly tripleId: string;
-            readonly entityId: string;
-            readonly attribute: string;
-          }> = [];
+          const changes: import("./Triples.js").TransactionChange[] = [];
           let retractedCount = 0;
 
           let pendingAsserts: TransactOp[] = [];
@@ -371,12 +370,9 @@ export const TriplesLive = Layer.effect(
               const batch = yield* flushAssertBatch(pendingAsserts, txId, timestamp, actor);
               triples.push(...batch);
               changes.push(
-                ...batch.map((triple) => ({
-                  op: "assert" as const,
-                  tripleId: triple.id as string,
-                  entityId: triple.entityId as string,
-                  attribute: triple.attribute as string,
-                })),
+                ...batch.map((triple) =>
+                  transactionChangeFromTriple("assert", triple, txId, timestamp),
+                ),
               );
               pendingAsserts = [];
             }
@@ -404,12 +400,9 @@ export const TriplesLive = Layer.effect(
                 if (didRetract) {
                   retractedCount++;
                   if (current) {
-                    changes.push({
-                      op: "retract",
-                      tripleId: current.id,
-                      entityId: current.entity_id,
-                      attribute: current.attribute,
-                    });
+                    changes.push(
+                      transactionChangeFromTriple("retract", rowToTriple(current), txId, timestamp),
+                    );
                   }
                 }
                 break;
@@ -430,12 +423,9 @@ export const TriplesLive = Layer.effect(
                 for (const row of matched) {
                   if (yield* adapter.retract(row.id, timestamp, txId)) {
                     retractedCount++;
-                    changes.push({
-                      op: "retract",
-                      tripleId: row.id,
-                      entityId: row.entity_id,
-                      attribute: row.attribute,
-                    });
+                    changes.push(
+                      transactionChangeFromTriple("retract", rowToTriple(row), txId, timestamp),
+                    );
                   }
                 }
                 break;
@@ -447,12 +437,9 @@ export const TriplesLive = Layer.effect(
             const batch = yield* flushAssertBatch(pendingAsserts, txId, timestamp, actor);
             triples.push(...batch);
             changes.push(
-              ...batch.map((triple) => ({
-                op: "assert" as const,
-                tripleId: triple.id as string,
-                entityId: triple.entityId as string,
-                attribute: triple.attribute as string,
-              })),
+              ...batch.map((triple) =>
+                transactionChangeFromTriple("assert", triple, txId, timestamp),
+              ),
             );
           }
 
@@ -573,6 +560,20 @@ export const TriplesLive = Layer.effect(
       adapter
         .query({ entityId: txId, entityType: "_Transaction" })
         .pipe(Effect.map((rows) => transactionRecordFromTriples(txId, rows.map(rowToTriple))));
+
+    const transactionsByCommand: TriplesService["transactionsByCommand"] = (commandId) =>
+      adapter
+        .query({ attribute: TxAttributes.COMMAND_ID, value: { type: "string", value: commandId } })
+        .pipe(
+          Effect.flatMap((rows) =>
+            Effect.forEach(rows, (row) => transaction(row.entity_id), { concurrency: 16 }),
+          ),
+          Effect.map((records) =>
+            records
+              .filter((record): record is NonNullable<typeof record> => record !== null)
+              .sort((left, right) => left.position - right.position),
+          ),
+        );
 
     const transactions: TriplesService["transactions"] = (request = {}) => {
       const after = request.after ?? 0;
@@ -760,6 +761,7 @@ export const TriplesLive = Layer.effect(
       matchAsOf,
       history,
       transaction,
+      transactionsByCommand,
       transactions,
       query,
       queryPage,

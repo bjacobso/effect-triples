@@ -460,6 +460,39 @@ export const triplesConformanceCases: readonly ConformanceCase[] = [
           journal.changes.length === 2,
         "the transaction journal should retain its causal metadata and changes",
       );
+      const retraction = journal?.changes.find((change) => change.op === "retract");
+      const assertion = journal?.changes.find((change) => change.op === "assert");
+      yield* check(
+        retraction?.value?.type === "string" &&
+          retraction.value.value === "open" &&
+          retraction.recordedAt === current.recordedAt &&
+          retraction.recordedRetractedAt === committed.instant &&
+          retraction.retractionTxId === committed.txId,
+        "a retraction journal entry must retain the old typed value and both recorded instants",
+      );
+      yield* check(
+        assertion?.value?.type === "string" &&
+          assertion.value.value === "claimed" &&
+          assertion.validFrom === committed.instant &&
+          assertion.assertionTxId === committed.txId,
+        "an assertion journal entry must retain its typed value, validity, and asserting transaction",
+      );
+      yield* t.transact(
+        [
+          {
+            op: "assert",
+            entityId: "conf:conditional:receipt",
+            attribute: ":status",
+            value: string("observed"),
+          },
+        ],
+        { commandId: "conf:claim:1" },
+      );
+      const receipts = yield* t.transactionsByCommand("conf:claim:1");
+      yield* check(
+        receipts.length === 2 && receipts[0]?.txId === committed.txId,
+        "command lookup must be indexed, ordered, and must not assume command IDs are unique",
+      );
       const page = yield* t.transactions({ after: committed.position - 1, limit: 1 });
       yield* check(
         page.transactions[0]?.txId === committed.txId && page.next === committed.position,

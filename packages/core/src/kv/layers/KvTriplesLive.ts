@@ -34,6 +34,7 @@ import {
   metadataInputs,
   transactionRecordFromTriples,
   transactionRecordsFromTriples,
+  transactionChangeFromTriple,
   validatePreconditions,
 } from "../../store/transactionMetadata.js";
 import {
@@ -42,6 +43,7 @@ import {
   reservedWriteError,
 } from "../../store/systemNamespace.js";
 import { basisFromAsOf, resolveTemporalBasis, type ResolvedTemporalBasis } from "../../Temporal.js";
+import { TxAttributes } from "../../utils/id.js";
 
 const COMMIT_POSITION_KEY = new Uint8Array([0x21]);
 const textEncoder = new TextEncoder();
@@ -474,12 +476,7 @@ const makeKvTriplesService = Effect.gen(function* () {
             const actor = meta?.actor ?? meta?.user;
             const preconditionIds = livePreconditionIds(meta);
             const asserted: Triple[] = [];
-            const changes: Array<{
-              readonly op: "assert" | "retract";
-              readonly tripleId: string;
-              readonly entityId: string;
-              readonly attribute: string;
-            }> = [];
+            const changes: import("../../store/Triples.js").TransactionChange[] = [];
             let retractedCount = 0;
 
             for (const op of operations) {
@@ -502,12 +499,7 @@ const makeKvTriplesService = Effect.gen(function* () {
                   yield* transactionStore.assert(datom);
                   const triple = datomToTriple(datom);
                   asserted.push(triple);
-                  changes.push({
-                    op: "assert",
-                    tripleId: triple.id,
-                    entityId: triple.entityId,
-                    attribute: triple.attribute,
-                  });
+                  changes.push(transactionChangeFromTriple("assert", triple, txId, now));
                   break;
                 }
                 case "retract": {
@@ -532,12 +524,9 @@ const makeKvTriplesService = Effect.gen(function* () {
                   if (ok) {
                     retractedCount++;
                     if (current) {
-                      changes.push({
-                        op: "retract",
-                        tripleId: current.tripleId,
-                        entityId: current.entity,
-                        attribute: current.attribute,
-                      });
+                      changes.push(
+                        transactionChangeFromTriple("retract", datomToTriple(current), txId, now),
+                      );
                     }
                   }
                   break;
@@ -562,12 +551,9 @@ const makeKvTriplesService = Effect.gen(function* () {
                     const ok = yield* transactionStore.retract(datom.tripleId, now, txId);
                     if (ok) {
                       retractedCount++;
-                      changes.push({
-                        op: "retract",
-                        tripleId: datom.tripleId,
-                        entityId: datom.entity,
-                        attribute: datom.attribute,
-                      });
+                      changes.push(
+                        transactionChangeFromTriple("retract", datomToTriple(datom), txId, now),
+                      );
                     }
                   }
                   break;
@@ -686,6 +672,29 @@ const makeKvTriplesService = Effect.gen(function* () {
         Effect.catch((e) =>
           Effect.fail(
             new ReadError({ message: `Transaction read failed: ${String(e)}`, cause: e }),
+          ),
+        ),
+      ),
+
+    transactionsByCommand: (commandId) =>
+      Effect.gen(function* () {
+        const commandFacts = yield* match({
+          attribute: TxAttributes.COMMAND_ID,
+          value: { type: "string", value: commandId },
+        });
+        const records = yield* Effect.forEach(commandFacts, (fact) =>
+          Effect.gen(function* () {
+            const datoms = yield* hexaStore.scanCollectAsync({ entity: fact.entityId });
+            return transactionRecordFromTriples(fact.entityId, datoms.map(datomToTriple));
+          }),
+        );
+        return records
+          .filter((record): record is NonNullable<typeof record> => record !== null)
+          .sort((left, right) => left.position - right.position);
+      }).pipe(
+        Effect.catch((e) =>
+          Effect.fail(
+            new ReadError({ message: `Command transaction lookup failed: ${String(e)}`, cause: e }),
           ),
         ),
       ),
