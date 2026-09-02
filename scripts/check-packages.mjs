@@ -118,7 +118,7 @@ try {
     join(consumerDir, "consumer.ts"),
     `import type { TripleInput } from "@bjacobso/triplex";
 import type { DatalogQuery } from "@bjacobso/triplex/datalog";
-import { Attribute, ConfigRuntime, ConfigStore, EntityType, EntityValidation, Evaluate, TypeExpr } from "@bjacobso/triplex/config";
+import { Attribute, ConfigRuntime, ConfigStore, EntityType, EntityValidation, Evaluate, GraphConstraint, TypeExpr } from "@bjacobso/triplex/config";
 import * as Derivation from "@bjacobso/triplex/derivation";
 import * as Cloudflare from "@bjacobso/triplex-cloudflare";
 import * as FoundationDb from "@bjacobso/triplex-foundationdb";
@@ -150,6 +150,7 @@ void ConfigStore;
 void ConfigRuntime;
 void EntityValidation;
 void Evaluate;
+void GraphConstraint;
 void TypeExpr;
 void Derivation;
 void Derivation.Materialization;

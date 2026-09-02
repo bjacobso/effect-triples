@@ -158,10 +158,13 @@ and durable resume positions beneath them.
 
 ### Graph constraints
 
-Keep `TypeExpr` local and decidable. Add separately versioned config nodes for cardinality,
-uniqueness, required relationships, reference target kinds, and Datalog invariants. Constraints
-support observation mode, which writes first-class violations, and enforcement mode, which rejects
-a command. Cross-entity policy must not be hidden inside value decoding.
+`TypeExpr` remains local and decidable. Separately content-addressed `GraphConstraint` nodes now
+cover cardinality, uniqueness, required relationships, and reference target kinds. The ontology DSL
+generates them from usage-local declarations, and `EntityValidation` writes their findings as
+first-class violations with stable codes and constraint identities. Read-only evaluation accepts a
+bitemporal basis. Next, add opt-in enforcement that rejects a command atomically, with explicit
+valid-interval semantics and backend-portable phantom protection. Cross-entity policy must not be
+hidden inside value decoding; general Datalog invariants also remain future work.
 
 ### Projection ownership
 

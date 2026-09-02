@@ -99,6 +99,7 @@ import {
   ConfigStore,
   EntityValidation,
   Evaluate,
+  GraphConstraint,
   TypeExpr,
 } from "@bjacobso/triplex/config";
 ```
@@ -120,7 +121,7 @@ export const EmployerName = Attribute.text(":employer/name");
 
 export const Employer = EntityType.make("Employer", {
   attributes: {
-    name: Attribute.use(EmployerName, { required: true }),
+    name: Attribute.use(EmployerName, { required: true, unique: true }),
   },
 });
 
@@ -137,8 +138,10 @@ Employer.name.assertion("Acme", { validFrom });
 ```
 
 `Employer.nodes` yields the independently addressed attribute definitions followed by the
-entity-schema node for committing into a release. That schema node references each attribute
-with usage-local constraints, while reference attributes also point to their target entity type.
+entity-schema node for committing into a release. Required, cardinality-one, uniqueness, and
+reference-target rules are independently content-addressed `GraphConstraint` children of that
+schema node. The schema references each global attribute, while reference attributes and their
+constraints also point to the target entity type.
 An assertion is a typed command descriptor (`attribute`, encoded Triple value, and optional
 domain `validFrom`); an application command decides how domain-valid time maps onto its fact
 model, while raw `Triples.transact` continues to record transaction time.
@@ -221,12 +224,17 @@ invalid query without erasing that it was invalid before. `currentInvalidQuery`,
 `lastInvalidQuery`, `everInvalidQuery`, and `violationsQuery` return ordinary Datalog queries for composing
 validation state with the rest of an application's graph.
 
+Schemas built through `EntityType.make` also evaluate their graph constraints during the same
+revalidation pass. Violations use stable `required`, `cardinality`, `unique`, and
+`reference-target` codes and retain the responsible constraint key as an ordinary reserved fact.
+`GraphConstraint.evaluate` can run the same definitions read-only at an explicit bitemporal basis.
+
 Revalidation is an explicit checkpointed projection in this release. Each run records the
 latest causal transaction position it observed. `currentInvalid` reports `unvalidated`,
 `current`, or `stale`, and stale responses retain the last known errors instead of silently
 returning an empty set. Use `transact` for operational writes so they participate in this
 freshness boundary; standalone low-level writes do not create causal envelopes. These
-observations are not write guards. Applications that require
+observations, including graph-constraint findings, are not write guards. Applications that require
 synchronous write validation should place the write and follow-up workflow behind their own
 command boundary.
 
@@ -842,9 +850,9 @@ package dependency graph.
 
 ## Roadmap
 
-Planned work is tracked in [docs/roadmap.md](./docs/roadmap.md), including schema-aware
-constraints, reactive "live" queries, indexed projection checkpoints, integrated full-text
-search, query optimization, and client-side sync / offline-first support.
+Planned work is tracked in [docs/roadmap.md](./docs/roadmap.md), including transactional constraint
+enforcement, reactive "live" queries, integrated full-text search, query optimization, and
+client-side sync / offline-first support.
 
 ## License
 

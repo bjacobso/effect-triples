@@ -21,3 +21,5 @@ Keep entity snapshots focused on content-addressed materialization by removing t
 Make command IDs atomically unique per database with typed duplicate receipts, and add Datalog-queryable consumer checkpoints with optimistic advancement under the new `@bjacobso/triplex/operational` subpath.
 
 Add indexed dependency freshness and temporal scheduling across KV, SQLite, and PostgreSQL so fixed-attribute derivations no longer replay the transaction journal.
+
+Add independently content-addressed graph constraints for required attributes, cardinality, uniqueness, and reference targets; generate them from the ontology DSL and materialize their findings as first-class validation facts.

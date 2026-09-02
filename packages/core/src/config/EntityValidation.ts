@@ -26,6 +26,7 @@ import * as CanonicalJson from "../content/CanonicalJson.js";
 import * as ContentId from "../content/ContentId.js";
 import * as ConfigNode from "./ConfigNode.js";
 import * as ConfigStore from "./ConfigStore.js";
+import * as GraphConstraint from "./GraphConstraint.js";
 import * as TypeExpr from "./TypeExpr.js";
 import * as TypeSchema from "./TypeSchema.js";
 
@@ -57,6 +58,7 @@ export const System = {
     code: ":triplex/validation-code",
     path: ":triplex/validation-path",
     message: ":triplex/validation-message",
+    constraint: ":triplex/validation-constraint",
   },
 } as const;
 
@@ -97,9 +99,10 @@ export interface ValidationViolation {
   readonly entityType: string;
   readonly schemaId: ContentId.ContentId;
   readonly snapshotId: string;
-  readonly code: "schema";
+  readonly code: "schema" | GraphConstraint.Code;
   readonly path: string;
   readonly message: string;
+  readonly constraintKey?: string;
 }
 
 export interface ValidationResult {
@@ -149,9 +152,18 @@ export interface StoredViolation {
   readonly violationEntityId: string;
   readonly resultEntityId: string;
   readonly subject: string;
+  readonly entityType: string;
+  readonly code: "schema" | GraphConstraint.Code;
   readonly path: string;
   readonly message: string;
 }
+
+const isViolationCode = (value: unknown): value is StoredViolation["code"] =>
+  value === "schema" ||
+  value === "required" ||
+  value === "cardinality" ||
+  value === "unique" ||
+  value === "reference-target";
 
 export class UnknownValidationRefError extends Data.TaggedError("UnknownValidationRefError")<{
   readonly ref: string;
@@ -171,6 +183,8 @@ export type RevalidateError =
   | ConfigStore.LoadError
   | UnknownValidationRefError
   | InvalidEntitySchemaError
+  | GraphConstraint.InvalidGraphConstraintError
+  | GraphConstraint.DuplicateGraphConstraintError
   | CanonicalJson.CanonicalEncodingError;
 
 export interface EntityValidationService {
@@ -279,13 +293,21 @@ const formatPath = (
   }, "$");
 };
 
+interface ValidationIssue {
+  readonly code: "schema" | GraphConstraint.Code;
+  readonly path: string;
+  readonly message: string;
+  readonly constraintKey?: string;
+}
+
 const validationIssues = (
   type: TypeExpr.TypeExpr,
   state: CanonicalJson.CanonicalValue,
-): ReadonlyArray<{ readonly path: string; readonly message: string }> => {
+): ReadonlyArray<ValidationIssue> => {
   const decoded = Schema.decodeUnknownResult(TypeSchema.compile(type))(state);
   if (Result.isSuccess(decoded)) return [];
   return SchemaIssue.makeFormatterStandardSchemaV1()(decoded.failure.issue).issues.map((issue) => ({
+    code: "schema" as const,
     path: formatPath(issue.path),
     message: issue.message,
   }));
@@ -353,11 +375,13 @@ export const violationsQuery = (
   const where: DatalogQuery["where"] = [
     ["?violation", System.attribute.result, "?result"],
     ["?violation", System.attribute.subject, "?subject"],
+    ["?violation", System.attribute.code, "?code"],
     ["?violation", System.attribute.path, "?path"],
     ["?violation", System.attribute.message, "?message"],
+    ["?result", System.attribute.entityType, "?entityType"],
   ];
   return {
-    find: ["?violation", "?result", "?subject", "?path", "?message"],
+    find: ["?violation", "?result", "?subject", "?entityType", "?code", "?path", "?message"],
     where: [
       ...where,
       ...(input.resultEntityId === undefined
@@ -445,6 +469,15 @@ const makeService = Effect.gen(function* () {
         definedEntityTypes.add(definition.entityType);
         definitions.push(definition);
       }
+      const graphConstraints = yield* GraphConstraint.collect(snapshot.root);
+      const graphViolations = yield* GraphConstraint.evaluate(triples, graphConstraints);
+      const graphIssuesBySubject = new Map<string, GraphConstraint.Violation[]>();
+      for (const violation of graphViolations) {
+        const key = `${violation.entityType}\u0000${violation.subject}`;
+        const current = graphIssuesBySubject.get(key) ?? [];
+        current.push(violation);
+        graphIssuesBySubject.set(key, current);
+      }
 
       const checkpointEntity = entityId.checkpoint(ref);
       const [resultRows, violationRows, headRows, runRows, checkpointRows] = yield* Effect.all([
@@ -483,7 +516,29 @@ const makeService = Effect.gen(function* () {
             ContentId.Domain.validationState,
             yield* CanonicalJson.encode(state),
           );
-          const issues = validationIssues(definition.type, state);
+          const graphIssues =
+            graphIssuesBySubject.get(`${definition.entityType}\u0000${subject}`) ?? [];
+          const graphOwnedPaths = new Set(
+            graphIssues
+              .filter((issue) => issue.code === "required" || issue.code === "cardinality")
+              .map((issue) => issue.path),
+          );
+          const issues: ValidationIssue[] = [
+            ...validationIssues(definition.type, state).filter(
+              (issue) => !graphOwnedPaths.has(issue.path),
+            ),
+            ...graphIssues.map((issue) => ({
+              code: issue.code,
+              path: issue.path,
+              message: issue.message,
+              constraintKey: issue.constraintKey,
+            })),
+          ].sort(
+            (left, right) =>
+              left.path.localeCompare(right.path) ||
+              left.code.localeCompare(right.code) ||
+              left.message.localeCompare(right.message),
+          );
           const resultEncoded = yield* CanonicalJson.encode({
             v: 1,
             subject,
@@ -492,7 +547,12 @@ const makeService = Effect.gen(function* () {
             snapshotId: snapshot.id,
             snapshotRootCid: snapshot.rootCid,
             stateCid,
-            issues,
+            issues: issues.map((issue) => ({
+              code: issue.code,
+              path: issue.path,
+              message: issue.message,
+              ...(issue.constraintKey === undefined ? {} : { constraintKey: issue.constraintKey }),
+            })),
           });
           const resultId = ContentId.hash(ContentId.Domain.validationResult, resultEncoded);
           const resultEntity = entityId.result(resultId);
@@ -503,9 +563,10 @@ const makeService = Effect.gen(function* () {
               v: 1,
               resultId,
               index,
-              code: "schema",
+              code: issue.code,
               path: issue.path,
               message: issue.message,
+              ...(issue.constraintKey === undefined ? {} : { constraintKey: issue.constraintKey }),
             });
             const id = ContentId.hash(ContentId.Domain.validationViolation, violationEncoded);
             const violation: ValidationViolation = {
@@ -515,9 +576,10 @@ const makeService = Effect.gen(function* () {
               entityType: definition.entityType,
               schemaId,
               snapshotId: snapshot.id,
-              code: "schema",
+              code: issue.code,
               path: issue.path,
               message: issue.message,
+              ...(issue.constraintKey === undefined ? {} : { constraintKey: issue.constraintKey }),
             };
             violations.push(violation);
 
@@ -548,6 +610,16 @@ const makeService = Effect.gen(function* () {
                   type: "string",
                   value: violation.message,
                 }),
+                ...(violation.constraintKey === undefined
+                  ? []
+                  : [
+                      assertOp(
+                        violationEntity,
+                        System.entityType.violation,
+                        System.attribute.constraint,
+                        { type: "string", value: violation.constraintKey },
+                      ),
+                    ]),
               );
               knownViolations.add(violationEntity);
             }
@@ -810,14 +882,28 @@ const makeService = Effect.gen(function* () {
               const violationEntityId = row["?violation"];
               const resultEntityId = row["?result"];
               const subject = row["?subject"];
+              const entityType = row["?entityType"];
+              const code = row["?code"];
               const path = row["?path"];
               const message = row["?message"];
               return typeof violationEntityId === "string" &&
                 typeof resultEntityId === "string" &&
                 typeof subject === "string" &&
+                typeof entityType === "string" &&
+                isViolationCode(code) &&
                 typeof path === "string" &&
                 typeof message === "string"
-                ? [{ violationEntityId, resultEntityId, subject, path, message }]
+                ? [
+                    {
+                      violationEntityId,
+                      resultEntityId,
+                      subject,
+                      entityType,
+                      code,
+                      path,
+                      message,
+                    },
+                  ]
                 : [];
             })
             .sort(

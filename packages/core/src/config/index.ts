@@ -11,6 +11,7 @@ export * as Entity from "./Entity";
 export * as EntityType from "./EntityType";
 export * as EntityValidation from "./EntityValidation";
 export * as Evaluate from "./Evaluate";
+export * as GraphConstraint from "./GraphConstraint";
 export * as Reactor from "./Reactor";
 export * as TypeExpr from "./TypeExpr";
 export * as TypeSchema from "./TypeSchema";

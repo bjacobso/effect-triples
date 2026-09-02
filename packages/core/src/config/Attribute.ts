@@ -38,6 +38,8 @@ export interface Definition<K extends string, V> {
 export interface UseOptions {
   readonly required?: boolean;
   readonly cardinality?: "one" | "many";
+  /** Values of this attribute may occur on at most one entity of this type. */
+  readonly unique?: boolean;
 }
 
 export interface Use<D extends Definition<string, unknown>> {
@@ -45,6 +47,7 @@ export interface Use<D extends Definition<string, unknown>> {
   readonly attribute: D;
   readonly required: boolean;
   readonly cardinality: "one" | "many";
+  readonly unique: boolean;
 }
 
 export type AnyDefinition = Definition<string, any>;
@@ -128,6 +131,7 @@ export const use = <D extends AnyDefinition>(attribute: D, options: UseOptions =
   attribute,
   required: options.required ?? false,
   cardinality: options.cardinality ?? "one",
+  unique: options.unique ?? false,
 });
 
 export const assertion = <D extends AnyDefinition>(

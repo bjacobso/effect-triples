@@ -29,9 +29,11 @@ hosts typed configuration as a modular layer over the same core.
   ambiguous multi-valued reads instead of hiding cardinality and keeps storage out of proof
   verification.
 - `EntityValidation` is the schema-to-facts bridge. Runtime entity schemas are deployed as config
-  nodes; explicit revalidation writes immutable content-addressed results and individual violation
-  facts, then atomically moves per-ref heads and a projection checkpoint. The checkpoint records
-  the latest non-validation transaction position observed, so convenience reads distinguish
+  nodes. Independently content-addressed `GraphConstraint` children describe required attributes,
+  cardinality, uniqueness, and reference targets without expanding the value-local `TypeExpr`
+  algebra. Explicit revalidation writes immutable content-addressed results and individual
+  violation facts, then atomically moves per-ref heads and a projection checkpoint. The checkpoint
+  records the latest non-validation transaction position observed, so convenience reads distinguish
   current, stale, and unvalidated state while Datalog can still query last-known invalid entities,
   ever-invalid entities, and historical messages. Materialized entity bodies are committed by a
   domain-separated state CID rather than copied into validation facts.

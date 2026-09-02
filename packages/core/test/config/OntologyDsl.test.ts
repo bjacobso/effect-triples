@@ -7,6 +7,7 @@ import * as Attribute from "../../src/config/Attribute.js";
 import * as ConfigStore from "../../src/config/ConfigStore.js";
 import * as EntityType from "../../src/config/EntityType.js";
 import * as EntityValidation from "../../src/config/EntityValidation.js";
+import * as GraphConstraint from "../../src/config/GraphConstraint.js";
 
 const EmployerName = Attribute.text(":employer/name");
 const WorkerName = Attribute.text(":worker/name");
@@ -61,6 +62,14 @@ describe("ontology DSL", () => {
           key: ":employer/name",
         },
       ]);
+      expect(Employer.constraints.map(({ rule }) => rule._tag)).toEqual([
+        "Required",
+        "Cardinality",
+      ]);
+      expect(employerNode.children).toHaveLength(2);
+      expect(employerNode.children.every(({ node }) => node.kind === GraphConstraint.KIND)).toBe(
+        true,
+      );
     }),
   );
 

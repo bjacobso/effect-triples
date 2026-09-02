@@ -24,6 +24,7 @@ import {
 } from "@bjacobso/triplex";
 import { ConsumerCheckpoint } from "@bjacobso/triplex/operational";
 import * as Derivation from "@bjacobso/triplex/derivation";
+import { GraphConstraint } from "@bjacobso/triplex/config";
 
 // ─── Lightweight fixture descriptors (unchanged) ────────────────────────────
 
@@ -667,6 +668,87 @@ export const triplesConformanceCases: readonly ConformanceCase[] = [
       yield* check(
         refreshed.candidates.length === 1 && refreshed.nextTemporalBoundary === 500,
         "refresh should retain current results and persist the future wakeup",
+      );
+    }),
+  },
+  {
+    name: "graph constraints agree across storage backends",
+    run: Effect.gen(function* () {
+      const t = yield* Triples;
+      yield* t.assertBatch([
+        {
+          entityId: "conf:user:alice",
+          entityType: "ConfUser",
+          attribute: ":conf-user/email",
+          value: string("shared@example.test"),
+        },
+        {
+          entityId: "conf:user:bob",
+          entityType: "ConfUser",
+          attribute: ":conf-user/email",
+          value: string("shared@example.test"),
+        },
+        {
+          entityId: "conf:user:future",
+          entityType: "ConfUser",
+          attribute: ":conf-user/email",
+          value: string("shared@example.test"),
+          validFrom: 9_000_000_000_000,
+        },
+        {
+          entityId: "conf:group:valid",
+          entityType: "ConfGroup",
+          attribute: ":conf-group/name",
+          value: string("Valid group"),
+        },
+        {
+          entityId: "conf:membership:missing",
+          entityType: "ConfMembership",
+          attribute: ":conf-membership/note",
+          value: string("missing group"),
+        },
+        {
+          entityId: "conf:membership:multi",
+          entityType: "ConfMembership",
+          attribute: ":conf-membership/group",
+          value: ref("conf:group:valid"),
+        },
+        {
+          entityId: "conf:membership:multi",
+          entityType: "ConfMembership",
+          attribute: ":conf-membership/group",
+          value: ref("conf:group:missing"),
+        },
+      ]);
+
+      const violations = yield* GraphConstraint.evaluate(t, [
+        GraphConstraint.unique("ConfUser", ":conf-user/email"),
+        GraphConstraint.required("ConfMembership", ":conf-membership/group"),
+        GraphConstraint.cardinality("ConfMembership", ":conf-membership/group", 1),
+        GraphConstraint.referenceTarget("ConfMembership", ":conf-membership/group", "ConfGroup"),
+      ]);
+      yield* check(
+        JSON.stringify(
+          violations.map(({ entityType, subject, code }) => `${entityType}|${subject}|${code}`),
+        ) ===
+          JSON.stringify([
+            "ConfMembership|conf:membership:missing|required",
+            "ConfMembership|conf:membership:multi|cardinality",
+            "ConfMembership|conf:membership:multi|reference-target",
+            "ConfUser|conf:user:alice|unique",
+            "ConfUser|conf:user:bob|unique",
+          ]),
+        "required, cardinality, reference-target, and uniqueness observations should agree",
+      );
+      const futureViolations = yield* GraphConstraint.evaluate(
+        t,
+        [GraphConstraint.unique("ConfUser", ":conf-user/email")],
+        { validAt: 9_000_000_000_000 },
+      );
+      yield* check(
+        futureViolations.length === 3 &&
+          futureViolations.some(({ subject }) => subject === "conf:user:future"),
+        "constraint evaluation should apply one explicit bitemporal basis to the graph",
       );
     }),
   },

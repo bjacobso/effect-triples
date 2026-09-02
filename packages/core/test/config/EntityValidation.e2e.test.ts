@@ -4,7 +4,9 @@ import { Effect, Layer } from "effect";
 import { KvTriples } from "../../src/kv/layers/KvTriplesLive.js";
 import { Triples } from "../../src/store/Triples.js";
 import { number, string } from "../../src/Value.js";
+import * as Attribute from "../../src/config/Attribute.js";
 import * as ConfigStore from "../../src/config/ConfigStore.js";
+import * as EntityType from "../../src/config/EntityType.js";
 import * as EntityValidation from "../../src/config/EntityValidation.js";
 import * as TypeExpr from "../../src/config/TypeExpr.js";
 
@@ -22,6 +24,125 @@ const employeeType = (minimumAge?: number) =>
   });
 
 describe("entity validation observations", () => {
+  it.effect("materializes first-class graph constraint violations", () =>
+    Effect.gen(function* () {
+      const OrganizationName = Attribute.text(":organization/name");
+      const PersonName = Attribute.text(":person/name");
+      const MembershipOrganization = Attribute.ref(":membership/organization", {
+        entityType: "Organization",
+      });
+      const MembershipNote = Attribute.text(":membership/note");
+      const Organization = EntityType.make("Organization", {
+        attributes: {
+          name: Attribute.use(OrganizationName, { required: true, unique: true }),
+        },
+      });
+      const Person = EntityType.make("Person", {
+        attributes: { name: Attribute.use(PersonName, { required: true }) },
+      });
+      const Membership = EntityType.make("Membership", {
+        attributes: {
+          organization: Attribute.use(MembershipOrganization, { required: true }),
+          note: Attribute.use(MembershipNote),
+        },
+      });
+
+      const config = yield* ConfigStore.ConfigStore;
+      const validation = yield* EntityValidation.EntityValidation;
+      const triples = yield* Triples;
+      const nodes = [
+        ...(yield* Organization.nodes),
+        ...(yield* Person.nodes),
+        ...(yield* Membership.nodes),
+      ];
+      const objects = [
+        ...new Map(nodes.map((node) => [`${node.kind}\u0000${node.key}`, node])).values(),
+      ];
+      yield* config.commit({ label: "graph constraints", objects, ref: "live" });
+
+      yield* triples.assertBatch([
+        {
+          entityId: "organization:acme",
+          entityType: Organization.entityType,
+          attribute: Organization.name.key,
+          value: Organization.name.assertion("Shared name").value,
+        },
+        {
+          entityId: "organization:globex",
+          entityType: Organization.entityType,
+          attribute: Organization.name.key,
+          value: Organization.name.assertion("Shared name").value,
+        },
+        {
+          entityId: "person:alice",
+          entityType: Person.entityType,
+          attribute: Person.name.key,
+          value: Person.name.assertion("Alice").value,
+        },
+        {
+          entityId: "membership:wrong-and-many",
+          entityType: Membership.entityType,
+          attribute: Membership.note.key,
+          value: Membership.note.assertion("discover the entity").value,
+        },
+        {
+          entityId: "membership:wrong-and-many",
+          entityType: Membership.entityType,
+          attribute: Membership.organization.key,
+          value: Membership.organization.assertion("person:alice").value,
+        },
+        {
+          entityId: "membership:wrong-and-many",
+          entityType: Membership.entityType,
+          attribute: Membership.organization.key,
+          value: Membership.organization.assertion("organization:acme").value,
+        },
+        {
+          entityId: "membership:missing",
+          entityType: Membership.entityType,
+          attribute: Membership.note.key,
+          value: Membership.note.assertion("no organization").value,
+        },
+      ]);
+
+      const run = yield* validation.revalidate({ ref: "live" });
+      const graphViolations = run.results
+        .flatMap((result) => result.violations)
+        .filter((violation) => violation.code !== "schema")
+        .map(({ subject, code }) => ({ subject, code }));
+      expect(graphViolations).toEqual([
+        { subject: "membership:missing", code: "required" },
+        { subject: "membership:wrong-and-many", code: "cardinality" },
+        { subject: "membership:wrong-and-many", code: "reference-target" },
+        { subject: "organization:acme", code: "unique" },
+        { subject: "organization:globex", code: "unique" },
+      ]);
+
+      const stored = yield* validation.violations();
+      expect(
+        stored
+          .filter(({ code }) => code !== "schema")
+          .map(({ subject, code }) => ({
+            subject,
+            code,
+          })),
+      ).toEqual(graphViolations);
+      const datalog = yield* triples.query(EntityValidation.violationsQuery());
+      expect(datalog.results).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            "?subject": "membership:wrong-and-many",
+            "?code": "reference-target",
+          }),
+          expect.objectContaining({
+            "?subject": "organization:acme",
+            "?code": "unique",
+          }),
+        ]),
+      );
+    }).pipe(Effect.provide(TriplexLayer)),
+  );
+
   it.effect("preserves a list containing one fact value", () =>
     Effect.gen(function* () {
       const config = yield* ConfigStore.ConfigStore;

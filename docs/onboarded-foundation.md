@@ -149,10 +149,10 @@ alias. Form, policy, routine/action, permission, integration, and view nodes can
 same keys in one `ConfigStore.commit`. Store the resulting `ConfigSnapshot` ID on every operational
 transaction through `meta.configSnapshot`.
 
-Triplex `EntityValidation` currently records queryable observations. It does **not** replace
-Onboarded's transactional enforcement of attribute cardinality, required facts, reference target
-types, uniqueness, or authorization. Keep those checks at the Onboarded command boundary until
-Triplex graph constraints implement and test them atomically.
+Triplex `EntityValidation` now records queryable observations for attribute cardinality, required
+facts, reference target types, and uniqueness. It does **not** replace Onboarded's transactional
+enforcement or authorization. Keep those checks at the Onboarded command boundary until Triplex
+implements and tests enforcement atomically.
 
 ## RequestResolver batching
 
@@ -187,8 +187,9 @@ its product-specific response cache and authorization checks.
 
 ## Remaining limitations
 
-- Cross-entity cardinality, uniqueness, required relationships, reference integrity, and
-  authorization are not transactionally enforced by core.
+- Cardinality, uniqueness, required relationships, and reference targets can be observed as
+  content-addressed, Datalog-queryable violations, but they and authorization are not yet
+  transactionally enforced by core.
 - Inbox/outbox records, response caching, retry policy, and timer delivery remain host-owned.
 - Derivation provenance currently rejects recursive rules, disjunction, aggregation, and dynamic
   attributes rather than returning an incomplete explanation.
