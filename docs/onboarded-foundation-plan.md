@@ -44,16 +44,16 @@ Triplex and stays application-independent.
       without relying on a one-time `SET search_path` checkout.
 - [x] Prove concurrent isolation for facts, Datalog, journal, config refs, and
       snapshots.
-- [ ] Document equivalent KV/SQLite construction in the adoption guide.
+- [x] Document equivalent KV/SQLite construction in the adoption guide.
 
 ### 4. Stable pagination
 
-- [ ] Replace raw cursor JSON with a versioned, schema-decoded envelope.
-- [ ] Bind cursors to canonical query, ordering, temporal basis, and database
+- [x] Replace raw cursor JSON with a versioned, schema-decoded envelope.
+- [x] Bind cursors to canonical query, ordering, temporal basis, and database
       scope fingerprints.
-- [ ] Use deterministic keyset order with a unique tie-breaker and pin the first
-      page's recorded-time snapshot.
-- [ ] Add malformed, cross-query, cross-scope, concurrent-write, and backend
+- [x] Use deterministic keyset order with a unique tie-breaker and pin the first
+      page's exact recorded commit-position snapshot.
+- [x] Add malformed, cross-query, cross-scope, concurrent-write, and backend
       parity tests.
 
 ### 5. Batched reads
@@ -62,7 +62,7 @@ Triplex and stays application-independent.
       request association and missing entities.
 - [x] Use indexed KV reads and parameterized bounded SQL reads.
 - [x] Add KV/SQLite/PostgreSQL conformance tests.
-- [ ] Add RequestResolver guidance.
+- [x] Add RequestResolver guidance.
 
 ### 6. Host-owned migrations
 
@@ -73,24 +73,24 @@ Triplex and stays application-independent.
 
 ### 7. Configuration foundation and adoption guide
 
-- [ ] Add a generic end-to-end release example covering entity/attribute, form,
+- [x] Add a generic end-to-end release example covering entity/attribute, form,
       policy, routine/action, organization ref, operational transaction provenance,
       and later explanation from the pinned release.
-- [ ] Document validation's current enforcement limits accurately.
-- [ ] Add `docs/onboarded-foundation.md` with package/API mappings, data
+- [x] Document validation's current enforcement limits accurately.
+- [x] Add `docs/onboarded-foundation.md` with package/API mappings, data
       migration, database-per-organization wrapping, DSL compilation, batching,
       and journal consumption.
-- [ ] Update architecture and roadmap documents.
+- [x] Update architecture and roadmap documents.
 
 ## Release gates
 
-- [ ] `pnpm check`
-- [ ] `pnpm pack:check`
-- [ ] `pnpm test:postgres:integration`
-- [ ] KV/SQLite/PostgreSQL temporal and pagination differential suites
-- [ ] Fresh and upgrade migration tests
-- [ ] Package consumer installation checks
-- [ ] Generated SQL reviewed for parameterization and database isolation
+- [x] `pnpm check`
+- [x] `pnpm pack:check`
+- [x] `pnpm test:postgres:integration`
+- [x] KV/SQLite/PostgreSQL temporal and pagination differential suites
+- [x] Fresh and upgrade migration tests
+- [x] Package consumer installation checks
+- [x] Generated SQL reviewed for parameterization and database isolation
 
 Implementation is committed by slice. Nothing is pushed until all completed
 slices and the release gates relevant to them are green.

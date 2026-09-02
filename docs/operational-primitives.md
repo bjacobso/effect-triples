@@ -60,6 +60,15 @@ The feed covers every successful public write. Delivery built on repeated page r
 once, so consumers retain a checkpoint and deduplicate by command or transaction identity.
 `ChangeEmitter` remains a best-effort wake-up mechanism and never replaces catch-up reads.
 
+### Snapshot-stable Datalog pages
+
+`Triples.queryPage` returns an opaque, versioned keyset cursor. Its content-addressed fingerprints
+bind the canonical query, filters, complete deterministic projected-row ordering, temporal basis,
+and database scope. The first page captures the backend's latest committed position; assertion and
+retraction positions keep every later page on that exact recorded snapshot, including when two
+transactions share the same recorded millisecond. Cursor decoding and reuse failures are typed as
+`PaginationCursorError`.
+
 ### Bitemporal query basis
 
 Facts carry separate recorded and valid intervals. Direct matching, entity reads, batched reads,

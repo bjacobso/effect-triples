@@ -42,6 +42,10 @@ hosts typed configuration as a modular layer over the same core.
   and asserted/retracted change descriptions as ordinary `_Transaction` facts. The backend also
   allocates a monotonic commit position in that atomic boundary; `Triples.transactions` pages the
   journal from a durable resume cursor.
+- Wrapped Datalog pagination uses versioned opaque cursors whose content-addressed fingerprints bind
+  the canonical query, complete projected-row keyset order, temporal basis, and database scope.
+  Facts retain assertion and retraction commit positions internally, so subsequent pages read the
+  exact first-page snapshot even when concurrent commits share an epoch-millisecond timestamp.
 - `_triplex/` entities, `:triplex/` and `:_tx/` attributes, and Triplex-owned entity types are
   reserved for core services. Ordinary writes fail before mutation; config and validation services
   cross that boundary through a private core capability.
@@ -54,8 +58,8 @@ hosts typed configuration as a modular layer over the same core.
 - `@bjacobso/triplex-sql` is now migrations and `SqlQueryExecutor` (the SQL implementation of the
   `QueryExecutor` SPI) shared by SQLite and PostgreSQL. Datalog SQL projections retain hidden
   value-tag columns until result decoding, and
-  scalar-family joins compare textual, numeric, and boolean values consistently with the KV
-  executor. A shared KV/SQLite differential corpus is the regression boundary for this contract.
+  scalar-family joins and typed keyset ordering compare values consistently with the KV executor.
+  A shared KV/SQLite/PostgreSQL conformance corpus is the regression boundary for this contract.
 - Backend packages construct the storage adapters and runtime layers for their platforms.
 - `@bjacobso/triplex-testkit` is the public home for reusable backend conformance helpers.
 - `test/integration` owns tests that intentionally compose multiple publishable packages.

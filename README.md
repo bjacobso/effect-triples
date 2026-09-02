@@ -70,6 +70,17 @@ For a runnable version that writes linked entities and reads them through both
 triple matching and Datalog, run `pnpm example:demo` or see
 [`examples/demo`](examples/demo).
 
+For the application boundary around compliance derivations, run
+`pnpm example:compliance-host` or see
+[`examples/compliance-host`](examples/compliance-host). It demonstrates a
+Triples-backed config release, transaction-feed catch-up, hypothetical planning,
+durable requirement occurrences, host-owned scheduling, and expiry-driven
+reopening as one self-verifying scenario.
+
+Applications replacing the older vendored fact store can follow
+[`docs/onboarded-foundation.md`](docs/onboarded-foundation.md) for database-per-organization
+wiring, package/API mapping, data migration, RequestResolver batching, and journal consumption.
+
 `Triples` is the store's one service: `assert`/`transact` and both read paths —
 `match` for triple patterns, `query` for Datalog — are methods on it.
 `SnapshotService`, `SubscriptionManager`, and `DatabaseManager` remain separate,
@@ -594,6 +605,44 @@ triples.query({
 });
 // results => [{ "?count": 3 }]
 ```
+
+### Stable cursor pagination
+
+`queryPage` uses an opaque, versioned keyset cursor. Triplex completes the requested order with
+every projected variable as a deterministic tie-breaker, pins the first page's exact recorded
+commit position and valid/recorded-time basis, and binds the cursor to the canonical query and
+database scope. Later assertions and
+retractions therefore do not move rows between pages. Reusing a cursor with different filters,
+ordering, basis, or organization fails with a typed `PaginationCursorError`; malformed base64 or
+JSON never escapes as an unchecked exception.
+
+```ts
+const first =
+  yield *
+  triples.queryPage({
+    inner: {
+      find: ["?person", "?name"],
+      where: [["?person", ":person/name", "?name"]],
+    },
+    orderBy: [{ variable: "?name", direction: "asc" }],
+    limit: 50,
+  });
+
+const second = first.nextCursor
+  ? yield *
+    triples.queryPage({
+      inner: {
+        find: ["?person", "?name"],
+        where: [["?person", ":person/name", "?name"]],
+      },
+      orderBy: [{ variable: "?name", direction: "asc" }],
+      limit: 50,
+      cursor: first.nextCursor,
+    })
+  : undefined;
+```
+
+Treat cursors as short-lived capabilities and never decode or edit them in application code.
 
 ### Transaction provenance
 

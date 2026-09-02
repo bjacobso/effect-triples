@@ -8,14 +8,15 @@ compare-and-retract conditions, causal transaction envelopes, and per-transactio
 are implemented, including a backend-issued commit cursor and resumable transaction pages. The
 portable derivation candidates and their immutable, freshness-aware materialization runs are also
 implemented, including durable temporal wakeups for future-effective and expiring evidence. The
-next reliability milestone is indexed consumer checkpoints and command receipts, followed by graph
+wrapped Datalog API now has typed, scope-bound, commit-position-stable keyset cursors. The next
+reliability milestone is indexed consumer checkpoints and command receipts, followed by graph
 constraints.
 
 ## Immediate correctness gate: backend parity
 
-- The first differential Datalog corpus now runs identical typed projections, scalar joins,
-  predicates, negation, booleans, and ref joins against KV and SQLite. Grow this corpus with every
-  query-engine bug, then run it against PostgreSQL before marking that adapter stable.
+- The conformance corpus now runs identical typed projections, scalar joins, predicates, negation,
+  booleans, ref joins, bitemporal reads, and snapshot-stable pagination against KV, SQLite, and
+  PostgreSQL. Grow it with every query-engine bug.
 - Cover every value type, value-to-value joins, recursive rules, aggregation, unbound variables,
   links, pagination, and hostile schema-valid inputs.
 - SQL projection now carries hidden storage tags through execution, so strings such as `"007"`,
