@@ -229,14 +229,40 @@ revalidation pass. Violations use stable `required`, `cardinality`, `unique`, an
 `reference-target` codes and retain the responsible constraint key as an ordinary reserved fact.
 `GraphConstraint.evaluate` can run the same definitions read-only at an explicit bitemporal basis.
 
+Applications may also enforce the exact release's portable graph constraints inside an operational
+transaction:
+
+```ts
+const snapshot = yield * config.resolveRef("live");
+const constraints = yield * GraphConstraint.collect(snapshot.root);
+
+yield *
+  triples.transact(operations, {
+    actor: "agent:worker-7",
+    configSnapshot: snapshot.id,
+    enforce: GraphConstraint.enforcement(constraints),
+  });
+```
+
+Enforcement projects the complete transaction before mutation and checks every represented
+valid-time boundary, including future-effective intervals. A new or worsened required,
+cardinality, uniqueness, or reference-target violation fails with `ConstraintViolationError` and
+rolls back the facts, journal, command receipt, and commit position together. Unchanged legacy
+violations do not block unrelated commands or repairs. KV, SQLite, and PostgreSQL serialize this
+check through the same commit-position boundary used by the journal, so concurrent Triplex writers
+cannot both win a uniqueness or absence check.
+When a retraction and assertion replace the recorded value for the same business-time interval,
+carry the original fact's `validFrom`; using the transaction instant intentionally changes the
+currently-known valid-time history and is checked as such.
+
 Revalidation is an explicit checkpointed projection in this release. Each run records the
 latest causal transaction position it observed. `currentInvalid` reports `unvalidated`,
 `current`, or `stale`, and stale responses retain the last known errors instead of silently
 returning an empty set. Use `transact` for operational writes so they participate in this
 freshness boundary; standalone low-level writes do not create causal envelopes. These
-observations, including graph-constraint findings, are not write guards. Applications that require
-synchronous write validation should place the write and follow-up workflow behind their own
-command boundary.
+observations remain useful for migration, audit, and finding stale data. Enforcement is explicitly
+opt-in per command: raw `assert`, unconstrained `transact`, and direct adapter writes remain a fact
+store boundary. Authorization and general Datalog policy invariants remain host responsibilities.
 
 The browser example at [`examples/config-explorer`](examples/config-explorer) walks
 through typed nodes, releases, refs, impact, evaluation, and proof verification.
@@ -850,8 +876,8 @@ package dependency graph.
 
 ## Roadmap
 
-Planned work is tracked in [docs/roadmap.md](./docs/roadmap.md), including transactional constraint
-enforcement, reactive "live" queries, integrated full-text search, query optimization, and
+Planned work is tracked in [docs/roadmap.md](./docs/roadmap.md), including general Datalog
+invariants, reactive "live" queries, integrated full-text search, query optimization, and
 client-side sync / offline-first support.
 
 ## License

@@ -29,11 +29,13 @@ import type {
   DatalogError,
   CommandAlreadyCommittedError,
   TransactionConflictError,
+  ConstraintViolationError,
   PaginationCursorError,
 } from "../errors/index.js";
 import type { DatalogQuery, WrappedQuery } from "../datalog/types.js";
 import type { TemporalBasis } from "../Temporal.js";
 import type { TripleValue } from "../Value.js";
+import type { Rule as ConstraintRule } from "../Constraint.js";
 import type {
   QueryResult,
   QueryDebugInfo,
@@ -67,6 +69,13 @@ export interface TransactionMeta {
   readonly correlationId?: string;
   readonly causationId?: string;
   readonly configSnapshot?: string;
+  /**
+   * Portable constraints to enforce against the transaction's complete
+   * post-state. Hosts normally derive these from the pinned config snapshot.
+   */
+  readonly enforce?: {
+    readonly constraints: readonly ConstraintRule[];
+  };
   /**
    * Compare-and-retract conditions. Every referenced triple must also have a
    * `retract` operation in this transaction. If another writer retracts it
@@ -174,7 +183,11 @@ export interface TriplesService {
     meta?: TransactionMeta,
   ) => Effect.Effect<
     TransactionResult,
-    WriteError | ReadError | TransactionConflictError | CommandAlreadyCommittedError
+    | WriteError
+    | ReadError
+    | TransactionConflictError
+    | CommandAlreadyCommittedError
+    | ConstraintViolationError
   >;
   // --- Triple-level reads --------------------------------------------------
   /** Fetch a single triple by id. */

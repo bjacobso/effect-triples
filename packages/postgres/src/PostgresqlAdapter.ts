@@ -13,6 +13,7 @@ import {
   type TripleRow,
   CommandAlreadyCommittedError,
   TransactionConflictError,
+  ConstraintViolationError,
   WriteError,
   ReadError,
   MigrationError,
@@ -52,7 +53,8 @@ export const makePostgresqlAdapter = (config: PostgresqlAdapterConfig = {}) =>
           Effect.mapError((error) =>
             error instanceof WriteError ||
             error instanceof TransactionConflictError ||
-            error instanceof CommandAlreadyCommittedError
+            error instanceof CommandAlreadyCommittedError ||
+            error instanceof ConstraintViolationError
               ? error
               : new WriteError({
                   message: `Transaction failed: ${String(error)}`,

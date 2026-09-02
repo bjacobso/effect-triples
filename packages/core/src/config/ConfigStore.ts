@@ -11,6 +11,7 @@ import { Context, Data, Effect, Layer } from "effect";
 
 import type {
   CommandAlreadyCommittedError,
+  ConstraintViolationError,
   DatalogError,
   ReadError,
   TransactionConflictError,
@@ -79,6 +80,7 @@ export type CommitError =
   | WriteError
   | TransactionConflictError
   | CommandAlreadyCommittedError
+  | ConstraintViolationError
   | InMemoryConfigStore.DanglingRefError
   | InMemoryConfigStore.DuplicateObjectError
   | InMemoryConfigStore.UnknownSnapshotError
@@ -109,6 +111,7 @@ export interface ConfigStoreService {
     | WriteError
     | TransactionConflictError
     | CommandAlreadyCommittedError
+    | ConstraintViolationError
     | InMemoryConfigStore.UnknownSnapshotError
   >;
   readonly resolveRef: (

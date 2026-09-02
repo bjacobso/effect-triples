@@ -162,9 +162,12 @@ and durable resume positions beneath them.
 cover cardinality, uniqueness, required relationships, and reference target kinds. The ontology DSL
 generates them from usage-local declarations, and `EntityValidation` writes their findings as
 first-class violations with stable codes and constraint identities. Read-only evaluation accepts a
-bitemporal basis. Next, add opt-in enforcement that rejects a command atomically, with explicit
-valid-interval semantics and backend-portable phantom protection. Cross-entity policy must not be
-hidden inside value decoding; general Datalog invariants also remain future work.
+bitemporal basis. Opt-in transaction enforcement accepts those same plain versioned rules alongside
+the pinned config snapshot. It projects the whole command, evaluates every post-state valid-time
+boundary, and rejects new or worsened findings atomically. Commit-position serialization provides
+backend-portable absence and uniqueness protection across Triplex writers. Observation mode remains
+available for migration and audit, while direct adapter writes, authorization, and general Datalog
+invariants remain outside this guarantee.
 
 ### Projection ownership
 

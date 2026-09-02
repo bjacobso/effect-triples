@@ -16,6 +16,7 @@ import { Constant as ConstantSchema } from "../datalog/schema.js";
 import type { Constant, DatalogQuery } from "../datalog/types.js";
 import type {
   CommandAlreadyCommittedError,
+  ConstraintViolationError,
   DatalogError,
   ReadError,
   TransactionConflictError,
@@ -150,6 +151,7 @@ export type MaterializationError =
   | WriteError
   | TransactionConflictError
   | CommandAlreadyCommittedError
+  | ConstraintViolationError
   | DatalogError
   | CandidateConflictError
   | CorruptMaterializationError

@@ -1,6 +1,7 @@
 import { Schema } from "effect";
 import { TripleValue } from "./Value.js";
 import { TripleId, EntityId, Attribute } from "./Branded.js";
+import { RuleSchema as ConstraintRule } from "./Constraint.js";
 
 export { TripleId, EntityId, Attribute };
 
@@ -142,6 +143,7 @@ export const TransactRequest = Schema.Struct({
       correlationId: Schema.optional(Schema.String),
       causationId: Schema.optional(Schema.String),
       configSnapshot: Schema.optional(Schema.String),
+      enforce: Schema.optional(Schema.Struct({ constraints: Schema.Array(ConstraintRule) })),
       preconditions: Schema.optional(Schema.Array(TransactionPrecondition)),
     }),
   ),

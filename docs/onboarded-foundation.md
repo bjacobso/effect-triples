@@ -129,7 +129,7 @@ created by earlier development builds.
 
 ## Compiling the EntityType DSL
 
-Onboarded remains the owner of the ergonomic TypeScript DSL and application enforcement. Its
+Onboarded remains the owner of its ergonomic TypeScript DSL and application authorization. Its
 compiler should emit one independently identified config node per global attribute and one
 entity-type node whose references carry usage-local constraints:
 
@@ -149,10 +149,13 @@ alias. Form, policy, routine/action, permission, integration, and view nodes can
 same keys in one `ConfigStore.commit`. Store the resulting `ConfigSnapshot` ID on every operational
 transaction through `meta.configSnapshot`.
 
-Triplex `EntityValidation` now records queryable observations for attribute cardinality, required
-facts, reference target types, and uniqueness. It does **not** replace Onboarded's transactional
-enforcement or authorization. Keep those checks at the Onboarded command boundary until Triplex
-implements and tests enforcement atomically.
+Triplex `EntityValidation` records queryable observations for attribute cardinality, required
+facts, reference target types, and uniqueness. The same collected `GraphConstraint` rules can be
+passed to `Triples.transact` for atomic enforcement. Onboarded should resolve the organization's
+pinned release, collect its rules, and pass both `configSnapshot` and
+`enforce: GraphConstraint.enforcement(definitions)` at its command boundary. Triplex rejects new or
+worsened violations across current and future valid-time intervals; Onboarded remains responsible
+for authorization and higher-order policy invariants.
 
 ## RequestResolver batching
 
@@ -174,6 +177,7 @@ and call one `Triples.transact` with:
 - the API's idempotency key as `commandId`;
 - `correlationId` and `causationId` from the request/workflow context;
 - the organization's pinned `configSnapshot`; and
+- graph constraints collected from that exact snapshot in `enforce`; and
 - a `TripleLive` precondition for every optimistic revision/status fact being replaced.
 
 Use the returned transaction ID with `transaction(txId)` to construct the API audit result. Each
@@ -187,9 +191,10 @@ its product-specific response cache and authorization checks.
 
 ## Remaining limitations
 
-- Cardinality, uniqueness, required relationships, and reference targets can be observed as
-  content-addressed, Datalog-queryable violations, but they and authorization are not yet
-  transactionally enforced by core.
+- Cardinality, uniqueness, required relationships, and reference targets are available both as
+  content-addressed observations and opt-in atomic transaction guards. Constraint enforcement
+  currently scans the live recorded fact set; indexed candidate loading is a future optimization.
+- Authorization and general cross-entity Datalog invariants remain host-owned.
 - Inbox/outbox records, response caching, retry policy, and timer delivery remain host-owned.
 - Derivation provenance currently rejects recursive rules, disjunction, aggregation, and dynamic
   attributes rather than returning an incomplete explanation.

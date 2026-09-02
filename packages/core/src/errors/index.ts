@@ -7,6 +7,7 @@
  */
 
 import { Data } from "effect";
+import type { ViolationAt } from "../Constraint.js";
 
 // Write operation errors
 export class WriteError extends Data.TaggedError("WriteError")<{
@@ -51,6 +52,12 @@ export class TransactionConflictError extends Data.TaggedError("TransactionConfl
 export class CommandAlreadyCommittedError extends Data.TaggedError("CommandAlreadyCommittedError")<{
   readonly commandId: string;
   readonly transactionId: string;
+  readonly message: string;
+}> {}
+
+/** A transaction would introduce or worsen a configured graph constraint violation. */
+export class ConstraintViolationError extends Data.TaggedError("ConstraintViolationError")<{
+  readonly violations: readonly ViolationAt[];
   readonly message: string;
 }> {}
 
@@ -163,7 +170,8 @@ export type WriteErrorUnion =
   | InvalidTripleError
   | TransactionError
   | TransactionConflictError
-  | CommandAlreadyCommittedError;
+  | CommandAlreadyCommittedError
+  | ConstraintViolationError;
 
 export type ReadErrorUnion = ReadError | EntityNotFoundError | TripleNotFoundError;
 

@@ -18,6 +18,7 @@ import {
   ref,
   string,
   CommandAlreadyCommittedError,
+  ConstraintViolationError,
   TransactionConflictError,
   Triples,
   type EntityId,
@@ -542,6 +543,174 @@ export const triplesConformanceCases: readonly ConformanceCase[] = [
       yield* check(
         page.transactions[0]?.txId === committed.txId && page.next === committed.position,
         "transaction journals should be resumable from an ordered commit position",
+      );
+    }),
+  },
+  {
+    name: "graph constraints reject invalid post-states across valid time",
+    run: Effect.gen(function* () {
+      const t = yield* Triples;
+      const definitions = [
+        GraphConstraint.required("ConfConstraintPerson", ":conf/constraint-name"),
+        GraphConstraint.cardinality("ConfConstraintPerson", ":conf/constraint-name", 1),
+        GraphConstraint.unique("ConfConstraintPerson", ":conf/constraint-email"),
+        GraphConstraint.referenceTarget(
+          "ConfConstraintPerson",
+          ":conf/constraint-employer",
+          "ConfConstraintEmployer",
+        ),
+      ];
+      const meta = {
+        configSnapshot: "sha256:conformance-constraints",
+        enforce: GraphConstraint.enforcement(definitions),
+      };
+
+      const position = yield* t.currentPosition();
+      const missingRequired = yield* t
+        .transact(
+          [
+            {
+              op: "assert",
+              entityId: "conf:constraint:missing-name",
+              entityType: "ConfConstraintPerson",
+              attribute: ":conf/constraint-email",
+              value: string("missing@example.com"),
+            },
+          ],
+          meta,
+        )
+        .pipe(Effect.flip);
+      yield* check(
+        missingRequired instanceof ConstraintViolationError &&
+          missingRequired.violations.some((violation) => violation.code === "required"),
+        "a missing required fact should produce ConstraintViolationError",
+      );
+      yield* check(
+        (yield* t.currentPosition()) === position &&
+          (yield* t.match({ entityId: "conf:constraint:missing-name" })).length === 0,
+        "constraint rejection must roll back facts, journal, and commit position",
+      );
+
+      const seeded = yield* t.transact(
+        [
+          {
+            op: "assert",
+            entityId: "conf:constraint:employer",
+            entityType: "ConfConstraintEmployer",
+            attribute: ":conf/constraint-name",
+            value: string("Acme"),
+            validFrom: 100,
+            validTo: 300,
+          },
+          ...["one", "two"].flatMap((suffix) => [
+            {
+              op: "assert" as const,
+              entityId: `conf:constraint:${suffix}`,
+              entityType: "ConfConstraintPerson",
+              attribute: ":conf/constraint-name",
+              value: string(suffix),
+              validFrom: 100,
+              validTo: 300,
+            },
+            {
+              op: "assert" as const,
+              entityId: `conf:constraint:${suffix}`,
+              entityType: "ConfConstraintPerson",
+              attribute: ":conf/constraint-email",
+              value: string("shared@example.com"),
+              validFrom: suffix === "one" ? 100 : 200,
+              validTo: suffix === "one" ? 200 : 300,
+            },
+            {
+              op: "assert" as const,
+              entityId: `conf:constraint:${suffix}`,
+              entityType: "ConfConstraintPerson",
+              attribute: ":conf/constraint-employer",
+              value: ref("conf:constraint:employer"),
+              validFrom: 100,
+              validTo: 300,
+            },
+          ]),
+        ],
+        meta,
+      );
+      const journal = yield* t.transaction(seeded.txId);
+      yield* check(
+        journal?.configSnapshot === meta.configSnapshot,
+        "a constrained transaction should journal the exact pinned config snapshot",
+      );
+
+      const futureOverlap = yield* t
+        .transact(
+          [
+            {
+              op: "assert",
+              entityId: "conf:constraint:three",
+              entityType: "ConfConstraintPerson",
+              attribute: ":conf/constraint-name",
+              value: string("three"),
+              validFrom: 150,
+              validTo: 250,
+            },
+            {
+              op: "assert",
+              entityId: "conf:constraint:three",
+              entityType: "ConfConstraintPerson",
+              attribute: ":conf/constraint-email",
+              value: string("shared@example.com"),
+              validFrom: 150,
+              validTo: 250,
+            },
+          ],
+          meta,
+        )
+        .pipe(Effect.flip);
+      yield* check(
+        futureOverlap instanceof ConstraintViolationError &&
+          futureOverlap.violations.some(
+            (violation) => violation.code === "unique" && violation.validAt === 150,
+          ),
+        "future interval overlap should be rejected even when it is not valid now",
+      );
+
+      const races = yield* Effect.all(
+        ["left", "right"].map((side) =>
+          t
+            .transact(
+              [
+                {
+                  op: "assert" as const,
+                  entityId: `conf:constraint:race:${side}`,
+                  entityType: "ConfConstraintPerson",
+                  attribute: ":conf/constraint-name",
+                  value: string(side),
+                },
+                {
+                  op: "assert" as const,
+                  entityId: `conf:constraint:race:${side}`,
+                  entityType: "ConfConstraintPerson",
+                  attribute: ":conf/constraint-email",
+                  value: string("race@example.com"),
+                },
+              ],
+              meta,
+            )
+            .pipe(
+              Effect.match({
+                onFailure: (error) => ({ _tag: "failed" as const, error }),
+                onSuccess: (transaction) => ({ _tag: "committed" as const, transaction }),
+              }),
+            ),
+        ),
+        { concurrency: "unbounded" },
+      );
+      yield* check(
+        races.filter((result) => result._tag === "committed").length === 1 &&
+          races.filter(
+            (result) =>
+              result._tag === "failed" && result.error instanceof ConstraintViolationError,
+          ).length === 1,
+        "serialized constraint evaluation must admit exactly one concurrent unique claimant",
       );
     }),
   },

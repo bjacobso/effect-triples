@@ -23,3 +23,5 @@ Make command IDs atomically unique per database with typed duplicate receipts, a
 Add indexed dependency freshness and temporal scheduling across KV, SQLite, and PostgreSQL so fixed-attribute derivations no longer replay the transaction journal.
 
 Add independently content-addressed graph constraints for required attributes, cardinality, uniqueness, and reference targets; generate them from the ontology DSL and materialize their findings as first-class validation facts.
+
+Allow hosts to enforce those same versioned graph constraints atomically in `Triples.transact`, checking complete projected commands across every valid-time boundary and rejecting concurrent uniqueness or absence races with a typed `ConstraintViolationError` on KV, SQLite, and PostgreSQL.

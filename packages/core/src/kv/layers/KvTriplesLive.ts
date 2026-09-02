@@ -24,8 +24,10 @@ import {
   ReadError,
   CommandAlreadyCommittedError,
   TransactionConflictError,
+  ConstraintViolationError,
   PaginationCursorError,
 } from "../../errors/index.js";
+import * as Constraint from "../../Constraint.js";
 import { KvBackend, type KvBackendService, type KvTransaction } from "../kv/KvBackend.js";
 import { makeTestKvBackend } from "../kv/InMemoryKvBackend.js";
 import { createKvTripleStore, type Datom } from "../hexastore/KvTripleStore.js";
@@ -448,6 +450,32 @@ const makeKvTriplesService = Effect.gen(function* () {
             const position = yield* nextKvCommitPosition(tx);
             const actor = meta?.actor;
             const preconditionIds = livePreconditionIds(meta);
+
+            if (meta?.enforce !== undefined) {
+              const current = (yield* transactionStore.scanCollectAsync({})).map(datomToTriple);
+              const violations = yield* Constraint.newlyViolated(
+                current,
+                operations,
+                meta.enforce.constraints,
+                now,
+              ).pipe(
+                Effect.mapError(
+                  (cause) =>
+                    new WriteError({
+                      message: `Constraint evaluation failed: ${cause.message}`,
+                      cause,
+                    }),
+                ),
+              );
+              if (violations.length > 0) {
+                return yield* Effect.fail(
+                  new ConstraintViolationError({
+                    violations,
+                    message: `Transaction would introduce or worsen ${violations.length} graph constraint violation${violations.length === 1 ? "" : "s"}`,
+                  }),
+                );
+              }
+            }
             const asserted: Triple[] = [];
             const changes: import("../../store/Triples.js").TransactionChange[] = [];
             let retractedCount = 0;
@@ -557,7 +585,8 @@ const makeKvTriplesService = Effect.gen(function* () {
           Effect.catch((e) =>
             e instanceof WriteError ||
             e instanceof TransactionConflictError ||
-            e instanceof CommandAlreadyCommittedError
+            e instanceof CommandAlreadyCommittedError ||
+            e instanceof ConstraintViolationError
               ? Effect.fail(e)
               : Effect.fail(new WriteError({ message: `Transact failed: ${String(e)}`, cause: e })),
           ),

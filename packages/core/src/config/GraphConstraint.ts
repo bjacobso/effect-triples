@@ -8,44 +8,18 @@ import type { TriplesService } from "../store/Triples.js";
 import type { TemporalBasis } from "../Temporal.js";
 import type { Triple } from "../Triple.js";
 import * as CanonicalJson from "../content/CanonicalJson.js";
+import * as Constraint from "../Constraint.js";
 import * as ConfigNode from "./ConfigNode.js";
 import * as TypeExpr from "./TypeExpr.js";
 
 export const KIND = "graph-constraint";
 
-export type Code = "required" | "cardinality" | "unique" | "reference-target";
-
-export interface RequiredRule {
-  readonly _tag: "Required";
-  readonly v: 1;
-  readonly entityType: string;
-  readonly attribute: string;
-}
-
-export interface CardinalityRule {
-  readonly _tag: "Cardinality";
-  readonly v: 1;
-  readonly entityType: string;
-  readonly attribute: string;
-  readonly max: number;
-}
-
-export interface UniqueRule {
-  readonly _tag: "Unique";
-  readonly v: 1;
-  readonly entityType: string;
-  readonly attribute: string;
-}
-
-export interface ReferenceTargetRule {
-  readonly _tag: "ReferenceTarget";
-  readonly v: 1;
-  readonly entityType: string;
-  readonly attribute: string;
-  readonly targetEntityType: string;
-}
-
-export type Rule = RequiredRule | CardinalityRule | UniqueRule | ReferenceTargetRule;
+export type Code = Constraint.Code;
+export type RequiredRule = Constraint.RequiredRule;
+export type CardinalityRule = Constraint.CardinalityRule;
+export type UniqueRule = Constraint.UniqueRule;
+export type ReferenceTargetRule = Constraint.ReferenceTargetRule;
+export type Rule = Constraint.Rule;
 
 export interface Definition<R extends Rule = Rule> {
   readonly _tag: "GraphConstraint";
@@ -57,15 +31,7 @@ export interface Definition<R extends Rule = Rule> {
   >;
 }
 
-export interface Violation {
-  readonly constraintKey: string;
-  readonly code: Code;
-  readonly subject: string;
-  readonly entityType: string;
-  readonly attribute: string;
-  readonly path: string;
-  readonly message: string;
-}
+export type Violation = Omit<Constraint.Violation, "actual" | "valueIdentity">;
 
 export class InvalidGraphConstraintError extends Data.TaggedError("InvalidGraphConstraintError")<{
   readonly key: string;
@@ -79,34 +45,7 @@ export class DuplicateGraphConstraintError extends Data.TaggedError(
   readonly message: string;
 }> {}
 
-const RuleSchema = Schema.Union([
-  Schema.Struct({
-    _tag: Schema.Literal("Required"),
-    v: Schema.Literal(1),
-    entityType: Schema.String,
-    attribute: Schema.String,
-  }),
-  Schema.Struct({
-    _tag: Schema.Literal("Cardinality"),
-    v: Schema.Literal(1),
-    entityType: Schema.String,
-    attribute: Schema.String,
-    max: Schema.Number,
-  }),
-  Schema.Struct({
-    _tag: Schema.Literal("Unique"),
-    v: Schema.Literal(1),
-    entityType: Schema.String,
-    attribute: Schema.String,
-  }),
-  Schema.Struct({
-    _tag: Schema.Literal("ReferenceTarget"),
-    v: Schema.Literal(1),
-    entityType: Schema.String,
-    attribute: Schema.String,
-    targetEntityType: Schema.String,
-  }),
-]);
+const RuleSchema = Constraint.RuleSchema;
 
 const DefinitionType = TypeExpr.struct({
   _tag: TypeExpr.required(
@@ -119,15 +58,7 @@ const DefinitionType = TypeExpr.struct({
   targetEntityType: TypeExpr.optional(TypeExpr.text),
 });
 
-const keyOf = (rule: Rule): string => {
-  const suffix =
-    rule._tag === "Cardinality"
-      ? `cardinality-${rule.max}`
-      : rule._tag === "ReferenceTarget"
-        ? `reference-target-${rule.targetEntityType}`
-        : rule._tag.toLowerCase();
-  return `${rule.entityType}:${rule.attribute}:${suffix}`;
-};
+const keyOf = Constraint.keyOf;
 
 const definition = <R extends Rule>(rule: R): Definition<R> => {
   const key = keyOf(rule);
@@ -186,6 +117,13 @@ export const referenceTarget = (
     attribute,
     targetEntityType,
   });
+
+/** Build the plain transaction metadata payload for atomic enforcement. */
+export const enforcement = (
+  definitions: ReadonlyArray<Definition>,
+): { readonly constraints: ReadonlyArray<Rule> } => ({
+  constraints: definitions.map(({ rule }) => rule),
+});
 
 export const parse = (
   node: ConfigNode.ConfigNode,

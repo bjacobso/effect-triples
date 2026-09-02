@@ -38,8 +38,10 @@ import {
   DatalogError,
   CommandAlreadyCommittedError,
   TransactionConflictError,
+  ConstraintViolationError,
   PaginationCursorError,
 } from "../errors/index.js";
+import * as Constraint from "../Constraint.js";
 import { TripleStoreRuntime } from "./TripleStoreRuntime.js";
 import {
   invalidCommandId,
@@ -238,7 +240,11 @@ export const TriplesLive = Layer.effect(
       meta?: TransactionMeta,
     ): Effect.Effect<
       TransactionResult,
-      WriteError | ReadError | TransactionConflictError | CommandAlreadyCommittedError
+      | WriteError
+      | ReadError
+      | TransactionConflictError
+      | CommandAlreadyCommittedError
+      | ConstraintViolationError
     > =>
       adapter.withTransaction(
         Effect.gen(function* () {
@@ -282,6 +288,32 @@ export const TriplesLive = Layer.effect(
           const position = yield* adapter.nextCommitPosition();
           const actor = meta?.actor;
           const preconditionIds = livePreconditionIds(meta);
+
+          if (meta?.enforce !== undefined) {
+            const current = (yield* adapter.query({})).map(rowToTriple);
+            const violations = yield* Constraint.newlyViolated(
+              current,
+              operations,
+              meta.enforce.constraints,
+              timestamp,
+            ).pipe(
+              Effect.mapError(
+                (cause) =>
+                  new WriteError({
+                    message: `Constraint evaluation failed: ${cause.message}`,
+                    cause,
+                  }),
+              ),
+            );
+            if (violations.length > 0) {
+              return yield* Effect.fail(
+                new ConstraintViolationError({
+                  violations,
+                  message: `Transaction would introduce or worsen ${violations.length} graph constraint violation${violations.length === 1 ? "" : "s"}`,
+                }),
+              );
+            }
+          }
 
           const triples: Triple[] = [];
           const changes: import("./Triples.js").TransactionChange[] = [];

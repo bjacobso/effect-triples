@@ -10,7 +10,14 @@ import {
   type TransactOp,
   type Triple,
 } from "@bjacobso/triplex";
-import { ConfigNode, ConfigStore, TypeExpr } from "@bjacobso/triplex/config";
+import {
+  Attribute,
+  ConfigNode,
+  ConfigStore,
+  EntityType,
+  GraphConstraint,
+  TypeExpr,
+} from "@bjacobso/triplex/config";
 import * as Derivation from "@bjacobso/triplex/derivation";
 import { ConsumerCheckpoint } from "@bjacobso/triplex/operational";
 
@@ -33,6 +40,13 @@ const Requirement = {
     closedAt: ":requirement/closed-at",
   },
 } as const;
+
+const RequirementStatus = Attribute.text(Requirement.attribute.status);
+const RequirementSchema = EntityType.make(Requirement.entityType, {
+  attributes: {
+    status: Attribute.use(RequirementStatus, { required: true }),
+  },
+});
 
 interface RequirementOccurrence {
   readonly entityId: string;
@@ -149,6 +163,7 @@ const program = Effect.gen(function* () {
       { rel: "opens", kind: "form", key: "site-safety-training" },
     ],
   });
+  const requirementNodes = yield* RequirementSchema.nodes;
 
   const release = yield* config.commit({
     label: "safety-2026.1",
@@ -160,9 +175,11 @@ const program = Effect.gen(function* () {
       trainingForm,
       policy,
       routine,
+      ...requirementNodes,
     ],
     ref: "live",
   });
+  const enforcement = GraphConstraint.enforcement(RequirementSchema.constraints);
 
   const definition = yield* Derivation.make({
     name: "task.site-safety-training",
@@ -285,6 +302,7 @@ const program = Effect.gen(function* () {
           commandId: `requirement:${run.id}:open:${candidate.id}`,
           correlationId: run.id,
           configSnapshot: definition.configSnapshot,
+          enforce: enforcement,
         });
       }
 
@@ -305,6 +323,9 @@ const program = Effect.gen(function* () {
               entityType: Requirement.entityType,
               attribute: Requirement.attribute.status,
               value: string("satisfied"),
+              // This replaces the recorded value for the same business-time
+              // interval; the journal retains the status transition.
+              validFrom: status.validFrom,
             },
             {
               op: "assert",
@@ -319,6 +340,7 @@ const program = Effect.gen(function* () {
             commandId: `requirement:${run.id}:satisfy:${candidate.id}`,
             correlationId: run.id,
             configSnapshot: definition.configSnapshot,
+            enforce: enforcement,
             preconditions: [{ _tag: "TripleLive", id: status.id }],
           },
         );
@@ -341,6 +363,7 @@ const program = Effect.gen(function* () {
               entityType: Requirement.entityType,
               attribute: Requirement.attribute.revision,
               value: string(change.after.revision),
+              validFrom: revision.validFrom,
             },
           ],
           {
@@ -348,6 +371,7 @@ const program = Effect.gen(function* () {
             commandId: `requirement:${run.id}:revise:${change.after.id}`,
             correlationId: run.id,
             configSnapshot: definition.configSnapshot,
+            enforce: enforcement,
             preconditions: [{ _tag: "TripleLive", id: revision.id }],
           },
         );
@@ -434,6 +458,7 @@ const program = Effect.gen(function* () {
       commandId: "placement:create:one",
       correlationId: "demo:placement-one",
       configSnapshot: release.snapshot.id,
+      enforce: enforcement,
     },
   );
   const opened = yield* consumeTransactions(110);
@@ -480,6 +505,7 @@ const program = Effect.gen(function* () {
       causationId: "placement:create:one",
       correlationId: "demo:placement-one",
       configSnapshot: release.snapshot.id,
+      enforce: enforcement,
     },
   );
   const satisfied = yield* consumeTransactions(150);

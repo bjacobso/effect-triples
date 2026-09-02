@@ -5,6 +5,8 @@ primitives. A generic site-safety policy requires training evidence for a worker
 site. The host application:
 
 - publishes a content-addressed configuration release;
+- compiles a host entity schema into content-addressed graph constraints and enforces them in the
+  same transaction as operational writes;
 - writes operational placement and evidence facts with causal metadata;
 - consumes the ordered transaction feed from a durable `ConsumerCheckpoint`;
 - materializes a Datalog derivation and reconciles it into durable requirement occurrences;

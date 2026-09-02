@@ -12,6 +12,7 @@ import { Data, Effect } from "effect";
 import * as ContentIds from "../content/ContentId.js";
 import type {
   CommandAlreadyCommittedError,
+  ConstraintViolationError,
   ReadError,
   TransactionConflictError,
   WriteError,
@@ -72,7 +73,8 @@ export type ConsumerCheckpointError =
   | ReadError
   | WriteError
   | TransactionConflictError
-  | CommandAlreadyCommittedError;
+  | CommandAlreadyCommittedError
+  | ConstraintViolationError;
 
 interface LoadedCheckpoint extends ConsumerCheckpoint {
   readonly positionTripleId: string;
