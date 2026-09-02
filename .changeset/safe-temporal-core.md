@@ -37,3 +37,5 @@ Align aggregate input multiplicity, distinct counts, and empty-input results acr
 Make wrapped Datalog filters type-aware across KV, SQLite, and PostgreSQL. Validate filter operands before execution, keep negative operators SQL-null compatible, and preserve the physical value columns needed to compare optional numeric projections numerically.
 
 Use one typed total-order key for direct Datalog ordering and cursor pagination across KV, SQLite, and PostgreSQL. Mixed numbers, datetimes, booleans, text-family values, and nulls now retain identical order and stable page boundaries on every supported backend.
+
+Make raw ordered Datalog predicates explicitly numeric across every engine. Number and datetime value bindings compare without coercing text, boolean, entity, attribute, transaction, or rule bindings, and invalid literal or binding shapes fail in typed preflight rather than leaking SQLite/PostgreSQL behavior.

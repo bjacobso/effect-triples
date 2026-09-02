@@ -81,11 +81,12 @@ export const Term = Schema.Union([Variable, Constant]).annotate({
 // =============================================================================
 
 /**
- * Predicate operators for comparison
+ * Predicate operators. Equality compares compatible flattened scalar families;
+ * ordered comparisons are numeric-only and accept number/datetime value bindings.
  */
 export const PredicateOp = Schema.Literals([">", ">=", "<", "<=", "=", "!="]).annotate({
   identifier: "PredicateOp",
-  description: "Comparison operator for predicates",
+  description: "Equality or numeric ordered-comparison operator for predicates",
 });
 
 /**

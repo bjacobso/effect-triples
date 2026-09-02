@@ -15,7 +15,9 @@ hosts typed configuration as a modular layer over the same core.
   before predicates so written clause order cannot change query meaning. A shared runtime preflight
   schema-decodes queries and enforces binding, projection, aggregation, wrapper, and supported
   binary-rule invariants before either engine runs; invalid input remains a typed Effect failure.
-  Aggregate duplicate, distinct-count, and empty-input behavior is also backend-independent.
+  Aggregate duplicate, distinct-count, and empty-input behavior is also backend-independent. Raw
+  ordered predicates are numeric-only and guard number/datetime storage types explicitly, avoiding
+  SQLite text coercion and PostgreSQL cast failures.
   Wrapped filters use hidden typed projection columns rather than flattened SQL text, preserving
   numeric, text-family, boolean, and null semantics through pagination. Direct ordering and
   keyset pagination share the same hidden typed total-order key, including deterministic null and

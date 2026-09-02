@@ -29,7 +29,9 @@ unique and durable consumer checkpoints are available through the `operational` 
   tested. Wrapped filters now validate operand arity and use typed projection columns so numeric,
   text-family, boolean, and null behavior agrees across backends. Direct ordering and keyset
   pagination now share a typed total order for mixed scalar families, including null placement and
-  deterministic ties. Continue expanding hostile schema-valid input.
+  deterministic ties. Raw ordered predicates now accept only numeric-capable value bindings and
+  numeric constants, rejecting backend-dependent text and identity coercions during typed
+  preflight. Continue expanding hostile schema-valid input.
 - SQL projection now carries hidden storage tags through execution, so strings such as `"007"`,
   numeric-looking entity IDs and refs, datetimes, booleans, and JSON are decoded without guessing.
 - Recursive SQL rule definitions, applications, optional projection attributes, and depth bounds

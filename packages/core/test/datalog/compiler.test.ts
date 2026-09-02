@@ -182,6 +182,7 @@ describe("Datalog SQL Compiler", () => {
 
       const result = compile(query);
 
+      expect(result.sql).toContain("t1.value_type IN ('number', 'datetime')");
       expect(result.sql).toContain("COALESCE(t1.value_number, t1.value_datetime) >= ?");
       expect(result.params).toContain(18);
     });

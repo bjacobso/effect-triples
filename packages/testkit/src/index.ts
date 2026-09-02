@@ -270,6 +270,37 @@ export const triplesConformanceCases: readonly ConformanceCase[] = [
     }),
   },
   {
+    name: "ordered Datalog predicates accept only numeric scalar families",
+    run: Effect.gen(function* () {
+      const t = yield* Triples;
+      yield* t.assertBatch([
+        { entityId: "conf:ordered:number-2", attribute: ":conf/ordered", value: number(2) },
+        { entityId: "conf:ordered:datetime-3", attribute: ":conf/ordered", value: datetime(3) },
+        {
+          entityId: "conf:ordered:number-10",
+          attribute: ":conf/ordered",
+          value: number(10),
+        },
+        { entityId: "conf:ordered:string-20", attribute: ":conf/ordered", value: string("20") },
+        { entityId: "conf:ordered:boolean", attribute: ":conf/ordered", value: boolean(true) },
+      ]);
+
+      const { results } = yield* t.query({
+        find: ["?entity"],
+        where: [
+          ["?entity", ":conf/ordered", "?value"],
+          [">", "?value", 2],
+        ],
+        orderBy: [{ variable: "?entity" }],
+      });
+      yield* check(
+        JSON.stringify(results.map((row) => row["?entity"])) ===
+          JSON.stringify(["conf:ordered:datetime-3", "conf:ordered:number-10"]),
+        "ordered predicates must include number and datetime values without coercing text or booleans",
+      );
+    }),
+  },
+  {
     name: "datalog reverse lookup matches an explicitly typed ref constant",
     run: Effect.gen(function* () {
       const t = yield* Triples;
@@ -641,6 +672,34 @@ export const triplesConformanceCases: readonly ConformanceCase[] = [
       yield* check(
         missingOperand instanceof DatalogValidationError,
         "wrapper operators that compare values must require an operand",
+      );
+
+      const orderedEntity = yield* t
+        .query({
+          find: ["?entity"],
+          where: [
+            ["?entity", ":conf/validation", "?value"],
+            [">", "?entity", "entity:0"],
+          ],
+        })
+        .pipe(Effect.flip);
+      yield* check(
+        orderedEntity instanceof DatalogValidationError,
+        "ordered predicates must reject non-value variables before backend execution",
+      );
+
+      const orderedText = yield* t
+        .query({
+          find: ["?entity"],
+          where: [
+            ["?entity", ":conf/validation", "?value"],
+            [">", "?value", "10"],
+          ],
+        })
+        .pipe(Effect.flip);
+      yield* check(
+        orderedText instanceof DatalogValidationError,
+        "ordered predicates must reject text constants before backend execution",
       );
     }),
   },

@@ -680,6 +680,11 @@ grouping variables instead. Aggregate and optional-projection targets must be pr
 input rows. An ungrouped aggregate over no matches returns one row with `count` equal to zero and
 the numeric aggregates equal to `null`; an empty grouped aggregate returns no rows.
 
+Raw Datalog `>`, `>=`, `<`, and `<=` predicates are numeric-only. Their variables must be bound
+from fact values, numbers and datetimes share the numeric family, and literal operands must be
+numbers. Text and identity comparisons use `=` or `!=`; invalid ordered predicates fail during
+typed preflight instead of relying on backend coercion.
+
 ```ts
 triples.query({
   find: ["?count"],

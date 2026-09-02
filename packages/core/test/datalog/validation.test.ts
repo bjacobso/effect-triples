@@ -102,6 +102,38 @@ describe("Datalog query validation", () => {
     ).toThrow(UnboundVariableError);
   });
 
+  it("restricts ordered predicates to numeric-capable value bindings and constants", () => {
+    expect(() =>
+      assertDatalogQuery({
+        find: ["?entity"],
+        where: [
+          ["?entity", ":score", "?score"],
+          [">", "?entity", "entity:0"],
+        ],
+      }),
+    ).toThrow("must be bound from a value");
+
+    expect(() =>
+      assertDatalogQuery({
+        find: ["?entity"],
+        where: [
+          ["?entity", ":score", "?score"],
+          [">", "?score", "10"],
+        ],
+      }),
+    ).toThrow("constants must be numeric");
+
+    expect(
+      assertDatalogQuery({
+        find: ["?entity"],
+        where: [
+          ["?entity", ":score", "?score"],
+          [">", "?score", 10],
+        ],
+      }).find,
+    ).toEqual(["?entity"]);
+  });
+
   it("rejects optional projections that shadow or omit result bindings", () => {
     expect(() =>
       assertDatalogQuery({

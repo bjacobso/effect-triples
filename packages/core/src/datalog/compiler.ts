@@ -356,6 +356,46 @@ const compileEqualityCondition = (left: Term, right: Term, ctx: CompilerContext)
   return constantScalar(left as Constant) === constantScalar(right as Constant) ? "1 = 1" : "1 = 0";
 };
 
+interface OrderedTermExpression {
+  readonly expression: string;
+  readonly typeCondition?: string;
+}
+
+/** Resolve the numeric-only scalar contract used by ordered Datalog predicates. */
+const orderedTermExpression = (term: Term, ctx: CompilerContext): OrderedTermExpression | null => {
+  if (!isVariable(term)) {
+    const value = constantScalar(term as Constant);
+    return typeof value === "number" ? { expression: formatValue(value, ctx) } : null;
+  }
+
+  const aggregate = ctx.aggregateExpressions.get(term);
+  if (aggregate !== undefined) return { expression: aggregate };
+
+  const binding = ctx.bindings.get(term);
+  if (!binding || !isTripleValueBinding(binding)) return null;
+  return {
+    expression: numberScalarExpression(binding.alias),
+    typeCondition: numberScalarTypeCondition(binding.alias),
+  };
+};
+
+const compileOrderedPredicateCondition = (
+  op: ">" | ">=" | "<" | "<=",
+  left: Term,
+  right: Term,
+  ctx: CompilerContext,
+): string => {
+  const leftTerm = orderedTermExpression(left, ctx);
+  const rightTerm = orderedTermExpression(right, ctx);
+  if (leftTerm === null || rightTerm === null) return "1 = 0";
+
+  const conditions = [leftTerm.typeCondition, rightTerm.typeCondition].filter(
+    (condition): condition is string => condition !== undefined,
+  );
+  conditions.push(`${leftTerm.expression} ${op} ${rightTerm.expression}`);
+  return `(${conditions.join(" AND ")})`;
+};
+
 const isValueLikeBinding = (binding: VariableBinding): boolean => {
   return (
     (binding._tag === "Triple" && binding.position === "value") ||
@@ -609,34 +649,7 @@ const compilePredicateCondition = (predicate: PredicateClause, ctx: CompilerCont
     const equality = compileEqualityCondition(left, right, ctx);
     return op === "=" ? equality : `NOT (${equality})`;
   }
-
-  const valueMode: BindingValueMode = "number";
-
-  // Resolve left term
-  let leftExpr: string;
-  if (isVariable(left)) {
-    const binding = ctx.bindings.get(left);
-    if (!binding) {
-      throw new Error(`Unbound variable in predicate: ${left}`);
-    }
-    leftExpr = resolveBinding(binding, { valueMode });
-  } else {
-    leftExpr = formatValue(left, ctx);
-  }
-
-  // Resolve right term
-  let rightExpr: string;
-  if (isVariable(right)) {
-    const binding = ctx.bindings.get(right);
-    if (!binding) {
-      throw new Error(`Unbound variable in predicate: ${right}`);
-    }
-    rightExpr = resolveBinding(binding, { valueMode });
-  } else {
-    rightExpr = formatValue(right, ctx);
-  }
-
-  return `${leftExpr} ${op} ${rightExpr}`;
+  return compileOrderedPredicateCondition(op, left, right, ctx);
 };
 
 const compilePredicate = (predicate: PredicateClause, ctx: CompilerContext): void => {
@@ -738,31 +751,10 @@ const compileNotPredicate = (
   ctx: CompilerContext,
   localBindings: Map<string, VariableBinding>,
 ): string => {
-  const [op, left, right] = clause;
-
   const bindings = new Map(ctx.bindings);
   for (const [variable, binding] of localBindings) bindings.set(variable, binding);
   const localContext: CompilerContext = { ...ctx, bindings };
-
-  if (op === "=" || op === "!=") {
-    const equality = compileEqualityCondition(left, right, localContext);
-    return op === "=" ? equality : `NOT (${equality})`;
-  }
-
-  const valueMode: BindingValueMode = "number";
-
-  const resolveNotTerm = (term: Term): string => {
-    if (isVariable(term)) {
-      const local = localBindings.get(term);
-      if (local) return resolveBinding(local, { valueMode });
-      const outer = ctx.bindings.get(term);
-      if (outer) return resolveBinding(outer, { valueMode });
-      throw new Error(`Unbound variable in not predicate: ${term}`);
-    }
-    return formatValue(term, ctx);
-  };
-
-  return `${resolveNotTerm(left)} ${op} ${resolveNotTerm(right)}`;
+  return compilePredicateCondition(clause, localContext);
 };
 
 const compileNotCondition = (notClause: NotClause, ctx: CompilerContext): string => {
@@ -956,6 +948,9 @@ const buildHavingClause = (
   }
 
   const conditions = having.map(([op, left, right]) => {
+    if (op === ">" || op === ">=" || op === "<" || op === "<=") {
+      return compileOrderedPredicateCondition(op, left, right, ctx);
+    }
     const leftExpr = resolveTermExpression(left, ctx, "HAVING");
     const rightExpr = resolveTermExpression(right, ctx, "HAVING");
     const sqlOp = op === "!=" ? "<>" : op;

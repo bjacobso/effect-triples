@@ -55,19 +55,52 @@ const requireBoundTerms = (clause: PredicateClause, bindings: ReadonlySet<string
   }
 };
 
-const validateNot = (clause: NotClause, outerBindings: ReadonlySet<string>): void => {
+const orderedPredicateOps = new Set<PredicateClause[0]>([">", ">=", "<", "<="]);
+
+const validatePredicate = (
+  clause: PredicateClause,
+  bindings: ReadonlySet<string>,
+  numericBindings: ReadonlySet<string>,
+  query: unknown,
+): void => {
+  requireBoundTerms(clause, bindings);
+  if (!orderedPredicateOps.has(clause[0])) return;
+
+  for (const term of clause.slice(1)) {
+    if (isVariable(term)) {
+      if (!numericBindings.has(term)) {
+        invalid(query, `Ordered Datalog predicate variable ${term} must be bound from a value`);
+      }
+      continue;
+    }
+    const value = isTypedConstant(term) ? term.value : term;
+    if (typeof value !== "number") {
+      invalid(query, "Ordered Datalog predicate constants must be numeric");
+    }
+  }
+};
+
+const validateNot = (
+  clause: NotClause,
+  outerBindings: ReadonlySet<string>,
+  outerNumericBindings: ReadonlySet<string>,
+  query: unknown,
+): void => {
   const localBindings = new Set(outerBindings);
+  const localNumericBindings = new Set(outerNumericBindings);
   const inner = clause.slice(1) as readonly (PatternClause | PredicateClause)[];
   for (const candidate of inner) {
     if (isPatternClause(candidate as Clause)) {
       for (const variable of variablesInPattern(candidate as PatternClause)) {
         localBindings.add(variable);
       }
+      const value = (candidate as PatternClause)[2];
+      if (isVariable(value)) localNumericBindings.add(value);
     }
   }
   for (const candidate of inner) {
     if (isPredicateClause(candidate as Clause)) {
-      requireBoundTerms(candidate as PredicateClause, localBindings);
+      validatePredicate(candidate as PredicateClause, localBindings, localNumericBindings, query);
     }
   }
 };
@@ -144,12 +177,14 @@ const validateRules = (query: DatalogQuery): ReadonlySet<string> => {
 const validateSemantics = (query: DatalogQuery): void => {
   const ruleNames = validateRules(query);
   const positiveBindings = new Set<string>();
+  const numericBindings = new Set<string>();
   let hasPositiveRelation = false;
 
   for (const clause of query.where) {
     if (isPatternClause(clause)) {
       hasPositiveRelation = true;
       for (const variable of variablesInPattern(clause)) positiveBindings.add(variable);
+      if (isVariable(clause[2])) numericBindings.add(clause[2]);
     } else if (isRuleApplication(clause)) {
       hasPositiveRelation = true;
       if (!ruleNames.has(clause[0])) {
@@ -166,9 +201,9 @@ const validateSemantics = (query: DatalogQuery): void => {
 
   for (const clause of query.where) {
     if (isPredicateClause(clause)) {
-      requireBoundTerms(clause, positiveBindings);
+      validatePredicate(clause, positiveBindings, numericBindings, query);
     } else if (isNotClause(clause)) {
-      validateNot(clause, positiveBindings);
+      validateNot(clause, positiveBindings, numericBindings, query);
     } else if (isOrClause(clause)) {
       const alternatives = normalizeOrAlternatives(clause);
       if (alternatives.length === 0) {
@@ -176,9 +211,14 @@ const validateSemantics = (query: DatalogQuery): void => {
       }
       for (const alternative of alternatives) {
         if (isPredicateClause(alternative as Clause)) {
-          requireBoundTerms(alternative as PredicateClause, positiveBindings);
+          validatePredicate(
+            alternative as PredicateClause,
+            positiveBindings,
+            numericBindings,
+            query,
+          );
         } else if (isNotClause(alternative as Clause)) {
-          validateNot(alternative as NotClause, positiveBindings);
+          validateNot(alternative as NotClause, positiveBindings, numericBindings, query);
         }
       }
     }
@@ -217,6 +257,7 @@ const validateSemantics = (query: DatalogQuery): void => {
         invalid(query, `Optional projection target ${field.variable} must appear in find`);
       }
       optionalTargets.add(field.variable);
+      numericBindings.add(field.variable);
     }
   }
 
@@ -238,7 +279,14 @@ const validateSemantics = (query: DatalogQuery): void => {
   if ((query.having?.length ?? 0) > 0 && aggregateTargets.size === 0) {
     invalid(query, "Datalog having requires at least one aggregate");
   }
-  for (const clause of query.having ?? []) requireBoundTerms(clause, resultBindings);
+  const numericResults = new Set(
+    [...resultBindings].filter(
+      (binding) => numericBindings.has(binding) || aggregateTargets.has(binding),
+    ),
+  );
+  for (const clause of query.having ?? []) {
+    validatePredicate(clause, resultBindings, numericResults, query);
+  }
 
   for (const order of query.orderBy ?? []) {
     if (!resultBindings.has(order.variable)) unbound(order.variable, order);
