@@ -69,6 +69,8 @@ const SourceFactSchema = Schema.Struct({
   attribute: Schema.String,
   validFrom: Schema.Number,
   validTo: Schema.optional(Schema.Number),
+  hypothetical: Schema.optional(Schema.Boolean),
+  hypotheticalContentId: Schema.optional(ContentIds.ContentIdSchema),
 });
 
 const BindingSchema = Schema.Record(Schema.String, Schema.NullOr(ConstantSchema));

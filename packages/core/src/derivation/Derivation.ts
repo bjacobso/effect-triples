@@ -133,6 +133,10 @@ export interface SourceFact {
   readonly attribute: string;
   readonly validFrom: number;
   readonly validTo?: number;
+  /** True when the source exists only in a read-only hypothetical overlay. */
+  readonly hypothetical?: boolean;
+  /** Content commitment for a hypothetical fact input. */
+  readonly hypotheticalContentId?: ContentId;
 }
 
 export interface Candidate {
@@ -197,8 +201,16 @@ const tripleMatches = (
   termMatches(clause[2], tripleValueConstant(triple.value), row) &&
   (clause.length === 3 || termMatches(clause[3], Option.getOrNull(triple.txId), row));
 
+export interface Reader extends Pick<TriplesService, "match" | "query" | "transaction"> {
+  /** Optional provenance supplied by a private read view such as an overlay. */
+  readonly sourceMetadata?: (triple: Triple) => {
+    readonly hypothetical?: boolean;
+    readonly hypotheticalContentId?: ContentId;
+  };
+}
+
 const sourcesForRow = (
-  triples: TriplesService,
+  triples: Reader,
   patterns: readonly PatternClause[],
   row: Readonly<Record<string, Constant | null>>,
   basis: TemporalBasis,
@@ -226,6 +238,7 @@ const sourcesForRow = (
       (triple) =>
         Effect.gen(function* () {
           const transactionId = Option.getOrUndefined(triple.txId);
+          const sourceMetadata = triples.sourceMetadata?.(triple);
           let transactionPosition: number | undefined;
           if (transactionId) {
             if (!transactionPositions.has(transactionId)) {
@@ -242,6 +255,7 @@ const sourcesForRow = (
             attribute: triple.attribute,
             validFrom: triple.validFrom,
             ...(Option.isSome(triple.validTo) ? { validTo: triple.validTo.value } : {}),
+            ...sourceMetadata,
           } satisfies SourceFact;
         }),
       { concurrency: 16 },
@@ -314,7 +328,7 @@ const candidateFrom = (
 };
 
 export const evaluate = (
-  triples: TriplesService,
+  triples: Reader,
   definition: Definition,
   options: EvaluateOptions,
 ): Effect.Effect<

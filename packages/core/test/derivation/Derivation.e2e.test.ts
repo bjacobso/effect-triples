@@ -7,6 +7,7 @@ import { Triples } from "../../src/store/Triples.js";
 import { ref } from "../../src/Value.js";
 import * as Derivation from "../../src/derivation/Derivation.js";
 import * as Materialization from "../../src/derivation/Materialization.js";
+import * as Overlay from "../../src/derivation/Overlay.js";
 
 const placementFacts = (placement: string, validTo?: number) =>
   [
@@ -270,6 +271,103 @@ describe("content-addressed derivations", () => {
         basis: { validAt: 200 },
       }).pipe(Effect.flip);
       expect(corrupt._tag).toBe("CorruptDerivationMaterializationError");
+    }).pipe(Effect.provide(KvTriples.layer)),
+  );
+
+  it.effect("plans collect and reuse outcomes without mutating durable facts", () =>
+    Effect.gen(function* () {
+      const triples = yield* Triples;
+      const placement = yield* triples.assertBatch(placementFacts("placement:one"));
+      const task = yield* Derivation.make({
+        name: "task.i9",
+        query: taskQuery,
+        identity: ["?worker", "?scope"],
+        configSnapshot: "config:staffing-v1",
+      });
+      const before = yield* triples.transactions({ after: 0, limit: 1_000 });
+
+      const baseline = yield* Derivation.evaluate(triples, task, { basis: { validAt: 150 } });
+      expect(baseline.candidates).toHaveLength(1);
+
+      // A hypothetical reusable submission satisfies the existing Acme task.
+      const reuse = yield* Overlay.evaluateOverlay(triples, task, {
+        basis: { validAt: 150 },
+        overlay: {
+          assertions: [
+            {
+              entityId: "worker:maria",
+              entityType: "Worker",
+              attribute: ":submission/i9",
+              value: ref("employer:acme"),
+              validTo: 200,
+            },
+          ],
+        },
+      });
+      expect(reuse.candidates).toEqual([]);
+
+      // A proposed placement in a new scope produces a second collect task.
+      const collect = yield* Overlay.evaluateOverlay(triples, task, {
+        basis: { validAt: 150 },
+        overlay: {
+          assertions: placementFacts("placement:proposed").map((fact) => ({
+            ...fact,
+            value: fact.attribute === ":placement/employer" ? ref("employer:globex") : fact.value,
+          })),
+        },
+      });
+      expect(collect.candidates).toHaveLength(2);
+      const globex = collect.candidates.find(
+        (candidate) => candidate.identity["?scope"] === "employer:globex",
+      );
+      expect(globex?.sources).toEqual([
+        expect.objectContaining({
+          hypothetical: true,
+          hypotheticalContentId: expect.stringMatching(/^sha256-/),
+        }),
+        expect.objectContaining({
+          hypothetical: true,
+          hypotheticalContentId: expect.stringMatching(/^sha256-/),
+        }),
+      ]);
+
+      // Retractions can remove visible base facts from the same read-only view.
+      const withoutWorkerEdge = yield* Overlay.evaluateOverlay(triples, task, {
+        basis: { validAt: 150 },
+        overlay: { retractions: [placement[0]!.id] },
+      });
+      expect(withoutWorkerEdge.candidates).toEqual([]);
+
+      const invalid = yield* Overlay.evaluateOverlay(triples, task, {
+        basis: { validAt: 150 },
+        overlay: { retractions: ["01INVALIDOVERLAYTRIPLEID000"] },
+      }).pipe(Effect.flip);
+      expect(invalid._tag).toBe("InvalidDerivationOverlayError");
+
+      const dynamic = yield* Derivation.make({
+        name: "dynamic.preview",
+        query: {
+          find: ["?entity", "?attribute", "?value"],
+          where: [["?entity", "?attribute", "?value"]],
+        },
+        identity: ["?entity", "?attribute", "?value"],
+        configSnapshot: "config:staffing-v1",
+      });
+      const unsupported = yield* Overlay.evaluateOverlay(triples, dynamic, {
+        basis: { validAt: 150 },
+        overlay: {},
+      }).pipe(Effect.flip);
+      expect(unsupported._tag).toBe("UnsupportedDerivationOverlayDefinitionError");
+
+      // Every hypothetical write occurred in a private in-memory store.
+      const after = yield* triples.transactions({ after: 0, limit: 1_000 });
+      expect(after.transactions.map((transaction) => transaction.txId)).toEqual(
+        before.transactions.map((transaction) => transaction.txId),
+      );
+      expect(yield* triples.match({ entityId: "placement:proposed" })).toEqual([]);
+      expect(
+        (yield* Derivation.evaluate(triples, task, { basis: { validAt: 150 } })).candidates,
+      ).toHaveLength(1);
     }).pipe(Effect.provide(KvTriples.layer)),
   );
 });

@@ -94,6 +94,12 @@ configuration pin, and relevant transaction position in one Triples transaction.
 last durable candidates. Immutable runs remain queryable with `Materialization.runsQuery` and
 stored candidate bodies are content-verified when loaded.
 
+`Derivation.Overlay.evaluateOverlay` previews temporary assertions and retractions at a pinned
+bitemporal basis in a fresh private KV index. It returns the normal candidate shape with
+content-addressed hypothetical sources while leaving the source facts and journal unchanged.
+Fixed-attribute structural definitions are supported; dynamic attributes and transaction-binding
+clauses are rejected with typed errors.
+
 ## Content addressing
 
 `@bjacobso/triplex/content` exports deterministic canonical encoding and browser-safe,

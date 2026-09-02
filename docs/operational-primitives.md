@@ -99,6 +99,18 @@ discovered attributes; materializer and unrelated transactions do not create fal
 candidate bodies are schema-decoded and content-verified. Immutable run membership can be queried
 with ordinary Datalog for audit and composition.
 
+`Derivation.Overlay.evaluateOverlay` applies temporary assertions and visible-triple retractions
+at a pinned basis in a fresh private in-memory KV store. It seeds only the definition's discovered
+fixed attributes and delegates to the same structural Datalog evaluator, then translates source
+facts back to durable IDs or deterministic hypothetical content commitments. The source Triples
+store and transaction journal are never mutated. This supports collect-versus-reuse and proposed
+relationship planning with the same candidate identity and explanation shape as committed data.
+
+Assertions whose `validFrom` is omitted begin at the overlay's `validAt`. Retractions must identify
+facts visible at that basis, and duplicate or irrelevant patch operations fail explicitly. Dynamic
+attribute queries and transaction-binding clauses are rejected because a bounded copy could not
+preserve their semantics honestly.
+
 The initial provenance contract supports patterns, predicates, and negation. Recursive rules,
 disjunction, aggregation, and pagination are rejected until their exact provenance semantics are
 implemented.
@@ -125,13 +137,6 @@ ordered transaction journal. Add conventional consumer receipts/checkpoints and 
 relevant position so long-running materializers can resume without a full scan. Triplex should not
 turn an added candidate into a Task or a removed candidate into a cancellation; applications own
 durable occurrences, assignment, evidence disposition, conversations, and retry policy.
-
-### Hypothetical evaluation
-
-Support a read-only overlay of asserted and retracted facts evaluated at a pinned temporal and
-configuration basis. This enables planners to answer "what obligations would this placement
-create?" without committing facts or mutating materializations. The overlay must use the normal
-Datalog semantics and return the same candidate/provenance shape as committed evaluation.
 
 ### Temporal wakeups
 

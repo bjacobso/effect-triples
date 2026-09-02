@@ -296,10 +296,32 @@ logical head by source position within a definition rather than racing a mutable
 candidate bodies are schema-decoded and their content IDs are verified when read. Historical run
 membership is also available as ordinary Datalog through `Materialization.runsQuery`.
 
-Hypothetical fact overlays, negative-evidence expiry discovery, and provenance through recursive
-rules remain future work. Transaction-position discovery currently scans the ordered journal;
-large deployments should retain an application checkpoint until Triplex exposes indexed consumer
-receipts.
+Read-only planners can evaluate temporary assertions and retractions through
+`Derivation.Overlay`:
+
+```ts
+const preview =
+  yield *
+  Derivation.Overlay.evaluateOverlay(triples, openI9, {
+    basis: { validAt: now },
+    overlay: {
+      assertions: [proposedPlacementWorker, proposedPlacementEmployer],
+      retractions: [supersededPlacementFactId],
+    },
+  });
+```
+
+The overlay copies only the definition's discovered attributes at the requested bitemporal basis
+into a fresh private in-memory index and runs the normal KV Datalog evaluator. It never writes to
+the source store or its transaction journal. Temporary facts receive deterministic content IDs and
+appear in candidate sources as `hypothetical: true`; base sources retain their real triple and
+transaction provenance. This makes collect-versus-reuse previews comparable to committed
+evaluation without pretending the preview happened.
+
+Overlay evaluation currently requires fixed attributes and rejects transaction-binding clauses.
+Negative-evidence expiry discovery and provenance through recursive rules remain future work.
+Transaction-position discovery currently scans the ordered journal; large deployments should
+retain an application checkpoint until Triplex exposes indexed consumer receipts.
 
 ## Triples and values
 

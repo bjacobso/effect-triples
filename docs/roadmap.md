@@ -8,7 +8,7 @@ compare-and-retract conditions, causal transaction envelopes, and per-transactio
 are implemented, including a backend-issued commit cursor and resumable transaction pages. The
 portable derivation candidates and their immutable, freshness-aware materialization runs are also
 implemented. The next reliability milestone is indexed consumer checkpoints and command receipts,
-followed by graph constraints and hypothetical evaluation overlays.
+followed by graph constraints and temporal wakeups for negated evidence.
 
 ## Immediate correctness gate: backend parity
 

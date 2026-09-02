@@ -153,6 +153,7 @@ void Evaluate;
 void TypeExpr;
 void Derivation;
 void Derivation.Materialization;
+void Derivation.Overlay;
 void makeSqliteLayer;
 void Cloudflare;
 void FoundationDb;
@@ -210,8 +211,19 @@ const result = await Effect.runPromise(
     yield* Derivation.Materialization.materialize(triples, definition, {
       basis: { validAt: 1 },
     });
+    const preview = yield* Derivation.Overlay.evaluateOverlay(triples, definition, {
+      basis: { validAt: 1 },
+      overlay: {
+        assertions: [{
+          entityId: "person:bob",
+          attribute: ":person/name",
+          value: string("Bob"),
+        }],
+      },
+    });
     return {
       query: yield* triples.query(query),
+      preview,
       materialization: yield* Derivation.Materialization.current(triples, definition, {
         basis: { validAt: 1 },
       }),
@@ -222,6 +234,10 @@ const result = await Effect.runPromise(
 if (
   result.query.results.length !== 1 ||
   result.query.results[0]?.["?name"] !== "Alice" ||
+  result.preview.candidates.length !== 2 ||
+  !result.preview.candidates.some((candidate) =>
+    candidate.sources.some((source) => source.hypothetical === true)
+  ) ||
   result.materialization.status !== "current" ||
   result.materialization.candidates.length !== 1
 ) {
