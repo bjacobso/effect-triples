@@ -95,6 +95,10 @@ unique and durable consumer checkpoints are available through the `operational` 
 - **Cost-Based Optimizer:** Reorder Datalog clauses based on attribute cardinality.
 - **JSON Indexing:** Optimize `value_json` lookups for complex data types.
 - **Recursive Rule Performance:** Optimize CTE generation for deep graph traversals.
+- **Scoped concurrency (deferred):** Separate global journal ordering from entity and invariant
+  conflict scopes only after the atomic multi-scope design in
+  [`operational-primitives.md`](operational-primitives.md#deferred-scoped-optimistic-concurrency)
+  has cross-backend conformance coverage.
 
 ## 6. Client-Side Sync & Offline-First
 

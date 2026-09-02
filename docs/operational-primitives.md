@@ -150,6 +150,40 @@ implemented.
 
 ## Next primitives
 
+### Deferred: scoped optimistic concurrency
+
+The global commit position is an ordering and checkpoint token, not an application-wide expected
+version. Today, however, allocating that position uses one backend-wide contention point, and graph
+constraint enforcement deliberately relies on the same serialization to prevent absence and
+uniqueness write skew. This is simple and safe, but it may serialize commands whose business state
+is independent.
+
+A future design may separate these responsibilities, following the distinction described in
+[Basic principles of record storing](http://systema10.org/posts/basic-principles-of-record-storing.html):
+
+- every successful transaction still receives one global position for replay, temporal snapshots,
+  subscriptions, and consumer checkpoints;
+- optimistic concurrency claims versions for explicit conflict scopes rather than the complete
+  journal;
+- a scope may identify an entity or a cross-entity invariant such as a uniqueness key, movable ref,
+  compliance scope, or reference target;
+- one transaction atomically claims every affected scope, writes its facts, and appends its journal
+  envelope, or commits none of them; and
+- append-only operations with no lost-update risk may explicitly request no conflict check.
+
+An entity-only `(record, entity, version)` index is not sufficient for Triplex because graph
+constraints can couple otherwise distinct entities. A general branded `ConflictScope`, an atomic
+scope-head compare-and-advance operation, and indexed transaction-to-scope/entity facts are the
+more promising shape. Multi-scope claims must verify successor continuity, not merely rely on a
+unique `(scope, version)` pair. Record insertion and scope materialization must never be separate
+commits.
+
+This remains deferred. Do not weaken the current global graph-constraint serialization until a
+KV/SQLite/PostgreSQL conformance suite proves atomic multi-scope claims, cross-entity invariant
+protection, and unchanged global journal ordering. A reusable Effect fold or stream over
+`Triples.transactions` can be considered independently; ordinary reads should continue to use
+indexed triples, Datalog, and checkpointed projections rather than replaying the complete journal.
+
 ### Inboxes and outboxes
 
 Define conventional first-class inbox and outbox records without embedding delivery vendors or
