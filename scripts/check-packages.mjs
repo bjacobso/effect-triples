@@ -197,6 +197,7 @@ const result = await Effect.runPromise(
       attribute: ":person/name",
       value: string("Alice"),
       validFrom: 0,
+      validTo: 5,
     });
     const query = {
       find: ["?name"],
@@ -222,7 +223,7 @@ const result = await Effect.runPromise(
       },
     });
     return {
-      query: yield* triples.query(query),
+      query: yield* triples.query(query, { basis: { validAt: 1 } }),
       preview,
       materialization: yield* Derivation.Materialization.current(triples, definition, {
         basis: { validAt: 1 },
@@ -235,10 +236,12 @@ if (
   result.query.results.length !== 1 ||
   result.query.results[0]?.["?name"] !== "Alice" ||
   result.preview.candidates.length !== 2 ||
+  result.preview.nextTemporalBoundary !== 5 ||
   !result.preview.candidates.some((candidate) =>
     candidate.sources.some((source) => source.hypothetical === true)
   ) ||
   result.materialization.status !== "current" ||
+  result.materialization.nextTemporalBoundary !== 5 ||
   result.materialization.candidates.length !== 1
 ) {
   throw new Error("Unexpected packaged SQLite/Datalog result: " + JSON.stringify(result));

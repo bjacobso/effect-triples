@@ -80,6 +80,13 @@ attribute dependencies, and configuration snapshot. Evaluation returns `Candidat
   and
 - the earliest future `validTo` among supporting facts, when one is known.
 
+The complete `Evaluation` also exposes a conservative `nextTemporalBoundary` across the current
+recorded view of every dependency attribute. It includes both future `validFrom` and `validTo`
+edges, including facts inside negated clauses that currently suppress every candidate. This lets a
+host wake exactly when evidence may expire or become effective without a daily full scan. The
+portable implementation scans the ordered journal and can produce harmless extra wakeups for
+unrelated entities that share an attribute, but it does not omit a recorded boundary.
+
 `reconcile` is a pure diff that classifies candidates as `added`, `removed`, `changed`, or
 `unchanged`. A host can translate that diff into durable requirement occurrences, tasks, or other
 governed work without coupling those concepts to Triplex. Conflicting outputs for the same
@@ -97,7 +104,9 @@ run for the same name.
 durable candidates when stale. Relevant transaction positions are derived from the definition's
 discovered attributes; materializer and unrelated transactions do not create false lag. Persisted
 candidate bodies are schema-decoded and content-verified. Immutable run membership can be queried
-with ordinary Datalog for audit and composition.
+with ordinary Datalog for audit and composition. Versioned run identities content-bind and expose
+the evaluation's `nextTemporalBoundary`, including runs with zero candidates. Triplex does not own
+timer delivery: a host scheduler wakes the materializer at that instant and persists the next run.
 
 `Derivation.Overlay.evaluateOverlay` applies temporary assertions and visible-triple retractions
 at a pinned basis in a fresh private in-memory KV store. It seeds only the definition's discovered
@@ -137,13 +146,6 @@ ordered transaction journal. Add conventional consumer receipts/checkpoints and 
 relevant position so long-running materializers can resume without a full scan. Triplex should not
 turn an added candidate into a Task or a removed candidate into a cancellation; applications own
 durable occurrences, assignment, evidence disposition, conversations, and retry policy.
-
-### Temporal wakeups
-
-Dependency invalidation handles new transactions, but expiring valid-time facts can change an
-answer with no transaction. Derivation evaluation should report its earliest next temporal
-boundary. A host scheduler wakes the materializer at that boundary and checkpoints the resulting
-reconciliation; Triplex does not need to own cron or workflow timers.
 
 ### Content-addressed blobs
 

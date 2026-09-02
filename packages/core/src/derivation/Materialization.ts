@@ -50,9 +50,11 @@ export const System = {
     candidateId: ":triplex/derivation-candidate-id",
     candidateBody: ":triplex/derivation-candidate-body",
     runCandidate: ":triplex/derivation-run-candidate",
+    formatVersion: ":triplex/derivation-format-version",
     sourcePosition: ":triplex/derivation-source-position",
     validAt: ":triplex/derivation-valid-at",
     recordedAt: ":triplex/derivation-recorded-at",
+    nextTemporalBoundary: ":triplex/derivation-next-temporal-boundary",
   },
 } as const;
 
@@ -107,6 +109,7 @@ interface StoredRun {
   readonly materializationPosition: number;
   readonly basis: EvaluateOptions["basis"];
   readonly candidates: readonly Candidate[];
+  readonly nextTemporalBoundary?: number;
 }
 
 export interface MaterializationRun {
@@ -116,6 +119,7 @@ export interface MaterializationRun {
   readonly sourcePosition: number;
   readonly basis: EvaluateOptions["basis"];
   readonly candidates: readonly Candidate[];
+  readonly nextTemporalBoundary?: number;
   readonly reconciliation: Reconciliation;
   /** Undefined when this exact immutable run was already present. */
   readonly transaction: TransactionResult | undefined;
@@ -129,6 +133,7 @@ export interface MaterializationState {
   readonly configSnapshot?: string;
   readonly basis?: EvaluateOptions["basis"];
   readonly candidates: readonly Candidate[];
+  readonly nextTemporalBoundary?: number;
 }
 
 export class CorruptMaterializationError extends Data.TaggedError(
@@ -178,6 +183,25 @@ const grouped = (rows: readonly Triple[]): ReadonlyMap<string, readonly Triple[]
 
 const basisEqual = (left: EvaluateOptions["basis"], right: EvaluateOptions["basis"]): boolean =>
   left.validAt === right.validAt && left.recordedAt === right.recordedAt;
+
+const runBody = (input: {
+  readonly version: 1 | 2;
+  readonly definitionId: ContentIds.ContentId;
+  readonly configSnapshot: string;
+  readonly sourcePosition: number;
+  readonly basis: EvaluateOptions["basis"];
+  readonly candidateRevisions: readonly ContentIds.ContentId[];
+  readonly nextTemporalBoundary?: number;
+}): CanonicalJson.CanonicalValue =>
+  ({
+    v: input.version,
+    definition: input.definitionId,
+    configSnapshot: input.configSnapshot,
+    sourcePosition: input.sourcePosition,
+    basis: input.basis,
+    candidates: [...input.candidateRevisions].sort(),
+    ...(input.version === 2 ? { nextTemporalBoundary: input.nextTemporalBoundary ?? null } : {}),
+  }) as CanonicalJson.CanonicalValue;
 
 const transactionIsRelevant = (definition: Definition, transaction: TransactionRecord): boolean => {
   if (transaction.actor === "triplex/derivation-materializer") return false;
@@ -299,6 +323,10 @@ const loadRuns = (
       const sourcePosition = numberValue(rowsAt(rows, System.attribute.sourcePosition)[0]);
       const validAt = numberValue(rowsAt(rows, System.attribute.validAt)[0]);
       const recordedAt = numberValue(rowsAt(rows, System.attribute.recordedAt)[0]);
+      const formatVersion = numberValue(rowsAt(rows, System.attribute.formatVersion)[0]) ?? 1;
+      const nextTemporalBoundary = numberValue(
+        rowsAt(rows, System.attribute.nextTemporalBoundary)[0],
+      );
       if (
         !id ||
         !ContentIds.isContentId(id) ||
@@ -306,7 +334,8 @@ const loadRuns = (
         !ContentIds.isContentId(definitionId) ||
         configSnapshot === undefined ||
         sourcePosition === undefined ||
-        validAt === undefined
+        validAt === undefined ||
+        (formatVersion !== 1 && formatVersion !== 2)
       ) {
         return yield* new CorruptMaterializationError({
           entityId: runEntity,
@@ -327,14 +356,17 @@ const loadRuns = (
       const candidates = yield* Effect.forEach(candidateRows, (candidate) =>
         decodeCandidate(candidate, name, basis),
       );
-      const runEncoding = yield* CanonicalJson.encode({
-        v: 1,
-        definition: definitionId,
-        configSnapshot,
-        sourcePosition,
-        basis,
-        candidates: candidates.map((candidate) => candidate.revision).sort(),
-      } as unknown as CanonicalJson.CanonicalValue);
+      const runEncoding = yield* CanonicalJson.encode(
+        runBody({
+          version: formatVersion,
+          definitionId,
+          configSnapshot,
+          sourcePosition,
+          basis,
+          candidateRevisions: candidates.map((candidate) => candidate.revision),
+          ...(nextTemporalBoundary === undefined ? {} : { nextTemporalBoundary }),
+        }),
+      );
       if (ContentIds.hash(ContentIds.Domain.derivationRun, runEncoding) !== id) {
         return yield* new CorruptMaterializationError({
           entityId: runEntity,
@@ -353,6 +385,7 @@ const loadRuns = (
         materializationPosition: transaction?.position ?? 0,
         basis,
         candidates: [...candidates].sort((left, right) => compare(left.id, right.id)),
+        ...(nextTemporalBoundary === undefined ? {} : { nextTemporalBoundary }),
       });
     }
     return runs;
@@ -409,14 +442,19 @@ export const materialize = (
     const evaluation = yield* evaluate(triples, definition, options);
     const reconciliation = reconcile(previous?.candidates ?? [], evaluation.candidates);
     const candidateRevisions = evaluation.candidates.map((candidate) => candidate.revision).sort();
-    const encoded = yield* CanonicalJson.encode({
-      v: 1,
-      definition: definition.id,
-      configSnapshot: definition.configSnapshot,
-      sourcePosition,
-      basis: options.basis,
-      candidates: candidateRevisions,
-    } as unknown as CanonicalJson.CanonicalValue);
+    const encoded = yield* CanonicalJson.encode(
+      runBody({
+        version: 2,
+        definitionId: definition.id,
+        configSnapshot: definition.configSnapshot,
+        sourcePosition,
+        basis: options.basis,
+        candidateRevisions,
+        ...(evaluation.nextTemporalBoundary === undefined
+          ? {}
+          : { nextTemporalBoundary: evaluation.nextTemporalBoundary }),
+      }),
+    );
     const id = ContentIds.hash(ContentIds.Domain.derivationRun, encoded);
     const runEntity = entityId.run(id);
     const [existingRun, existingCandidates] = yield* Effect.all([
@@ -452,6 +490,10 @@ export const materialize = (
           type: "number",
           value: sourcePosition,
         }),
+        assertOp(runEntity, System.entityType.run, System.attribute.formatVersion, {
+          type: "number",
+          value: 2,
+        }),
         assertOp(runEntity, System.entityType.run, System.attribute.validAt, {
           type: "number",
           value: options.basis.validAt,
@@ -462,6 +504,14 @@ export const materialize = (
               assertOp(runEntity, System.entityType.run, System.attribute.recordedAt, {
                 type: "number",
                 value: options.basis.recordedAt,
+              }),
+            ]),
+        ...(evaluation.nextTemporalBoundary === undefined
+          ? []
+          : [
+              assertOp(runEntity, System.entityType.run, System.attribute.nextTemporalBoundary, {
+                type: "number",
+                value: evaluation.nextTemporalBoundary,
               }),
             ]),
         ...evaluation.candidates.map((candidate) =>
@@ -486,6 +536,9 @@ export const materialize = (
       sourcePosition,
       basis: options.basis,
       candidates: evaluation.candidates,
+      ...(evaluation.nextTemporalBoundary === undefined
+        ? {}
+        : { nextTemporalBoundary: evaluation.nextTemporalBoundary }),
       reconciliation,
       transaction,
     };
@@ -530,6 +583,9 @@ export const current = (
       configSnapshot: run.configSnapshot,
       basis: run.basis,
       candidates: run.candidates,
+      ...(run.nextTemporalBoundary === undefined
+        ? {}
+        : { nextTemporalBoundary: run.nextTemporalBoundary }),
     };
   });
 

@@ -86,13 +86,16 @@ at a pinned bitemporal basis. It deduplicates results by an explicit logical ide
 merges source triple and transaction provenance from every matching graph path, discovers
 attribute dependencies, and returns candidates suitable for application-owned reconciliation.
 `Derivation.reconcile` reports added, removed, changed, and unchanged candidates; it does not
-create tasks or other domain objects.
+create tasks or other domain objects. Evaluations also report the earliest future temporal edge
+across dependency attributes, including future-effective and expiring facts in negated clauses.
 
 `Derivation.Materialization.materialize` persists an immutable candidate set, bitemporal basis,
 configuration pin, and relevant transaction position in one Triples transaction.
 `Materialization.current` returns `current`, `stale`, or `unmaterialized` without discarding the
 last durable candidates. Immutable runs remain queryable with `Materialization.runsQuery` and
-stored candidate bodies are content-verified when loaded.
+stored candidate bodies are content-verified when loaded. Runs persist and content-bind
+`nextTemporalBoundary` even when no candidates exist, allowing a host scheduler to wake the
+materializer when expiring evidence may reopen work.
 
 `Derivation.Overlay.evaluateOverlay` previews temporary assertions and retractions at a pinned
 bitemporal basis in a fresh private KV index. It returns the normal candidate shape with

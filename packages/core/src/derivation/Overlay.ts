@@ -155,6 +155,16 @@ export const evaluateOverlay = (
     const visibleBase = [...baseById.values()].filter(
       (triple) => !retractionIds.has(String(triple.id)),
     );
+    const temporalBoundaries = [
+      ...visibleBase.flatMap((triple) =>
+        Option.isSome(triple.validTo) ? [triple.validTo.value] : [],
+      ),
+      ...resolvedAssertions.flatMap((assertion) => [assertion.validFrom, assertion.validTo]),
+    ].filter(
+      (boundary): boundary is number => boundary !== undefined && boundary > options.basis.validAt,
+    );
+    const nextTemporalBoundary =
+      temporalBoundaries.length === 0 ? undefined : Math.min(...temporalBoundaries);
     const hypotheticalIdentities = yield* Effect.forEach(resolvedAssertions, overlayFactIdentity);
     if (
       new Set(hypotheticalIdentities.map((identity) => identity.contentId)).size !==
@@ -201,6 +211,7 @@ export const evaluateOverlay = (
               .match(pattern, viewBasis)
               .pipe(Effect.map((rows) => rows.map((row) => translated.get(String(row.id)) ?? row))),
           transaction: (txId) => triples.transaction(txId),
+          temporalBoundary: () => Effect.succeed(nextTemporalBoundary),
           sourceMetadata: (triple) => {
             const hypotheticalContentId = hypotheticalContentIds.get(String(triple.id));
             return hypotheticalContentId === undefined

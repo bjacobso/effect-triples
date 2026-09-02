@@ -196,6 +196,11 @@ describe("content-addressed derivations", () => {
         validFrom: 120,
         validTo: 200,
       });
+      const beforeEffectiveDate = yield* Derivation.evaluate(triples, task, {
+        basis: { validAt: 110 },
+      });
+      expect(beforeEffectiveDate.candidates).toHaveLength(1);
+      expect(beforeEffectiveDate.nextTemporalBoundary).toBe(120);
       const stale = yield* Materialization.current(triples, task, { basis: { validAt: 150 } });
       expect(stale).toEqual(
         expect.objectContaining({
@@ -209,10 +214,20 @@ describe("content-addressed derivations", () => {
         basis: { validAt: 150 },
       });
       expect(satisfied.candidates).toEqual([]);
+      expect(satisfied.nextTemporalBoundary).toBe(200);
       expect(satisfied.reconciliation.removed).toHaveLength(1);
       expect(yield* Materialization.current(triples, task, { basis: { validAt: 150 } })).toEqual(
-        expect.objectContaining({ status: "current", candidates: [] }),
+        expect.objectContaining({
+          status: "current",
+          candidates: [],
+          nextTemporalBoundary: 200,
+        }),
       );
+      const persistedWakeup = yield* triples.match({
+        entityId: Materialization.entityId.run(satisfied.id),
+        attribute: Materialization.System.attribute.nextTemporalBoundary,
+      });
+      expect(persistedWakeup[0]?.value).toEqual({ type: "number", value: 200 });
 
       // Valid time alone makes the pinned checkpoint stale. Re-evaluation at
       // expiry reopens the obligation without a new operational transaction.
@@ -223,6 +238,25 @@ describe("content-addressed derivations", () => {
         basis: { validAt: 200 },
       });
       expect(reopened.reconciliation.added).toHaveLength(1);
+      expect(reopened.nextTemporalBoundary).toBeUndefined();
+
+      const cancelledFutureEvidence = yield* triples.assert({
+        entityId: "worker:maria",
+        entityType: "Worker",
+        attribute: ":submission/i9",
+        value: ref("employer:acme"),
+        validFrom: 300,
+        validTo: 400,
+      });
+      expect(
+        (yield* Derivation.evaluate(triples, task, { basis: { validAt: 200 } }))
+          .nextTemporalBoundary,
+      ).toBe(300);
+      yield* triples.retract(cancelledFutureEvidence.id);
+      expect(
+        (yield* Derivation.evaluate(triples, task, { basis: { validAt: 200 } }))
+          .nextTemporalBoundary,
+      ).toBeUndefined();
 
       // Deploying another immutable definition keeps logical candidate IDs
       // stable while producing a changed revision and a new durable run.
@@ -305,6 +339,7 @@ describe("content-addressed derivations", () => {
         },
       });
       expect(reuse.candidates).toEqual([]);
+      expect(reuse.nextTemporalBoundary).toBe(200);
 
       // A proposed placement in a new scope produces a second collect task.
       const collect = yield* Overlay.evaluateOverlay(triples, task, {

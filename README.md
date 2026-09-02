@@ -251,6 +251,10 @@ const evaluation =
   Derivation.evaluate(triples, openI9, {
     basis: { validAt: Date.now() },
   });
+
+if (evaluation.nextTemporalBoundary !== undefined) {
+  scheduler.wakeAt(evaluation.nextTemporalBoundary, openI9.id);
+}
 ```
 
 Repeated graph paths with the same declared identity produce one candidate whose source
@@ -278,13 +282,19 @@ const state =
     basis: { validAt: now },
   });
 
-if (state.status === "stale") {
+let nextTemporalBoundary = state.nextTemporalBoundary;
+if (state.status !== "current") {
   const next =
     yield *
     Derivation.Materialization.materialize(triples, openI9, {
       basis: { validAt: now },
     });
   scheduleReconciliation(next.reconciliation);
+  nextTemporalBoundary = next.nextTemporalBoundary;
+}
+
+if (nextTemporalBoundary !== undefined) {
+  scheduler.wakeAt(nextTemporalBoundary, openI9.id);
 }
 ```
 
@@ -295,6 +305,15 @@ definition changes, relevant writes, and a different temporal basis do. Concurre
 logical head by source position within a definition rather than racing a mutable pointer. Stored
 candidate bodies are schema-decoded and their content IDs are verified when read. Historical run
 membership is also available as ordinary Datalog through `Materialization.runsQuery`.
+
+Every evaluation also reports the earliest future `validFrom` or `validTo` among facts using a
+discovered dependency attribute. This conservative schedule includes facts that currently suppress
+a result through negation, so expiring evidence can reopen an obligation even when the current
+candidate set is empty. Materialized runs persist and content-bind the same
+`nextTemporalBoundary`; a host scheduler wakes the materializer there and owns timer delivery and
+retry. Boundary discovery currently scans the ordered journal and may schedule a harmless extra
+wakeup for an unrelated entity sharing a dependency attribute, but it does not omit recorded
+future-effective or expiring facts.
 
 Read-only planners can evaluate temporary assertions and retractions through
 `Derivation.Overlay`:
@@ -319,9 +338,9 @@ transaction provenance. This makes collect-versus-reuse previews comparable to c
 evaluation without pretending the preview happened.
 
 Overlay evaluation currently requires fixed attributes and rejects transaction-binding clauses.
-Negative-evidence expiry discovery and provenance through recursive rules remain future work.
-Transaction-position discovery currently scans the ordered journal; large deployments should
-retain an application checkpoint until Triplex exposes indexed consumer receipts.
+Provenance through recursive rules remains future work. Transaction-position and temporal-boundary
+discovery currently scan the ordered journal; large deployments should retain an application
+checkpoint until Triplex exposes indexed consumer receipts.
 
 ## Triples and values
 

@@ -7,7 +7,7 @@ import type { Constant, DatalogQuery, PatternClause, Term } from "../datalog/typ
 import { isNotClause, isPatternClause, isPredicateClause, isVariable } from "../datalog/schema.js";
 import type { TemporalBasis } from "../Temporal.js";
 import type { Triple } from "../Triple.js";
-import type { TriplesService } from "../store/Triples.js";
+import type { TransactionRecord, TriplesService } from "../store/Triples.js";
 import type { TripleValue } from "../Value.js";
 import type { DatalogError, ReadError } from "../errors/index.js";
 import { extractDependencies } from "../subscriptions/extract-dependencies.js";
@@ -157,6 +157,8 @@ export interface Evaluation {
   readonly definition: Definition;
   readonly basis: TemporalBasis;
   readonly candidates: readonly Candidate[];
+  /** Earliest valid-time instant at which this evaluation may change without a new transaction. */
+  readonly nextTemporalBoundary?: number;
 }
 
 export interface EvaluateOptions {
@@ -202,12 +204,79 @@ const tripleMatches = (
   (clause.length === 3 || termMatches(clause[3], Option.getOrNull(triple.txId), row));
 
 export interface Reader extends Pick<TriplesService, "match" | "query" | "transaction"> {
+  /** Ordered journal access enables discovery of future valid-time boundaries. */
+  readonly transactions?: TriplesService["transactions"];
+  /** Private views may provide their own bounded temporal schedule. */
+  readonly temporalBoundary?: (
+    definition: Definition,
+    basis: EvaluateOptions["basis"],
+  ) => Effect.Effect<number | undefined, ReadError>;
   /** Optional provenance supplied by a private read view such as an overlay. */
   readonly sourceMetadata?: (triple: Triple) => {
     readonly hypothetical?: boolean;
     readonly hypotheticalContentId?: ContentId;
   };
 }
+
+const transactionIsRelevant = (definition: Definition, transaction: TransactionRecord): boolean => {
+  if (transaction.actor === "triplex/derivation-materializer") return false;
+  const attributes = new Set(definition.dependencies.attributes);
+  return transaction.changes.some(
+    (change) => definition.dependencies.hasDynamicAttributes || attributes.has(change.attribute),
+  );
+};
+
+/**
+ * Find the earliest future valid-time edge in the current recorded view.
+ *
+ * This intentionally scans the portable ordered journal. It is exact for the
+ * recorded basis and conservative for query relevance: an unrelated entity
+ * using a dependency attribute may cause an extra wakeup, but cannot cause a
+ * missed wakeup. Indexed dependency schedules can replace the scan later
+ * without changing the public evaluation contract.
+ */
+const temporalBoundaryFromJournal = (
+  triples: Reader,
+  definition: Definition,
+  basis: EvaluateOptions["basis"],
+): Effect.Effect<number | undefined, ReadError> =>
+  Effect.gen(function* () {
+    if (triples.temporalBoundary) return yield* triples.temporalBoundary(definition, basis);
+    if (!triples.transactions) return undefined;
+
+    const attributes = new Set(definition.dependencies.attributes);
+    const live = new Map<string, { readonly validFrom?: number; readonly validTo?: number }>();
+    let after = 0;
+    while (true) {
+      const page = yield* triples.transactions({ after, limit: 1_000 });
+      for (const transaction of page.transactions) {
+        if (basis.recordedAt !== undefined && transaction.instant > basis.recordedAt) continue;
+        if (!transactionIsRelevant(definition, transaction)) continue;
+        for (const change of transaction.changes) {
+          if (!definition.dependencies.hasDynamicAttributes && !attributes.has(change.attribute)) {
+            continue;
+          }
+          if (change.op === "retract") {
+            live.delete(change.tripleId);
+          } else {
+            live.set(change.tripleId, {
+              ...(change.validFrom === undefined ? {} : { validFrom: change.validFrom }),
+              ...(change.validTo === undefined ? {} : { validTo: change.validTo }),
+            });
+          }
+        }
+      }
+      if (page.next === undefined || page.next <= after || page.transactions.length < 1_000) break;
+      after = page.next;
+    }
+
+    const boundaries = [...live.values()].flatMap((fact) =>
+      [fact.validFrom, fact.validTo].filter(
+        (value): value is number => value !== undefined && value > basis.validAt,
+      ),
+    );
+    return boundaries.length === 0 ? undefined : Math.min(...boundaries);
+  });
 
 const sourcesForRow = (
   triples: Reader,
@@ -346,7 +415,10 @@ export const evaluate = (
       ...definition.query,
       find: unique([...definition.query.find, ...internalVariables]),
     };
-    const response = yield* triples.query(augmentedQuery, { basis: options.basis });
+    const [response, nextTemporalBoundary] = yield* Effect.all([
+      triples.query(augmentedQuery, { basis: options.basis }),
+      temporalBoundaryFromJournal(triples, definition, options.basis),
+    ]);
     const grouped = new Map<ContentId, Candidate>();
     const transactionPositions = new Map<string, number | undefined>();
 
@@ -403,6 +475,7 @@ export const evaluate = (
       definition,
       basis: options.basis,
       candidates: [...grouped.values()].sort((left, right) => compare(left.id, right.id)),
+      ...(nextTemporalBoundary === undefined ? {} : { nextTemporalBoundary }),
     };
   });
 

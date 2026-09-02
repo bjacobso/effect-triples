@@ -7,8 +7,9 @@ The operational foundation and its ordering constraints are specified in
 compare-and-retract conditions, causal transaction envelopes, and per-transaction change journals
 are implemented, including a backend-issued commit cursor and resumable transaction pages. The
 portable derivation candidates and their immutable, freshness-aware materialization runs are also
-implemented. The next reliability milestone is indexed consumer checkpoints and command receipts,
-followed by graph constraints and temporal wakeups for negated evidence.
+implemented, including durable temporal wakeups for future-effective and expiring evidence. The
+next reliability milestone is indexed consumer checkpoints and command receipts, followed by graph
+constraints.
 
 ## Immediate correctness gate: backend parity
 
@@ -67,9 +68,11 @@ followed by graph constraints and temporal wakeups for negated evidence.
   and Datalog.
 - Differential tests cover historical corrections, future-effective facts, retractions, joins, and
   negation.
-- Structural derivations now expose the earliest `validTo` among positive supporting facts. Next:
-  model wakeups caused by expiring negated evidence and connect persisted materialization runs to
-  scheduler checkpoints so expiry-driven projections reopen without relying on a daily full scan.
+- Structural derivations expose the earliest recorded future `validFrom` or `validTo` across their
+  dependency attributes. Immutable materialization runs persist and content-bind that schedule,
+  including zero-candidate runs suppressed by negated evidence. A host scheduler can therefore
+  reopen expiry-driven projections without a daily full scan. Next: replace the conservative
+  journal scan with indexed dependency schedules and durable consumer checkpoints.
 
 ## 6. Integrated Full-Text Search (FTS)
 
