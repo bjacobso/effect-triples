@@ -15,3 +15,5 @@ Establish the greenfield storage and API baseline: one v1 SQL migration, one rec
 Remove redundant pre-release surfaces: the unused demo database schemas, transaction-time-only aliases, the non-portable transaction escape hatch, duplicate snapshot composition, synthetic snapshot triple compatibility, and advisory blob reference counts.
 
 Remove unused extension hooks and transport-specific errors, and collapse redundant `Triple`, `Snapshot`, and `types/Pattern` subpaths into the primary package export.
+
+Keep entity snapshots focused on content-addressed materialization by removing their duplicate raw-SQL transaction log and unused response schemas; transaction history remains available through the durable `Triples` journal.

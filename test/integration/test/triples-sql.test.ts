@@ -379,6 +379,100 @@ describe("Triples", () => {
     });
   });
 
+  describe("transaction journal", () => {
+    it("owns causal audit records independently of entity snapshots", async () => {
+      const result = await Effect.runPromise(
+        Effect.gen(function* () {
+          const store = yield* Triples;
+          const created = yield* store.transact(
+            [
+              {
+                op: "assert",
+                entityId: "person:audit",
+                entityType: "Person",
+                attribute: ":person/name",
+                value: string("Alice"),
+              },
+              {
+                op: "assert",
+                entityId: "person:audit",
+                entityType: "Person",
+                attribute: ":person/age",
+                value: number(42),
+                validFrom: 1_700_000_000_000,
+              },
+            ],
+            {
+              actor: "agent:auditor",
+              commandId: "person:create",
+              correlationId: "case:1",
+              configSnapshot: "sha256-config",
+            },
+          );
+          const age = created.triples.find((triple) => triple.attribute === ":person/age")!;
+          const corrected = yield* store.transact(
+            [
+              { op: "retract", id: age.id },
+              {
+                op: "assert",
+                entityId: "person:audit",
+                entityType: "Person",
+                attribute: ":person/age",
+                value: number(43),
+                validFrom: 1_700_000_000_000,
+              },
+            ],
+            { causationId: created.txId },
+          );
+
+          return {
+            created,
+            corrected,
+            createdRecord: yield* store.transaction(created.txId),
+            correctedRecord: yield* store.transaction(corrected.txId),
+            commandRecords: yield* store.transactionsByCommand("person:create"),
+            page: yield* store.transactions({ after: created.position }),
+          };
+        }).pipe(Effect.provide(TestLayer)),
+      );
+
+      expect(result.createdRecord).toEqual(
+        expect.objectContaining({
+          actor: "agent:auditor",
+          commandId: "person:create",
+          correlationId: "case:1",
+          configSnapshot: "sha256-config",
+          changes: expect.arrayContaining([
+            expect.objectContaining({
+              op: "assert",
+              entityId: "person:audit",
+              attribute: ":person/age",
+              value: number(42),
+              validFrom: 1_700_000_000_000,
+            }),
+          ]),
+        }),
+      );
+      expect(result.correctedRecord).toEqual(
+        expect.objectContaining({
+          causationId: result.created.txId,
+          changes: expect.arrayContaining([
+            expect.objectContaining({ op: "retract", tripleId: result.created.triples[1]!.id }),
+            expect.objectContaining({
+              op: "assert",
+              attribute: ":person/age",
+              value: number(43),
+            }),
+          ]),
+        }),
+      );
+      expect(result.commandRecords.map((record) => record.txId)).toEqual([result.created.txId]);
+      expect(result.page.transactions.map((record) => record.txId)).toEqual([
+        result.corrected.txId,
+      ]);
+    });
+  });
+
   describe("query", () => {
     it("should query by entity type", async () => {
       const result = await Effect.runPromise(

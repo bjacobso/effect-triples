@@ -54,7 +54,9 @@ hosts typed configuration as a modular layer over the same core.
   stamps, dependency closures, and movable refs.
 - Entity snapshots are post-commit projections. Their reads are pinned to the source transaction
   time so a later writer cannot be mislabeled as part of an earlier snapshot; projection failure
-  is reported to the caller but cannot roll back the already-committed source transaction.
+  is reported to the caller but cannot roll back the already-committed source transaction. They do
+  not maintain a second transaction log: causal audit reads belong to the authoritative `Triples`
+  journal APIs.
 - `@bjacobso/triplex-sql` is now migrations and `SqlQueryExecutor` (the SQL implementation of the
   `QueryExecutor` SPI) shared by SQLite and PostgreSQL. Datalog SQL projections retain hidden
   value-tag columns until result decoding, and

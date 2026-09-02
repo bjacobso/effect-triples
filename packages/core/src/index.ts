@@ -6,7 +6,6 @@
  */
 
 export * from "./Branded.js";
-export * from "./Snapshot.js";
 export * from "./Triple.js";
 export * from "./Temporal.js";
 export { type PaginationCursor } from "./Pagination.js";

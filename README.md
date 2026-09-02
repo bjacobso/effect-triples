@@ -783,9 +783,11 @@ import { ContentId } from "@bjacobso/triplex/content";
 import * as Derivation from "@bjacobso/triplex/derivation";
 ```
 
-The root exports the `Triples` and `SnapshotService` runtime tags as well as their
-schemas. Triplex does not impose an HTTP or RPC transport contract; applications expose
-the core services through the transport that fits their runtime.
+The root exports the `Triples` and `SnapshotService` runtime tags and their domain types.
+Triplex does not impose an HTTP or RPC transport contract; applications expose the core
+services through the transport that fits their runtime. Transaction history belongs to
+the authoritative `Triples.transaction` and `Triples.transactions` journal APIs rather
+than the entity-snapshot projection.
 
 ## Content IDs and storage baseline
 
