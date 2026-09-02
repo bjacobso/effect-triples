@@ -106,6 +106,7 @@ export const TransactAssertOp = Schema.Struct({
   attribute: Schema.String,
   value: TripleValue,
   entityType: Schema.optional(Schema.String),
+  createdBy: Schema.optional(Schema.String),
   validFrom: Schema.optional(Schema.Number),
   validTo: Schema.optional(Schema.Number),
 });

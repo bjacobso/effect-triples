@@ -190,7 +190,9 @@ describe("KvTriplesLive - retractByPattern", () => {
         const count = yield* store.retractByPattern({ entityId: "e:1" });
         expect(count).toBe(2);
 
-        const remaining = yield* store.match({});
+        const remaining = (yield* store.match({})).filter(
+          (triple) => !triple.entityId.startsWith("_tx/"),
+        );
         expect(remaining.length).toBe(1);
         expect(remaining[0]!.entityId).toBe("e:2");
       }),
@@ -243,7 +245,9 @@ describe("KvTriplesLive - query", () => {
           { entityId: "e:2", attribute: ":name", value: str("Bob") },
         ]);
 
-        const results = yield* store.match({});
+        const results = (yield* store.match({})).filter(
+          (triple) => !triple.entityId.startsWith("_tx/"),
+        );
         expect(results.length).toBe(2);
       }),
     );

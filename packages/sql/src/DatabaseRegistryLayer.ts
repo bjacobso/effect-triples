@@ -59,7 +59,7 @@ const initRegistry = (sql: SqlClient.SqlClient) =>
       CREATE TABLE IF NOT EXISTS databases (
         name TEXT PRIMARY KEY,
         description TEXT,
-        created_at INTEGER NOT NULL
+        created_at BIGINT NOT NULL
       )
     `;
     yield* sql`
@@ -67,7 +67,7 @@ const initRegistry = (sql: SqlClient.SqlClient) =>
         user_id TEXT NOT NULL,
         database_name TEXT NOT NULL,
         role TEXT NOT NULL DEFAULT 'owner',
-        created_at INTEGER NOT NULL,
+        created_at BIGINT NOT NULL,
         PRIMARY KEY (user_id, database_name),
         FOREIGN KEY (database_name) REFERENCES databases(name) ON DELETE CASCADE
       )
@@ -78,7 +78,7 @@ const toAccessEntry = (row: AccessRow): DatabaseAccessEntry => ({
   userId: row.user_id,
   databaseName: row.database_name,
   role: row.role as "owner" | "member",
-  createdAt: row.created_at,
+  createdAt: Number(row.created_at),
 });
 
 // =============================================================================
@@ -106,8 +106,11 @@ export const DatabaseRegistryLive = Layer.effect(
     );
     const registrySql = Context.get(registryContext, SqlClient.SqlClient);
 
-    // Enable foreign key support for cascade deletes
-    yield* pipe(registrySql`PRAGMA foreign_keys = ON`, mapToInternalError);
+    // SQLite disables foreign keys by default. PostgreSQL enforces them and
+    // does not accept the SQLite-only PRAGMA syntax.
+    if (backend.dialect.name === "sqlite") {
+      yield* pipe(registrySql`PRAGMA foreign_keys = ON`, mapToInternalError);
+    }
 
     yield* initRegistry(registrySql);
     yield* Effect.logInfo("Registry database initialized");
@@ -126,7 +129,7 @@ export const DatabaseRegistryLive = Layer.effect(
         return rows.map((row) => ({
           name: row.name,
           description: row.description,
-          createdAt: row.created_at,
+          createdAt: Number(row.created_at),
         }));
       });
 
@@ -199,7 +202,7 @@ export const DatabaseRegistryLive = Layer.effect(
         return {
           name: row.name,
           description: row.description,
-          createdAt: row.created_at,
+          createdAt: Number(row.created_at),
         } satisfies Database;
       });
 

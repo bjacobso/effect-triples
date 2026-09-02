@@ -44,6 +44,7 @@ interface EntitySnapshotRow {
   tx_id: string;
   hash: ContentId;
   tx_time: number;
+  tx_position: number | null;
   entity_type: string | null;
 }
 
@@ -255,7 +256,7 @@ const makeSnapshotWriter = Effect.gen(function* () {
           .rawQuery(
             `INSERT INTO entity_blobs (hash, data, format_version, byte_size, ref_count)
              VALUES (?, ?, ?, ?, 1)
-             ON CONFLICT(hash) DO UPDATE SET ref_count = ref_count + 1`,
+             ON CONFLICT(hash) DO UPDATE SET ref_count = entity_blobs.ref_count + excluded.ref_count`,
             [hash, canonical, FORMAT_VERSION, byteSize],
           )
           .pipe(
@@ -271,10 +272,10 @@ const makeSnapshotWriter = Effect.gen(function* () {
         // Insert snapshot pointer
         yield* adapter
           .rawQuery(
-            `INSERT INTO entity_snapshots (entity_id, tx_id, hash, tx_time, entity_type)
-             VALUES (?, ?, ?, ?, ?)
-             ON CONFLICT(entity_id, tx_id) DO UPDATE SET hash = excluded.hash, tx_time = excluded.tx_time, entity_type = excluded.entity_type`,
-            [entityId, txId, hash, txTime, entityType],
+            `INSERT INTO entity_snapshots (entity_id, tx_id, hash, tx_time, tx_position, entity_type)
+             VALUES (?, ?, ?, ?, ?, ?)
+             ON CONFLICT(entity_id, tx_id) DO UPDATE SET hash = excluded.hash, tx_time = excluded.tx_time, tx_position = excluded.tx_position, entity_type = excluded.entity_type`,
+            [entityId, txId, hash, txTime, basis?.position ?? null, entityType],
           )
           .pipe(
             Effect.mapError(
@@ -483,7 +484,7 @@ const makeSnapshotService = Effect.gen(function* () {
            FROM entity_snapshots s
            JOIN entity_blobs b ON b.hash = s.hash
            WHERE s.entity_id = ?
-           ORDER BY s.tx_time DESC, s.rowid DESC
+           ORDER BY COALESCE(s.tx_position, 0) DESC, s.tx_time DESC, s.tx_id DESC
            LIMIT 1`,
           [entityId],
         )
@@ -535,7 +536,7 @@ const makeSnapshotService = Effect.gen(function* () {
            FROM entity_snapshots s
            JOIN entity_blobs b ON b.hash = s.hash
            WHERE s.entity_id = ? AND s.tx_time <= ?
-           ORDER BY s.tx_time DESC, s.rowid DESC
+           ORDER BY COALESCE(s.tx_position, 0) DESC, s.tx_time DESC, s.tx_id DESC
            LIMIT 1`,
           [entityId, asOfTime],
         )
@@ -590,8 +591,14 @@ const makeSnapshotService = Effect.gen(function* () {
              SELECT 1 FROM entity_snapshots s2
              WHERE s2.entity_id = s.entity_id
              AND (
-               s2.tx_time > s.tx_time
-               OR (s2.tx_time = s.tx_time AND s2.tx_id > s.tx_id)
+               COALESCE(s2.tx_position, 0) > COALESCE(s.tx_position, 0)
+               OR (
+                 COALESCE(s2.tx_position, 0) = COALESCE(s.tx_position, 0)
+                 AND (
+                   s2.tx_time > s.tx_time
+                   OR (s2.tx_time = s.tx_time AND s2.tx_id > s.tx_id)
+                 )
+               )
              )
            )`,
           [...entityIds],
@@ -619,7 +626,7 @@ const makeSnapshotService = Effect.gen(function* () {
         .rawQuery<{ tx_id: string; tx_time: number; hash: ContentId }>(
           `SELECT tx_id, tx_time, hash FROM entity_snapshots
            WHERE entity_id = ?
-           ORDER BY tx_time ASC`,
+           ORDER BY COALESCE(tx_position, 0) ASC, tx_time ASC, tx_id ASC`,
           [entityId],
         )
         .pipe(
@@ -670,8 +677,14 @@ const makeSnapshotService = Effect.gen(function* () {
              SELECT 1 FROM entity_snapshots s2
              WHERE s2.entity_id = s.entity_id
              AND (
-               s2.tx_time > s.tx_time
-               OR (s2.tx_time = s.tx_time AND s2.tx_id > s.tx_id)
+               COALESCE(s2.tx_position, 0) > COALESCE(s.tx_position, 0)
+               OR (
+                 COALESCE(s2.tx_position, 0) = COALESCE(s.tx_position, 0)
+                 AND (
+                   s2.tx_time > s.tx_time
+                   OR (s2.tx_time = s.tx_time AND s2.tx_id > s.tx_id)
+                 )
+               )
              )
            )`,
           [hash],
@@ -693,8 +706,8 @@ const makeSnapshotService = Effect.gen(function* () {
     Effect.gen(function* () {
       // Find the tx_time of the reference transaction
       const txRows = yield* adapter
-        .rawQuery<{ tx_time: number }>(
-          `SELECT tx_time FROM entity_snapshots WHERE tx_id = ? LIMIT 1`,
+        .rawQuery<{ tx_time: number; tx_position: number | null }>(
+          `SELECT tx_time, tx_position FROM entity_snapshots WHERE tx_id = ? LIMIT 1`,
           [sinceTxId],
         )
         .pipe(
@@ -716,8 +729,14 @@ const makeSnapshotService = Effect.gen(function* () {
                SELECT 1 FROM entity_snapshots s2
                WHERE s2.entity_id = s.entity_id
                AND (
-                 s2.tx_time > s.tx_time
-                 OR (s2.tx_time = s.tx_time AND s2.tx_id > s.tx_id)
+                 COALESCE(s2.tx_position, 0) > COALESCE(s.tx_position, 0)
+                 OR (
+                   COALESCE(s2.tx_position, 0) = COALESCE(s.tx_position, 0)
+                   AND (
+                     s2.tx_time > s.tx_time
+                     OR (s2.tx_time = s.tx_time AND s2.tx_id > s.tx_id)
+                   )
+                 )
                )
              )`,
             [],
@@ -735,24 +754,34 @@ const makeSnapshotService = Effect.gen(function* () {
       }
 
       const sinceTxTime = txRows[0]!.tx_time;
+      const sincePosition = Number(txRows[0]!.tx_position ?? 0);
 
       // Find entities that have snapshots after the given tx_time
       const rows = yield* adapter
         .rawQuery<{ entity_id: string; hash: ContentId }>(
           `SELECT s.entity_id, s.hash FROM entity_snapshots s
            WHERE (
-             s.tx_time > ?
-             OR (s.tx_time = ? AND s.tx_id > ?)
+             COALESCE(s.tx_position, 0) > ?
+             OR (
+               COALESCE(s.tx_position, 0) = ?
+               AND (s.tx_time > ? OR (s.tx_time = ? AND s.tx_id > ?))
+             )
            )
            AND NOT EXISTS (
              SELECT 1 FROM entity_snapshots s2
              WHERE s2.entity_id = s.entity_id
              AND (
-               s2.tx_time > s.tx_time
-               OR (s2.tx_time = s.tx_time AND s2.tx_id > s.tx_id)
+               COALESCE(s2.tx_position, 0) > COALESCE(s.tx_position, 0)
+               OR (
+                 COALESCE(s2.tx_position, 0) = COALESCE(s.tx_position, 0)
+                 AND (
+                   s2.tx_time > s.tx_time
+                   OR (s2.tx_time = s.tx_time AND s2.tx_id > s.tx_id)
+                 )
+               )
              )
            )`,
-          [sinceTxTime, sinceTxTime, sinceTxId],
+          [sincePosition, sincePosition, sinceTxTime, sinceTxTime, sinceTxId],
         )
         .pipe(
           Effect.mapError(
@@ -778,8 +807,14 @@ const makeSnapshotService = Effect.gen(function* () {
              WHERE s2.entity_id = s.entity_id
              AND s2.tx_time <= ?
              AND (
-               s2.tx_time > s.tx_time
-               OR (s2.tx_time = s.tx_time AND s2.tx_id > s.tx_id)
+               COALESCE(s2.tx_position, 0) > COALESCE(s.tx_position, 0)
+               OR (
+                 COALESCE(s2.tx_position, 0) = COALESCE(s.tx_position, 0)
+                 AND (
+                   s2.tx_time > s.tx_time
+                   OR (s2.tx_time = s.tx_time AND s2.tx_id > s.tx_id)
+                 )
+               )
              )
            )`,
           [asOfTime, asOfTime],

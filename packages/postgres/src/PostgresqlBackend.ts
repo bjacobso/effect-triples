@@ -9,6 +9,8 @@
 import { Context, Effect, Layer, Redacted } from "effect";
 import { SqlClient } from "effect/unstable/sql";
 import { PgClient } from "@effect/sql-pg";
+import { createHash } from "node:crypto";
+import type { DatabaseId } from "@bjacobso/triplex";
 import { type SqlDialect } from "@bjacobso/triplex/internal";
 import { StorageBackend, type StorageBackendService } from "@bjacobso/triplex-sql";
 import { PostgresqlDialect } from "./dialect.js";
@@ -37,10 +39,34 @@ export interface PostgresqlBackendConfig {
 // =============================================================================
 
 /**
- * Convert database name to PostgreSQL schema name.
- * Prefixes with "db_" to avoid conflicts with reserved names.
+ * Convert a validated database ID to a bounded, deterministic schema name.
+ * The readable prefix is never the uniqueness boundary; the digest prevents
+ * collisions after normalization or truncation.
  */
-const databaseToSchema = (database: string): string => `db_${database.replace(/-/g, "_")}`;
+export const databaseToSchema = (database: DatabaseId): string => {
+  const slug = database.replace(/-/g, "_").slice(0, 32);
+  const digest = createHash("sha256").update(database).digest("hex").slice(0, 16);
+  return `triplex_${slug}_${digest}`;
+};
+
+const quoteIdentifier = (identifier: string): string => `"${identifier.replace(/"/g, '""')}"`;
+
+const connectionUrl = (config: PostgresqlBackendConfig, schema?: string): string => {
+  const username = encodeURIComponent(config.username ?? "postgres");
+  const password = config.password ? `:${encodeURIComponent(Redacted.value(config.password))}` : "";
+  const host = config.host ?? "localhost";
+  const port = config.port ?? 5432;
+  const url = new URL(
+    `postgresql://${username}${password}@${host}:${port}/${encodeURIComponent(config.database)}`,
+  );
+  if (schema !== undefined) {
+    // libpq startup options are applied independently to every pooled
+    // connection, unlike a one-time SET executed on an arbitrary checkout.
+    url.searchParams.set("options", `-c search_path=${schema},pg_catalog`);
+  }
+  if (config.ssl) url.searchParams.set("sslmode", "require");
+  return url.toString();
+};
 
 /**
  * Create the base PgClient layer from config
@@ -59,31 +85,25 @@ const createBaseLayer = (config: PostgresqlBackendConfig) =>
   });
 
 /**
- * A session-local setting such as `search_path` cannot safely be installed on
- * an Effect SQL pool: setup may run on a different connection from a later
- * query. Database-scoped services therefore own one managed PostgreSQL client.
- * Administrative operations can continue to use the pool above because their
- * SQL is schema-qualified or does not rely on session state.
+ * A one-time session-local `SET search_path` cannot safely initialize a pool:
+ * setup may run on a different checkout from a later query. Supplying the
+ * setting in PostgreSQL startup options binds every physical connection in the
+ * scoped pool before it can execute application SQL.
  */
-const createSessionLayer = (config: PostgresqlBackendConfig) =>
-  PgClient.layerFrom(
-    PgClient.makeClient({
-      ...(config.host && { host: config.host }),
-      ...(config.port && { port: config.port }),
-      database: config.database,
-      ...(config.username && { username: config.username }),
-      ...(config.password && { password: config.password }),
-      ...(config.ssl !== undefined && { ssl: config.ssl }),
-    }),
-  );
+const createScopedPoolLayer = (config: PostgresqlBackendConfig, schema: string) =>
+  PgClient.layer({
+    url: Redacted.make(connectionUrl(config, schema)),
+    ...(config.pool?.min !== undefined && { minConnections: config.pool.min }),
+    ...(config.pool?.max !== undefined && { maxConnections: config.pool.max }),
+    ...(config.pool?.idleTimeout !== undefined && { idleTimeout: config.pool.idleTimeout }),
+  });
 
 const createSchemaLayer = (config: PostgresqlBackendConfig, schema: string) =>
-  createSessionLayer(config).pipe(
+  createScopedPoolLayer(config, schema).pipe(
     Layer.tap((ctx) =>
       Effect.gen(function* () {
         const sql = Context.get(ctx, SqlClient.SqlClient);
-        yield* sql.unsafe(`CREATE SCHEMA IF NOT EXISTS ${schema}`);
-        yield* sql.unsafe(`SET search_path TO ${schema}`);
+        yield* sql.unsafe(`CREATE SCHEMA IF NOT EXISTS ${quoteIdentifier(schema)}`);
       }),
     ),
   );
@@ -115,31 +135,22 @@ export const makePostgresqlBackend = (
   Layer.succeed(StorageBackend, {
     dialect: PostgresqlDialect as SqlDialect,
 
-    createDatabaseClient: (database: string) => {
+    createDatabaseClient: (database: DatabaseId) => {
       const schema = databaseToSchema(database);
       return createSchemaLayer(config, schema);
     },
 
-    createAdapterLayer: (database: string) => {
+    createAdapterLayer: (database: DatabaseId) => {
       const schema = databaseToSchema(database);
       const sqlLayer = createSchemaLayer(config, schema);
       return PostgresqlAdapterLive.pipe(Layer.provide(sqlLayer));
     },
 
     createRegistryClient: () => {
-      // Registry also owns a single session so its search path cannot leak or
-      // disappear as pooled connections are checked out.
-      return createSessionLayer(config).pipe(
-        Layer.tap((ctx) =>
-          Effect.gen(function* () {
-            const sql = Context.get(ctx, SqlClient.SqlClient);
-            yield* sql.unsafe(`SET search_path TO public`);
-          }),
-        ),
-      );
+      return createScopedPoolLayer(config, "public");
     },
 
-    deleteDatabaseStorage: (database: string) =>
+    deleteDatabaseStorage: (database: DatabaseId) =>
       Effect.gen(function* () {
         const schema = databaseToSchema(database);
         // Need a client to delete - use scoped execution
@@ -147,7 +158,7 @@ export const makePostgresqlBackend = (
         yield* Effect.scoped(
           Effect.gen(function* () {
             const sql = yield* SqlClient.SqlClient;
-            yield* sql.unsafe(`DROP SCHEMA IF EXISTS ${schema} CASCADE`);
+            yield* sql.unsafe(`DROP SCHEMA IF EXISTS ${quoteIdentifier(schema)} CASCADE`);
           }).pipe(Effect.provide(layer)),
         );
       }),
@@ -158,23 +169,24 @@ export const makePostgresqlBackend = (
         yield* Effect.scoped(
           Effect.gen(function* () {
             const sql = yield* SqlClient.SqlClient;
-            // Get all schemas that start with "db_" (our database schemas)
+            // Only deterministic Triplex-owned schemas are eligible.
             const schemas = yield* sql<{ schema_name: string }>`
               SELECT schema_name
               FROM information_schema.schemata
-              WHERE schema_name LIKE 'db_%'
+              WHERE schema_name LIKE 'triplex_%'
             `;
             // Drop each schema
             for (const { schema_name } of schemas) {
-              yield* sql.unsafe(`DROP SCHEMA IF EXISTS ${schema_name} CASCADE`);
+              yield* sql.unsafe(`DROP SCHEMA IF EXISTS ${quoteIdentifier(schema_name)} CASCADE`);
             }
-            // Also clear the registry table in public schema
+            // Also clear Triplex's registry tables in the public schema.
+            yield* sql.unsafe(`DROP TABLE IF EXISTS public.database_access`);
             yield* sql.unsafe(`DROP TABLE IF EXISTS public.databases`);
           }).pipe(Effect.provide(layer)),
         );
       }),
 
-    getDatabaseSize: (database: string) =>
+    getDatabaseSize: (database: DatabaseId) =>
       Effect.gen(function* () {
         const schema = databaseToSchema(database);
         const layer = createBaseLayer(config);

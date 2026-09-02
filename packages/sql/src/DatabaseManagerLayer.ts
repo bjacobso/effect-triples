@@ -34,7 +34,9 @@ import {
   DatabaseAlreadyExists,
   getTripleStoreRuntime,
   IdGenerator,
+  DatabaseId,
 } from "@bjacobso/triplex/internal";
+import type { DatabaseId as DatabaseIdType } from "@bjacobso/triplex";
 import { SqlQueryExecutorLive } from "./SqlQueryExecutor.js";
 import { StorageBackend } from "./StorageBackend.js";
 
@@ -59,6 +61,12 @@ const mapToInternalError = <A, E, R>(
     effect,
     Effect.mapError((e) => new InternalError({ message: String(e) })),
   );
+
+const validateDatabaseId = (name: string): Effect.Effect<DatabaseIdType, InternalError> =>
+  Effect.try({
+    try: () => DatabaseId.make(name),
+    catch: () => new InternalError({ message: `Invalid Triplex database identifier: ${name}` }),
+  });
 
 // =============================================================================
 // Cached Services
@@ -138,7 +146,7 @@ export const DatabaseManagerLive = Layer.effect(
      *
      * Produces: Triples + SnapshotWriter + SnapshotService
      */
-    const buildDatabaseLayer = (database: string) => {
+    const buildDatabaseLayer = (database: DatabaseIdType) => {
       const adapterLayer = backend.createAdapterLayer(database);
       const sqlLayer = backend.createDatabaseClient(database);
       const dialectLayer = Layer.succeed(CurrentDialect, backend.dialect);
@@ -171,7 +179,8 @@ export const DatabaseManagerLive = Layer.effect(
      */
     const createDatabaseServices = (name: string): Effect.Effect<CachedServices, InternalError> =>
       Effect.gen(function* () {
-        const layer = buildDatabaseLayer(name);
+        const databaseId = yield* validateDatabaseId(name);
+        const layer = buildDatabaseLayer(databaseId);
         const fullyProvidedLayer = layer as Layer.Layer<Triples | SnapshotWriter | SnapshotService>;
 
         const databaseScope = yield* Scope.make();
@@ -308,6 +317,7 @@ export const DatabaseManagerLive = Layer.effect(
       description?: string,
     ): Effect.Effect<Database, DatabaseAlreadyExists | InternalError> =>
       Effect.gen(function* () {
+        yield* validateDatabaseId(name);
         // Register in the registry (this checks for duplicates)
         const database = yield* registry.register(name, description);
 
@@ -331,8 +341,9 @@ export const DatabaseManagerLive = Layer.effect(
 
         // Enrich with triple count and size
         const tripleCount = yield* getTripleCount(name);
+        const databaseId = yield* validateDatabaseId(name);
         const sizeBytes = yield* backend
-          .getDatabaseSize(name)
+          .getDatabaseSize(databaseId)
           .pipe(Effect.catch(() => Effect.succeed(undefined)));
 
         return {
@@ -362,7 +373,8 @@ export const DatabaseManagerLive = Layer.effect(
         yield* registry.unregister(name);
 
         // Delete database storage using the backend
-        yield* backend.deleteDatabaseStorage(name).pipe(Effect.catch(() => Effect.void));
+        const databaseId = yield* validateDatabaseId(name);
+        yield* backend.deleteDatabaseStorage(databaseId).pipe(Effect.catch(() => Effect.void));
 
         yield* Effect.logInfo(`Database deleted: ${name}`);
       });
@@ -388,8 +400,9 @@ export const DatabaseManagerLive = Layer.effect(
         const enrichedDatabases: Database[] = [];
         for (const db of databases) {
           const tripleCount = yield* getTripleCount(db.name);
+          const databaseId = yield* validateDatabaseId(db.name);
           const sizeBytes = yield* backend
-            .getDatabaseSize(db.name)
+            .getDatabaseSize(databaseId)
             .pipe(Effect.catch(() => Effect.succeed(undefined)));
           enrichedDatabases.push({
             ...db,
@@ -408,8 +421,9 @@ export const DatabaseManagerLive = Layer.effect(
 
         // Enrich with triple count and size
         const tripleCount = yield* getTripleCount(name);
+        const databaseId = yield* validateDatabaseId(name);
         const sizeBytes = yield* backend
-          .getDatabaseSize(name)
+          .getDatabaseSize(databaseId)
           .pipe(Effect.catch(() => Effect.succeed(undefined)));
 
         return {

@@ -49,6 +49,24 @@ export const migrations: readonly Migration[] = [
       "CREATE INDEX IF NOT EXISTS idx_bitemporal ON triples(recorded_at, recorded_retracted_at, valid_from, valid_to)",
     ],
   },
+  {
+    version: 3,
+    name: "snapshot_source_position",
+    up: [
+      "ALTER TABLE entity_snapshots ADD COLUMN tx_position BIGINT",
+      `UPDATE entity_snapshots
+       SET tx_position = (
+         SELECT value_number
+         FROM triples
+         WHERE triples.entity_id = entity_snapshots.tx_id
+           AND triples.attribute = ':_tx/position'
+         ORDER BY triples.recorded_at DESC
+         LIMIT 1
+       )
+       WHERE tx_position IS NULL`,
+      "CREATE INDEX IF NOT EXISTS idx_snapshot_position ON entity_snapshots(entity_id, tx_position DESC, tx_time DESC)",
+    ],
+  },
 ];
 
 export const runMigrations = Effect.gen(function* () {

@@ -262,12 +262,25 @@ export const TriplesLive = Layer.effect(
     // =========================================================================
 
     const assert_ = (input: TripleInput): Effect.Effect<Triple, WriteError> =>
-      Effect.gen(function* () {
-        const reserved = reservedWriteError(input);
-        if (reserved) return yield* Effect.fail(reserved);
-        const row = yield* adapter.insert(input, yield* nextTxId, yield* now, yield* nextTripleId);
-        return rowToTriple(row);
-      });
+      transact([
+        {
+          op: "assert",
+          entityId: input.entityId,
+          attribute: input.attribute,
+          value: input.value,
+          entityType: input.entityType,
+          createdBy: input.createdBy,
+          validFrom: input.validFrom,
+          validTo: input.validTo,
+        },
+      ]).pipe(
+        Effect.map((result) => result.triples[0]!),
+        Effect.mapError((cause) =>
+          cause instanceof WriteError
+            ? cause
+            : new WriteError({ message: "Failed to assert triple", cause }),
+        ),
+      );
 
     const assertBatch = (
       inputs: readonly TripleInput[],
@@ -275,19 +288,25 @@ export const TriplesLive = Layer.effect(
     ): Effect.Effect<readonly Triple[], WriteError> => {
       if (inputs.length === 0) return Effect.succeed([]);
 
-      return Effect.gen(function* () {
-        for (const input of inputs) {
-          const reserved = reservedWriteError(input);
-          if (reserved) return yield* Effect.fail(reserved);
-        }
-        const txId = yield* nextTxId;
-        const timestamp = yield* now;
-        const ids = yield* Effect.all(inputs.map(() => nextTripleId));
-
-        return yield* adapter
-          .batchInsert(inputs, txId, timestamp, ids)
-          .pipe(Effect.map((rows) => rows.map(rowToTriple)));
-      });
+      return transact(
+        inputs.map((input) => ({
+          op: "assert" as const,
+          entityId: input.entityId,
+          attribute: input.attribute,
+          value: input.value,
+          entityType: input.entityType,
+          createdBy: input.createdBy,
+          validFrom: input.validFrom,
+          validTo: input.validTo,
+        })),
+      ).pipe(
+        Effect.map((result) => result.triples),
+        Effect.mapError((cause) =>
+          cause instanceof WriteError
+            ? cause
+            : new WriteError({ message: "Failed to assert triple batch", cause }),
+        ),
+      );
     };
 
     /**
@@ -310,7 +329,7 @@ export const TriplesLive = Layer.effect(
             attribute: op.attribute,
             value: op.value,
             entityType: op.entityType,
-            createdBy: actor,
+            createdBy: op.createdBy ?? actor,
             validFrom: op.validFrom,
             validTo: op.validTo,
           };
@@ -451,64 +470,41 @@ export const TriplesLive = Layer.effect(
         }),
       );
 
-    const retract = (
-      id: TripleId,
-      txId?: string,
-      timestamp?: number,
-    ): Effect.Effect<void, WriteError> =>
-      Effect.gen(function* () {
-        const current = yield* adapter.getById(id).pipe(
-          Effect.mapError(
-            (cause) =>
-              new WriteError({
-                message: `Failed to inspect triple before retraction: ${id}`,
-                cause,
-              }),
-          ),
-        );
-        if (current) {
-          const reserved = reservedWriteError({
-            entityId: current.entity_id,
-            attribute: current.attribute,
-            entityType: current.entity_type ?? undefined,
-          });
-          if (reserved) return yield* Effect.fail(reserved);
-        }
-        const didRetract = yield* adapter.retract(
-          id,
-          timestamp ?? (yield* now),
-          txId ?? (yield* nextTxId),
-        );
-        if (!didRetract) {
-          return yield* Effect.fail(
-            new WriteError({ message: `Triple not found or already retracted: ${id}` }),
-          );
-        }
-      });
+    const retract = (id: TripleId): Effect.Effect<void, WriteError> =>
+      transact([{ op: "retract", id }]).pipe(
+        Effect.flatMap((result) =>
+          result.retracted === 1
+            ? Effect.void
+            : Effect.fail(
+                new WriteError({ message: `Triple not found or already retracted: ${id}` }),
+              ),
+        ),
+        Effect.mapError((cause) =>
+          cause instanceof WriteError
+            ? cause
+            : new WriteError({ message: `Failed to retract triple: ${id}`, cause }),
+        ),
+      );
 
-    const retractByPattern = (
-      pattern: Pattern,
-      txId?: string,
-      timestamp?: number,
-    ): Effect.Effect<number, WriteError | ReadError> =>
-      Effect.gen(function* () {
-        const triples = yield* match(pattern);
-        for (const triple of triples) {
-          const reserved = reservedWriteError({
-            entityId: triple.entityId,
-            attribute: triple.attribute,
-            entityType: Option.getOrUndefined(triple.entityType),
-          });
-          if (reserved) return yield* Effect.fail(reserved);
-        }
-        const resolvedTxId = txId ?? (yield* nextTxId);
-        const resolvedTimestamp = timestamp ?? (yield* now);
-        let count = 0;
-        for (const triple of triples) {
-          if (yield* adapter.retract(triple.id, resolvedTimestamp, resolvedTxId)) count++;
-        }
-        return count;
-      });
+    const retractByPattern = (pattern: Pattern): Effect.Effect<number, WriteError | ReadError> =>
+      transact([
+        {
+          op: "retract-pattern",
+          pattern: {
+            ...(typeof pattern.entityId === "string" ? { entityId: pattern.entityId } : {}),
+            ...(typeof pattern.attribute === "string" ? { attribute: pattern.attribute } : {}),
+            ...(pattern.value && !("_tag" in pattern.value) ? { value: pattern.value } : {}),
+            ...(pattern.entityType ? { entityType: pattern.entityType } : {}),
+          },
+        },
+      ]).pipe(
+        Effect.map((result) => result.retracted),
+        Effect.mapError((cause) =>
+          cause instanceof WriteError || cause instanceof ReadError
+            ? cause
+            : new WriteError({ message: "Failed to retract by pattern", cause }),
+        ),
+      );
 
     // =========================================================================
     // Triple-level Reads

@@ -9,6 +9,7 @@ export { makePostgresqlAdapter, PostgresqlAdapterLive } from "./PostgresqlAdapte
 export {
   makePostgresqlBackend,
   makePostgresqlBackendFromUrl,
+  databaseToSchema,
   type PostgresqlBackendConfig,
 } from "./PostgresqlBackend.js";
 export {

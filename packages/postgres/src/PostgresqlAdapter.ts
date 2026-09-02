@@ -424,7 +424,11 @@ export const makePostgresqlAdapter = () =>
       const rawQuery = <T extends object>(sqlString: string, params: readonly unknown[]) =>
         provide(
           Effect.gen(function* () {
-            const rows = yield* sql.unsafe<T>(sqlString, [...params]).pipe(
+            // StorageAdapter raw SQL uses the portable `?` placeholder form.
+            // PostgreSQL's protocol expects numbered parameters instead.
+            let parameter = 0;
+            const postgresqlSql = sqlString.replaceAll("?", () => `$${++parameter}`);
+            const rows = yield* sql.unsafe<T>(postgresqlSql, [...params]).pipe(
               Effect.mapError(
                 (error) =>
                   new ReadError({

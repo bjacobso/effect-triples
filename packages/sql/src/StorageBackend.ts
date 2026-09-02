@@ -8,6 +8,7 @@
 import { Context, Effect, Layer } from "effect";
 import { SqlClient } from "effect/unstable/sql";
 import type { SqlDialect, StorageAdapter } from "@bjacobso/triplex/internal";
+import type { DatabaseId } from "@bjacobso/triplex";
 
 // =============================================================================
 // Service Interface
@@ -32,7 +33,9 @@ export interface StorageBackendService {
    * Note: The layer may have additional services in its output (e.g. PgClient)
    * and may have self-fulfilled requirements for initialization effects.
    */
-  readonly createDatabaseClient: (database: string) => Layer.Layer<SqlClient.SqlClient, unknown>;
+  readonly createDatabaseClient: (
+    database: DatabaseId,
+  ) => Layer.Layer<SqlClient.SqlClient, unknown>;
 
   /**
    * Create a StorageAdapter layer for a database.
@@ -40,7 +43,7 @@ export interface StorageBackendService {
    * For SQLite: SqliteAdapterLive + SqliteClient
    * For PostgreSQL: PostgresqlAdapterLive + PgClient
    */
-  readonly createAdapterLayer: (database: string) => Layer.Layer<StorageAdapter, unknown>;
+  readonly createAdapterLayer: (database: DatabaseId) => Layer.Layer<StorageAdapter, unknown>;
 
   /**
    * Create a SQL client layer for the registry database.
@@ -54,7 +57,7 @@ export interface StorageBackendService {
    * For SQLite: Removes the database file
    * For PostgreSQL: Drops the schema
    */
-  readonly deleteDatabaseStorage: (database: string) => Effect.Effect<void, unknown>;
+  readonly deleteDatabaseStorage: (database: DatabaseId) => Effect.Effect<void, unknown>;
 
   /**
    * Delete all storage including the registry.
@@ -68,7 +71,7 @@ export interface StorageBackendService {
    * For SQLite: Returns the file size
    * For PostgreSQL: Returns the schema size
    */
-  readonly getDatabaseSize: (database: string) => Effect.Effect<number, unknown>;
+  readonly getDatabaseSize: (database: DatabaseId) => Effect.Effect<number, unknown>;
 
   /**
    * Get the data directory (for SQLite) or connection info description

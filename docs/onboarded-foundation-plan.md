@@ -37,13 +37,14 @@ Triplex and stays application-independent.
 
 ### 3. Database-per-organization isolation
 
-- [ ] Introduce a branded, validated `DatabaseId` at the manager/backend boundary.
-- [ ] Derive deterministic, collision-resistant PostgreSQL schema names and quote
+- [x] Introduce a branded, validated `DatabaseId` at the manager/backend boundary.
+- [x] Derive deterministic, collision-resistant PostgreSQL schema names and quote
       every identifier.
-- [ ] Bind every pooled PostgreSQL query to its schema without relying on
-      `search_path` session state.
-- [ ] Prove concurrent isolation for facts, Datalog, journal, config refs, and
-      snapshots, and document equivalent KV/SQLite construction.
+- [x] Bind every pooled PostgreSQL connection to its schema at protocol startup,
+      without relying on a one-time `SET search_path` checkout.
+- [x] Prove concurrent isolation for facts, Datalog, journal, config refs, and
+      snapshots.
+- [ ] Document equivalent KV/SQLite construction in the adoption guide.
 
 ### 4. Stable pagination
 

@@ -26,13 +26,21 @@ export const Attribute = Schema.String.pipe(
 );
 export type Attribute = typeof Attribute.Type;
 
-export const DatabaseName = Schema.String.pipe(
+const DatabaseIdSchema = Schema.String.pipe(
   Schema.check(Schema.isPattern(/^[a-z0-9][a-z0-9-]*[a-z0-9]$|^[a-z0-9]$/)),
   Schema.check(Schema.isMinLength(1)),
   Schema.check(Schema.isMaxLength(64)),
-  Schema.brand("DatabaseName"),
+  Schema.brand("DatabaseId"),
 );
-export type DatabaseName = typeof DatabaseName.Type;
+export const DatabaseId = Object.assign(DatabaseIdSchema, {
+  decode: (s: string) => Schema.decodeEffect(DatabaseIdSchema)(s),
+  make: (s: string): DatabaseId => Schema.decodeSync(DatabaseIdSchema)(s),
+});
+export type DatabaseId = typeof DatabaseIdSchema.Type;
+
+/** @deprecated Use `DatabaseId`; retained as the pre-1.0 schema alias. */
+export const DatabaseName = DatabaseId;
+export type DatabaseName = DatabaseId;
 
 export const TransactionId = Schema.String.pipe(
   Schema.check(Schema.isPattern(/^_tx\/[0-9A-Z]{26}$/)),
@@ -77,6 +85,7 @@ export const decode = {
   entityId: EntityId.decode,
   attribute: (s: string) => Schema.decodeEffect(Attribute)(s),
   databaseName: (s: string) => Schema.decodeEffect(DatabaseName)(s),
+  databaseId: DatabaseId.decode,
   transactionId: (s: string) => Schema.decodeEffect(TransactionId)(s),
   paginationCursor: (s: string) => Schema.decodeEffect(PaginationCursor)(s),
 };
@@ -86,6 +95,7 @@ export const unsafe = {
   entityId: EntityId.make,
   attribute: (s: string) => Schema.decodeSync(Attribute)(s),
   databaseName: (s: string) => Schema.decodeSync(DatabaseName)(s),
+  databaseId: DatabaseId.make,
   transactionId: (s: string) => Schema.decodeSync(TransactionId)(s),
   paginationCursor: (s: string) => Schema.decodeSync(PaginationCursor)(s),
 };

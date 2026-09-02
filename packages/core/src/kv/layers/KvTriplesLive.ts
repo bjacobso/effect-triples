@@ -356,104 +356,92 @@ const makeKvTriplesService = Effect.gen(function* () {
       ),
     );
 
+  let transactService: TriplesService["transact"];
+
   const service: TriplesService = {
     // === Writes ============================================================
 
     assert: (input: TripleInput) =>
-      Effect.gen(function* () {
-        const reserved = reservedWriteError(input);
-        if (reserved) return yield* Effect.fail(reserved);
-        const tripleId = yield* runtime.nextTripleId;
-        const txId = yield* runtime.nextTxId;
-        const now = yield* runtime.now;
-        const datom = tripleInputToDatom(input, tripleId, txId, now);
-        yield* hexaStore.assert(datom);
-        return datomToTriple(datom);
-      }).pipe(
-        Effect.catch((e) =>
-          Effect.fail(new WriteError({ message: `Assert failed: ${String(e)}`, cause: e })),
+      transactService([
+        {
+          op: "assert",
+          entityId: input.entityId,
+          attribute: input.attribute,
+          value: input.value,
+          entityType: input.entityType,
+          createdBy: input.createdBy,
+          validFrom: input.validFrom,
+          validTo: input.validTo,
+        },
+      ]).pipe(
+        Effect.map((result) => result.triples[0]!),
+        Effect.mapError((cause) =>
+          cause instanceof WriteError
+            ? cause
+            : new WriteError({ message: "Failed to assert triple", cause }),
         ),
       ),
 
-    assertBatch: (inputs: readonly TripleInput[], _options?: BulkInsertOptions) =>
-      Effect.gen(function* () {
-        for (const input of inputs) {
-          const reserved = reservedWriteError(input);
-          if (reserved) return yield* Effect.fail(reserved);
-        }
-        const txId = yield* runtime.nextTxId;
-        const now = yield* runtime.now;
-        const datoms = yield* Effect.forEach(inputs, (input) =>
-          Effect.gen(function* () {
-            const tripleId = yield* runtime.nextTripleId;
-            return tripleInputToDatom(input, tripleId, txId, now);
-          }),
-        );
-        yield* hexaStore.assertBatch(datoms);
-        return datoms.map(datomToTriple);
-      }).pipe(
-        Effect.catch((e) =>
-          Effect.fail(new WriteError({ message: `AssertBatch failed: ${String(e)}`, cause: e })),
+    assertBatch: (inputs: readonly TripleInput[], _options?: BulkInsertOptions) => {
+      if (inputs.length === 0) return Effect.succeed([]);
+      return transactService(
+        inputs.map((input) => ({
+          op: "assert" as const,
+          entityId: input.entityId,
+          attribute: input.attribute,
+          value: input.value,
+          entityType: input.entityType,
+          createdBy: input.createdBy,
+          validFrom: input.validFrom,
+          validTo: input.validTo,
+        })),
+      ).pipe(
+        Effect.map((result) => result.triples),
+        Effect.mapError((cause) =>
+          cause instanceof WriteError
+            ? cause
+            : new WriteError({ message: "Failed to assert triple batch", cause }),
         ),
-      ),
+      );
+    },
 
     retract: (id: TripleId) =>
-      Effect.gen(function* () {
-        const current = yield* hexaStore.getById(id);
-        if (current) {
-          const reserved = reservedWriteError({
-            entityId: current.entity,
-            attribute: current.attribute,
-            entityType: current.entityType ?? undefined,
-          });
-          if (reserved) return yield* Effect.fail(reserved);
-        }
-        const retracted = yield* hexaStore.retract(id, yield* runtime.now, yield* runtime.nextTxId);
-        if (!retracted) {
-          yield* Effect.fail(
-            new WriteError({ message: `Triple not found or already retracted: ${id}` }),
-          );
-        }
-      }).pipe(
-        Effect.catch((e) => {
-          if (e instanceof WriteError) return Effect.fail(e);
-          return Effect.fail(new WriteError({ message: `Retract failed: ${String(e)}`, cause: e }));
-        }),
+      transactService([{ op: "retract", id }]).pipe(
+        Effect.flatMap((result) =>
+          result.retracted === 1
+            ? Effect.void
+            : Effect.fail(
+                new WriteError({ message: `Triple not found or already retracted: ${id}` }),
+              ),
+        ),
+        Effect.mapError((cause) =>
+          cause instanceof WriteError
+            ? cause
+            : new WriteError({ message: `Failed to retract triple: ${id}`, cause }),
+        ),
       ),
 
     retractByPattern: (pattern: Pattern) =>
-      Effect.gen(function* () {
-        const scanPat = patternToScan(pattern);
-        const syncDatoms = hexaStore.scanCollect(scanPat);
-        const scanned = syncDatoms ?? (yield* hexaStore.scanCollectAsync(scanPat));
-        const datoms = pattern.entityType
-          ? scanned.filter((datom) => datom.entityType === pattern.entityType)
-          : scanned;
-        for (const datom of datoms) {
-          const reserved = reservedWriteError({
-            entityId: datom.entity,
-            attribute: datom.attribute,
-            entityType: datom.entityType ?? undefined,
-          });
-          if (reserved) return yield* Effect.fail(reserved);
-        }
-        let count = 0;
-        const now = yield* runtime.now;
-        const txId = yield* runtime.nextTxId;
-        for (const datom of datoms) {
-          const ok = yield* hexaStore.retract(datom.tripleId, now, txId);
-          if (ok) count++;
-        }
-        return count;
-      }).pipe(
-        Effect.catch((e) =>
-          Effect.fail(
-            new WriteError({ message: `RetractByPattern failed: ${String(e)}`, cause: e }),
-          ),
+      transactService([
+        {
+          op: "retract-pattern",
+          pattern: {
+            ...(typeof pattern.entityId === "string" ? { entityId: pattern.entityId } : {}),
+            ...(typeof pattern.attribute === "string" ? { attribute: pattern.attribute } : {}),
+            ...(pattern.value && !("_tag" in pattern.value) ? { value: pattern.value } : {}),
+            ...(pattern.entityType ? { entityType: pattern.entityType } : {}),
+          },
+        },
+      ]).pipe(
+        Effect.map((result) => result.retracted),
+        Effect.mapError((cause) =>
+          cause instanceof WriteError || cause instanceof ReadError
+            ? cause
+            : new WriteError({ message: "Failed to retract by pattern", cause }),
         ),
       ),
 
-    transact: (operations: readonly TransactOp[], meta?: TransactionMeta) =>
+    transact: (transactService = (operations: readonly TransactOp[], meta?: TransactionMeta) =>
       kvBackend
         .transact((tx) => {
           const transactionStore = createKvTripleStore(transactionBackend(tx));
@@ -488,7 +476,7 @@ const makeKvTriplesService = Effect.gen(function* () {
                       attribute: op.attribute,
                       value: op.value,
                       entityType: op.entityType,
-                      createdBy: actor,
+                      createdBy: op.createdBy ?? actor,
                       validFrom: op.validFrom,
                       validTo: op.validTo,
                     },
@@ -583,7 +571,7 @@ const makeKvTriplesService = Effect.gen(function* () {
               ? Effect.fail(e)
               : Effect.fail(new WriteError({ message: `Transact failed: ${String(e)}`, cause: e })),
           ),
-        ),
+        )),
 
     withTransaction: <A, E>(effect: Effect.Effect<A, E>) =>
       effect.pipe(

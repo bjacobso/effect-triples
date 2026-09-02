@@ -267,19 +267,19 @@ describe("Triples", () => {
           ]);
 
           expect(tx.txId).toBe("tx:det-2");
-          expect(tx.position).toBe(1);
+          expect(tx.position).toBe(2);
 
           const txPosition = yield* store.match({
             entityId: tx.txId,
             attribute: TxAttributes.POSITION,
           });
           expect(txPosition).toHaveLength(1);
-          expect(txPosition[0]!.id).toBe("triple:det-4");
-          expect(txPosition[0]!.value).toEqual({ type: "number", value: 1 });
+          expect(txPosition[0]!.id).toBe("triple:det-8");
+          expect(txPosition[0]!.value).toEqual({ type: "number", value: 2 });
 
           const txMeta = yield* store.match({ entityId: tx.txId, attribute: TxAttributes.INSTANT });
           expect(txMeta).toHaveLength(1);
-          expect(txMeta[0]!.id).toBe("triple:det-5");
+          expect(txMeta[0]!.id).toBe("triple:det-9");
           expect(txMeta[0]!.value).toEqual({ type: "datetime", value: 1020 });
 
           yield* store.retract(batch[0]!.id);
@@ -321,7 +321,7 @@ describe("Triples", () => {
           ]);
 
           expect(tx.txId).toBe("_tx/unit-000002");
-          expect(tx.triples[0]!.id).toBe("_triple/unit-000002");
+          expect(tx.triples[0]!.id).toBe("_triple/unit-000005");
         }).pipe(Effect.provide(makeRuntimeTestLayer(RuntimeLayer))),
       );
     });

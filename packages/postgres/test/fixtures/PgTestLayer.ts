@@ -96,7 +96,7 @@ const releasePgContainer = ({ container }: { container: StartedTestContainer }) 
 /**
  * Tag carrying the connection URL from the running container.
  */
-class PgConnectionInfo extends Context.Service<PgConnectionInfo, { readonly url: string }>()(
+export class PgConnectionInfo extends Context.Service<PgConnectionInfo, { readonly url: string }>()(
   "test/PgConnectionInfo",
 ) {}
 
@@ -105,7 +105,7 @@ class PgConnectionInfo extends Context.Service<PgConnectionInfo, { readonly url:
 /**
  * Layer that manages the PostgreSQL container lifecycle.
  */
-const PgContainerLayer: Layer.Layer<PgConnectionInfo> = Layer.effect(
+export const PgContainerLayer: Layer.Layer<PgConnectionInfo> = Layer.effect(
   PgConnectionInfo,
   Effect.acquireRelease(acquirePgContainer, releasePgContainer).pipe(
     Effect.map(({ url }) => ({ url })),

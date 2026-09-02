@@ -9,6 +9,7 @@ import { Config, Effect, Layer } from "effect";
 import { SqliteClient } from "@effect/sql-sqlite-node";
 import { FileSystem } from "effect";
 import { SqliteDialect } from "@bjacobso/triplex/internal";
+import type { DatabaseId } from "@bjacobso/triplex";
 import { StorageBackend, type StorageBackendService } from "@bjacobso/triplex-sql";
 import { SqliteAdapterLive } from "./SqliteAdapter.js";
 
@@ -33,7 +34,8 @@ const getDataDir = (config?: SqliteBackendConfig) =>
     ? Effect.succeed(config.dataDir)
     : Config.string("DATA_DIR").pipe(Config.withDefault("./data"));
 
-const databaseDbPath = (dataDir: string, database: string): string => `${dataDir}/${database}.db`;
+const databaseDbPath = (dataDir: string, database: DatabaseId): string =>
+  `${dataDir}/${database}.db`;
 
 const registryDbPath = (dataDir: string): string => `${dataDir}/_registry.db`;
 
@@ -82,12 +84,12 @@ export const makeSqliteBackend = (
       const service: StorageBackendService = {
         dialect: SqliteDialect,
 
-        createDatabaseClient: (database: string) => {
+        createDatabaseClient: (database: DatabaseId) => {
           const dbPath = databaseDbPath(dataDir, database);
           return SqliteClient.layer({ filename: dbPath });
         },
 
-        createAdapterLayer: (database: string) => {
+        createAdapterLayer: (database: DatabaseId) => {
           const dbPath = databaseDbPath(dataDir, database);
           const sqlLayer = SqliteClient.layer({ filename: dbPath });
           return SqliteAdapterLive.pipe(Layer.provide(sqlLayer));
@@ -97,7 +99,7 @@ export const makeSqliteBackend = (
           return SqliteClient.layer({ filename: registryDbPath(dataDir) });
         },
 
-        deleteDatabaseStorage: (database: string) =>
+        deleteDatabaseStorage: (database: DatabaseId) =>
           Effect.gen(function* () {
             const dbPath = databaseDbPath(dataDir, database);
             const walPath = `${dbPath}-wal`;
@@ -123,7 +125,7 @@ export const makeSqliteBackend = (
             }
           }),
 
-        getDatabaseSize: (database: string) =>
+        getDatabaseSize: (database: DatabaseId) =>
           Effect.gen(function* () {
             const dbPath = databaseDbPath(dataDir, database);
 
