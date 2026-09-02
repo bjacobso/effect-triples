@@ -1,0 +1,20 @@
+{
+  "name": "triplex-compliance-host",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "start": "tsx src/demo.ts",
+    "test": "tsx src/demo.ts --verify",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@bjacobso/triplex": "workspace:^",
+    "effect": "catalog:"
+  },
+  "devDependencies": {
+    "@types/node": "catalog:",
+    "tsx": "catalog:",
+    "typescript": "catalog:"
+  }
+}

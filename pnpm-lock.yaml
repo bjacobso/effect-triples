@@ -93,6 +93,25 @@ importers:
         specifier: 'catalog:'
         version: 4.1.11(@types/node@25.9.1)(vite@7.3.6(@types/node@25.9.1)(lightningcss@1.33.0)(tsx@4.19.0)(yaml@2.9.0))
 
+  examples/compliance-host:
+    dependencies:
+      '@bjacobso/triplex':
+        specifier: workspace:^
+        version: link:../../packages/core
+      effect:
+        specifier: 'catalog:'
+        version: 4.0.0-rc.112
+    devDependencies:
+      '@types/node':
+        specifier: 'catalog:'
+        version: 25.9.1
+      tsx:
+        specifier: 'catalog:'
+        version: 4.19.0
+      typescript:
+        specifier: 'catalog:'
+        version: 6.0.2
+
   examples/config-explorer:
     dependencies:
       '@bjacobso/triplex':
