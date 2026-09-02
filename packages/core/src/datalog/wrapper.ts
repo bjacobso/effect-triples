@@ -13,7 +13,7 @@ import {
   type CompiledQuery,
   type CompiledValueColumns,
 } from "./compiler.js";
-import { isVariable } from "./schema.js";
+import { isTypedConstant, isVariable } from "./schema.js";
 import type { SqlDialect } from "../dialects/index.js";
 import { SqliteDialect } from "../dialects/sqlite.js";
 import { createParamCollector, type ParamCollector } from "../params.js";
@@ -104,11 +104,33 @@ const compileFilterOp = (
  */
 const compileFilter = (
   filter: WrapperFilter,
+  compiled: CompiledQuery,
   collector: ParamCollector,
   dialect: SqlDialect,
 ): string => {
   const colName = `"${filter.column}"`;
-  return compileFilterOp(colName, filter.op, filter.value, collector, dialect);
+  const value = isTypedConstant(filter.value) ? filter.value.value : filter.value;
+  const columns = compiled.valueColumnMap.get(filter.column);
+  if (columns === undefined || filter.op === "is-null" || filter.op === "is-not-null") {
+    return compileFilterOp(colName, filter.op, value, collector, dialect);
+  }
+
+  const type = quoted(columns.type);
+  let scalar: string;
+  let typeCondition: string;
+  let storedValue: unknown = value;
+  if (typeof value === "number") {
+    scalar = `COALESCE(${quoted(columns.number)}, ${quoted(columns.datetime)})`;
+    typeCondition = `${type} IN ('number', 'datetime')`;
+  } else if (typeof value === "boolean") {
+    scalar = quoted(columns.boolean);
+    typeCondition = `${type} = 'boolean'`;
+    storedValue = dialect.name === "sqlite" ? (value ? 1 : 0) : value;
+  } else {
+    scalar = `COALESCE(${quoted(columns.string)}, ${quoted(columns.json)})`;
+    typeCondition = `${type} IN ('string', 'ref', 'blob', 'json')`;
+  }
+  return `(${typeCondition} AND ${compileFilterOp(scalar, filter.op, storedValue, collector, dialect)})`;
 };
 
 /**
@@ -116,13 +138,14 @@ const compileFilter = (
  */
 const compileFilters = (
   filters: readonly WrapperFilter[] | undefined,
+  compiled: CompiledQuery,
   collector: ParamCollector,
   dialect: SqlDialect,
 ): string => {
   if (!filters || filters.length === 0) {
     return "";
   }
-  const conditions = filters.map((f) => compileFilter(f, collector, dialect));
+  const conditions = filters.map((f) => compileFilter(f, compiled, collector, dialect));
   return `WHERE ${conditions.join(" AND ")}`;
 };
 
@@ -331,7 +354,9 @@ export const compileWrapped = (
 
   // Add filter conditions
   if (filters && filters.length > 0) {
-    const filterConditions = filters.map((f) => compileFilter(f, mainCollector, dialect));
+    const filterConditions = filters.map((f) =>
+      compileFilter(f, innerCompiled, mainCollector, dialect),
+    );
     whereConditions.push(...filterConditions);
   }
 
@@ -380,7 +405,7 @@ export const compileWrapped = (
     }
 
     // Only apply filters to count, not cursor (we want total count of all matching rows)
-    const countWhereClause = compileFilters(filters, countCollector, dialect);
+    const countWhereClause = compileFilters(filters, innerCompiled, countCollector, dialect);
 
     const countSqlParts = [cte, `SELECT COUNT(*) AS total`, `FROM ${cteName}`, countWhereClause];
     countSql = countSqlParts.filter(Boolean).join("\n");

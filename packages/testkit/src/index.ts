@@ -627,6 +627,164 @@ export const triplesConformanceCases: readonly ConformanceCase[] = [
         invalidPage instanceof UnboundVariableError && invalidPage.variable === "?value",
         "wrapped filters must reference an inner projected binding",
       );
+
+      const missingOperand = yield* t
+        .queryPage({
+          inner: {
+            find: ["?entity"],
+            where: [["?entity", ":conf/validation", "?value"]],
+          },
+          filters: [{ column: "?entity", op: "=" }],
+          limit: 10,
+        })
+        .pipe(Effect.flip);
+      yield* check(
+        missingOperand instanceof DatalogValidationError,
+        "wrapper operators that compare values must require an operand",
+      );
+    }),
+  },
+  {
+    name: "wrapped filters preserve scalar types and SQL null semantics",
+    run: Effect.gen(function* () {
+      const t = yield* Triples;
+      yield* t.assertBatch([
+        {
+          entityId: "conf:filter:alice",
+          attribute: ":_schema/type",
+          value: string("FilterFixture"),
+        },
+        {
+          entityId: "conf:filter:alice",
+          attribute: ":conf/filter-value",
+          value: string("Alice"),
+        },
+        {
+          entityId: "conf:filter:bob",
+          attribute: ":_schema/type",
+          value: string("FilterFixture"),
+        },
+        {
+          entityId: "conf:filter:bob",
+          attribute: ":conf/filter-value",
+          value: string("Bob"),
+        },
+        {
+          entityId: "conf:filter:number",
+          attribute: ":_schema/type",
+          value: string("FilterFixture"),
+        },
+        {
+          entityId: "conf:filter:number",
+          attribute: ":conf/filter-value",
+          value: number(2),
+        },
+        {
+          entityId: "conf:filter:number-ten",
+          attribute: ":_schema/type",
+          value: string("FilterFixture"),
+        },
+        {
+          entityId: "conf:filter:number-ten",
+          attribute: ":conf/filter-value",
+          value: number(10),
+        },
+        {
+          entityId: "conf:filter:ref",
+          attribute: ":_schema/type",
+          value: string("FilterFixture"),
+        },
+        {
+          entityId: "conf:filter:ref",
+          attribute: ":conf/filter-value",
+          value: ref("scope:one"),
+        },
+        {
+          entityId: "conf:filter:boolean",
+          attribute: ":_schema/type",
+          value: string("FilterFixture"),
+        },
+        {
+          entityId: "conf:filter:boolean",
+          attribute: ":conf/filter-value",
+          value: boolean(true),
+        },
+        {
+          entityId: "conf:filter:missing",
+          attribute: ":_schema/type",
+          value: string("FilterFixture"),
+        },
+      ]);
+
+      const inner = {
+        find: ["?entity", "?value"],
+        where: [["?entity", ":_schema/type", "FilterFixture"]],
+        optionalProjection: {
+          rowBinding: "?entity",
+          fields: [{ attribute: ":conf/filter-value", variable: "?value" }],
+        },
+      } as const;
+      const entitiesFor = (results: readonly Record<string, unknown>[]) =>
+        results
+          .map((row) => row["?entity"])
+          .sort()
+          .join(",");
+
+      const notAlice = yield* t.queryPage({
+        inner,
+        filters: [{ column: "?value", op: "!=", value: "Alice" }],
+        orderBy: [{ variable: "?entity" }],
+      });
+      yield* check(
+        entitiesFor(notAlice.results) === "conf:filter:bob,conf:filter:ref",
+        "negative equality must exclude nulls and incompatible scalar families",
+      );
+
+      const notLikeAlice = yield* t.queryPage({
+        inner,
+        filters: [{ column: "?value", op: "not-like", value: "%li%" }],
+        orderBy: [{ variable: "?entity" }],
+      });
+      yield* check(
+        entitiesFor(notLikeAlice.results) === "conf:filter:bob,conf:filter:ref",
+        "negative LIKE must exclude nulls and non-text values",
+      );
+
+      const numeric = yield* t.queryPage({
+        inner,
+        filters: [{ column: "?value", op: ">=", value: 10 }],
+      });
+      yield* check(
+        entitiesFor(numeric.results) === "conf:filter:number-ten",
+        "numeric filters must use numeric storage rather than flattened text",
+      );
+
+      const referenced = yield* t.queryPage({
+        inner,
+        filters: [{ column: "?value", op: "=", value: ref("scope:one") }],
+      });
+      yield* check(
+        entitiesFor(referenced.results) === "conf:filter:ref",
+        "typed wrapper operands must compare against their projected scalar",
+      );
+
+      const enabled = yield* t.queryPage({
+        inner,
+        filters: [{ column: "?value", op: "=", value: true }],
+      });
+      yield* check(
+        entitiesFor(enabled.results) === "conf:filter:boolean",
+        "boolean filters must use boolean storage",
+      );
+
+      const missing = yield* t.queryPage({
+        inner,
+        filters: [{ column: "?value", op: "is-null" }],
+      });
+      yield* check(
+        entitiesFor(missing.results) === "conf:filter:missing",
+        "is-null must select only absent optional values",
+      );
     }),
   },
   {

@@ -530,7 +530,7 @@ describe("Datalog SQL Compiler", () => {
       const result = compile(query);
       expect(result.sql).toContain("SELECT COALESCE(");
       expect(result.sql).toContain("opt.attribute = ?");
-      expect(result.params.filter((value) => value === ":employee/status")).toHaveLength(2);
+      expect(result.params.filter((value) => value === ":employee/status")).toHaveLength(1);
     });
 
     it("should throw for query with no patterns", () => {

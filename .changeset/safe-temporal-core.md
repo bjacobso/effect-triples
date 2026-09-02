@@ -33,3 +33,5 @@ Align grouped aggregation, `having`, and declarative clause ordering across KV, 
 Run Datalog runtime shape and semantic preflight through one backend-neutral validator. Invalid bindings, ambiguous projections and aggregates, empty disjunctions, wrapper column leaks, undefined rules, and unsupported recursive rule bodies now fail with typed query errors before KV or SQL execution.
 
 Align aggregate input multiplicity, distinct counts, and empty-input results across KV, SQLite, and PostgreSQL. Extend typed projection and equality joins to JSON and blob values without string-to-number guessing.
+
+Make wrapped Datalog filters type-aware across KV, SQLite, and PostgreSQL. Validate filter operands before execution, keep negative operators SQL-null compatible, and preserve the physical value columns needed to compare optional numeric projections numerically.

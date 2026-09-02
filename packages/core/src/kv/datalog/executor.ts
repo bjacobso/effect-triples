@@ -827,6 +827,26 @@ const applyWrapperFilters = (results: Context[], filters: readonly WrapperFilter
   return filtered;
 };
 
+const compareOrderedFilterValues = (
+  left: Constant,
+  right: Constant,
+  op: ">" | ">=" | "<" | "<=",
+): boolean => {
+  if (typeof left === "number" && typeof right === "number") {
+    if (op === ">") return left > right;
+    if (op === ">=") return left >= right;
+    if (op === "<") return left < right;
+    return left <= right;
+  }
+  if (typeof left === "string" && typeof right === "string") {
+    if (op === ">") return left > right;
+    if (op === ">=") return left >= right;
+    if (op === "<") return left < right;
+    return left <= right;
+  }
+  return false;
+};
+
 const evaluateWrapperFilter = (ctx: Context, filter: WrapperFilter): boolean => {
   const value = ctx[filter.column];
 
@@ -839,33 +859,28 @@ const evaluateWrapperFilter = (ctx: Context, filter: WrapperFilter): boolean => 
       break;
   }
 
-  // Remaining ops require a filter value
-  if (filter.value === undefined) return true;
-  if (value === undefined) return false;
+  // Validation guarantees an operand for every remaining operator. SQL
+  // comparisons against NULL do not match, including negative operators.
+  if (filter.value === undefined || value === undefined || value === null) return false;
 
-  const filterVal = filter.value;
+  const filterVal =
+    typeof filter.value === "object" && filter.value !== null && "type" in filter.value
+      ? filter.value.value
+      : filter.value;
 
   switch (filter.op) {
     case "=":
       return value === filterVal;
     case "!=":
-      return value !== filterVal;
+      return typeof value === typeof filterVal && value !== filterVal;
     case ">":
-      return typeof value === "number" && typeof filterVal === "number"
-        ? value > filterVal
-        : String(value) > String(filterVal);
+      return compareOrderedFilterValues(value, filterVal, ">");
     case ">=":
-      return typeof value === "number" && typeof filterVal === "number"
-        ? value >= filterVal
-        : String(value) >= String(filterVal);
+      return compareOrderedFilterValues(value, filterVal, ">=");
     case "<":
-      return typeof value === "number" && typeof filterVal === "number"
-        ? value < filterVal
-        : String(value) < String(filterVal);
+      return compareOrderedFilterValues(value, filterVal, "<");
     case "<=":
-      return typeof value === "number" && typeof filterVal === "number"
-        ? value <= filterVal
-        : String(value) <= String(filterVal);
+      return compareOrderedFilterValues(value, filterVal, "<=");
     case "like":
       return typeof value === "string" && typeof filterVal === "string"
         ? likeMatch(value, filterVal, false)
@@ -873,7 +888,7 @@ const evaluateWrapperFilter = (ctx: Context, filter: WrapperFilter): boolean => 
     case "not-like":
       return typeof value === "string" && typeof filterVal === "string"
         ? !likeMatch(value, filterVal, false)
-        : true;
+        : false;
     case "ilike":
       return typeof value === "string" && typeof filterVal === "string"
         ? likeMatch(value, filterVal, true)
@@ -881,7 +896,7 @@ const evaluateWrapperFilter = (ctx: Context, filter: WrapperFilter): boolean => 
     case "not-ilike":
       return typeof value === "string" && typeof filterVal === "string"
         ? !likeMatch(value, filterVal, true)
-        : true;
+        : false;
     default:
       return true;
   }

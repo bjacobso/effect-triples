@@ -8,6 +8,7 @@ import {
   isPatternClause,
   isPredicateClause,
   isRuleApplication,
+  isTypedConstant,
   isVariable,
   normalizeOrAlternatives,
   type Clause,
@@ -280,8 +281,36 @@ export const assertWrappedQuery = (input: unknown): WrappedQuery => {
   const wrapped = decoded.success;
   const inner = assertDatalogQuery(wrapped.inner);
   const projected = new Set(inner.find.filter(isVariable));
+  const numericResults = new Set(inner.aggregate?.map(([, , target]) => target) ?? []);
   for (const filter of wrapped.filters ?? []) {
     if (!projected.has(filter.column)) unbound(filter.column, filter);
+    const isNullCheck = filter.op === "is-null" || filter.op === "is-not-null";
+    const value = isTypedConstant(filter.value) ? filter.value.value : filter.value;
+    if (isNullCheck && filter.value !== undefined) {
+      invalid(input, `Wrapper filter ${filter.op} must not include a value`);
+    }
+    if (!isNullCheck && filter.value === undefined) {
+      invalid(input, `Wrapper filter ${filter.op} requires a value`);
+    }
+    if (
+      (filter.op === "like" ||
+        filter.op === "not-like" ||
+        filter.op === "ilike" ||
+        filter.op === "not-ilike") &&
+      typeof value !== "string"
+    ) {
+      invalid(input, `Wrapper filter ${filter.op} requires a string value`);
+    }
+    if (
+      (filter.op === ">" || filter.op === ">=" || filter.op === "<" || filter.op === "<=") &&
+      typeof value !== "number" &&
+      typeof value !== "string"
+    ) {
+      invalid(input, `Wrapper filter ${filter.op} requires a number or string value`);
+    }
+    if (numericResults.has(filter.column) && !isNullCheck && typeof value !== "number") {
+      invalid(input, `Wrapper filter on aggregate ${filter.column} requires a numeric value`);
+    }
   }
   for (const order of wrapped.orderBy ?? []) {
     if (!projected.has(order.variable)) unbound(order.variable, order);

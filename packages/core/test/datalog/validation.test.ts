@@ -186,4 +186,40 @@ describe("Datalog query validation", () => {
       }),
     ).toThrow(UnboundVariableError);
   });
+
+  it("requires canonical wrapper filter operands", () => {
+    const inner = {
+      find: ["?entity", "?value"],
+      where: [["?entity", ":value", "?value"]],
+    } as const;
+
+    expect(() => assertWrappedQuery({ inner, filters: [{ column: "?value", op: "=" }] })).toThrow(
+      "requires a value",
+    );
+    expect(() =>
+      assertWrappedQuery({
+        inner,
+        filters: [{ column: "?value", op: "is-null", value: "unused" }],
+      }),
+    ).toThrow("must not include a value");
+    expect(() =>
+      assertWrappedQuery({ inner, filters: [{ column: "?value", op: "like", value: 42 }] }),
+    ).toThrow("requires a string value");
+    expect(() =>
+      assertWrappedQuery({ inner, filters: [{ column: "?value", op: ">", value: true }] }),
+    ).toThrow("requires a number or string value");
+  });
+
+  it("requires numeric operands for aggregate-result filters", () => {
+    expect(() =>
+      assertWrappedQuery({
+        inner: {
+          find: ["?count"],
+          where: [["?entity", ":value", "?value"]],
+          aggregate: [["count", "?entity", "?count"]],
+        },
+        filters: [{ column: "?count", op: "=", value: "1" }],
+      }),
+    ).toThrow("requires a numeric value");
+  });
 });

@@ -865,6 +865,11 @@ const distinctCountExpression = (binding: VariableBinding): string => {
 interface OptionalProjectionExpressions {
   readonly scalar: string;
   readonly type: string;
+  readonly string: string;
+  readonly number: string;
+  readonly boolean: string;
+  readonly datetime: string;
+  readonly json: string;
 }
 
 const optionalProjectionExpressions = (
@@ -881,9 +886,9 @@ const optionalProjectionExpressions = (
   if (!rowBinding) return null;
 
   const entityExpr = resolveBinding(rowBinding, { valueMode: "string" });
+  const attributeExpr = formatValue(projection.attribute, ctx);
 
   const select = (expression: string): string => {
-    const attributeExpr = formatValue(projection.attribute, ctx);
     return `(
     SELECT ${expression}
     FROM triples opt
@@ -899,6 +904,11 @@ const optionalProjectionExpressions = (
       "COALESCE(opt.value_string, CAST(opt.value_number AS TEXT), CAST(opt.value_boolean AS TEXT), CAST(opt.value_datetime AS TEXT), opt.value_json)",
     ),
     type: select("opt.value_type"),
+    string: select("opt.value_string"),
+    number: select("opt.value_number"),
+    boolean: select("opt.value_boolean"),
+    datetime: select("opt.value_datetime"),
+    json: select("opt.value_json"),
   };
 };
 
@@ -1053,14 +1063,19 @@ const buildSelectAndGroupBy = (
           const index = valueColumnMap.size;
           const columns: CompiledValueColumns = {
             type: `_triplex_value_${index}_type`,
-            string: term,
-            number: term,
-            boolean: term,
-            datetime: term,
-            json: term,
+            string: `_triplex_value_${index}_string`,
+            number: `_triplex_value_${index}_number`,
+            boolean: `_triplex_value_${index}_boolean`,
+            datetime: `_triplex_value_${index}_datetime`,
+            json: `_triplex_value_${index}_json`,
           };
           selectParts.push(`${projection.scalar} AS ${colName}`);
           selectParts.push(`${projection.type} AS "${columns.type}"`);
+          selectParts.push(`${projection.string} AS "${columns.string}"`);
+          selectParts.push(`${projection.number} AS "${columns.number}"`);
+          selectParts.push(`${projection.boolean} AS "${columns.boolean}"`);
+          selectParts.push(`${projection.datetime} AS "${columns.datetime}"`);
+          selectParts.push(`${projection.json} AS "${columns.json}"`);
           columnMap.set(term, term);
           valueColumnMap.set(term, columns);
         }

@@ -699,6 +699,12 @@ retractions therefore do not move rows between pages. Reusing a cursor with diff
 ordering, basis, or organization fails with a typed `PaginationCursorError`; malformed base64 or
 JSON never escapes as an unchecked exception.
 
+Wrapper filters operate on the same typed scalar results returned to callers. Numeric and datetime
+values compare numerically; text, refs, blobs, and JSON compare as text; incompatible families and
+`null` do not satisfy either positive or negative comparison operators. `is-null` and
+`is-not-null` take no operand, while every other operator requires one. Invalid filter shapes fail
+with `DatalogValidationError` before reaching a backend.
+
 ```ts
 const first =
   yield *
