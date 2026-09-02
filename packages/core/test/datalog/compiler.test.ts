@@ -42,7 +42,7 @@ describe("Datalog SQL Compiler", () => {
 
       expect(result.sql).toContain(`t0.attribute = ?`);
       expect(result.sql).toContain(`t0.value_string = ?`);
-      expect(result.sql).toContain(`t0.value_type IN (?, ?, ?)`);
+      expect(result.sql).toContain(`t0.value_type IN (?3, ?4, ?5)`);
       // Verify params contain the values
       expect(result.params).toContain(":name");
       expect(result.params).toContain("Alice");
@@ -60,7 +60,7 @@ describe("Datalog SQL Compiler", () => {
       const result = compile(query);
 
       expect(result.sql).toContain(`t0.value_number = ?`);
-      expect(result.sql).toContain(`t0.value_type IN (?, ?)`);
+      expect(result.sql).toContain(`t0.value_type IN (?3, ?4)`);
       // Verify params contain the values
       expect(result.params).toContain(30);
       expect(result.params).toContain("number");
@@ -215,7 +215,7 @@ describe("Datalog SQL Compiler", () => {
       const result = compile(query);
 
       expect(result.sql).toContain(
-        "NOT (((t1.value_type IN ('string', 'ref', 'blob', 'json')) AND COALESCE(t1.value_string, t1.value_json) = ?))",
+        "NOT (((t1.value_type IN ('string', 'ref', 'blob', 'json')) AND COALESCE(t1.value_string, t1.value_json) = ?3))",
       );
       expect(result.params).toContain("inactive");
     });
@@ -531,7 +531,8 @@ describe("Datalog SQL Compiler", () => {
 
       const result = compile(query);
       expect(result.sql).toContain("SELECT COALESCE(");
-      expect(result.sql).toContain("opt.attribute = ':employee/status'");
+      expect(result.sql).toContain("opt.attribute = ?");
+      expect(result.params.filter((value) => value === ":employee/status")).toHaveLength(2);
     });
 
     it("should throw for query with no patterns", () => {
@@ -924,11 +925,12 @@ describe("Datalog SQL Compiler with Recursive Rules", () => {
         ],
       };
 
-      const sql = compileWithRulesToSql(query);
+      const result = compileWithRules(query);
 
       // Should have depth < maxDepth condition
-      expect(sql).toContain("depth");
-      expect(sql).toContain("< 50");
+      expect(result.sql).toContain("depth");
+      expect(result.sql).toContain("depth < ?");
+      expect(result.params).toContain(50);
     });
 
     it("should use default maxDepth of 100", () => {
@@ -947,9 +949,10 @@ describe("Datalog SQL Compiler with Recursive Rules", () => {
         ],
       };
 
-      const sql = compileWithRulesToSql(query);
+      const result = compileWithRules(query);
 
-      expect(sql).toContain("< 100");
+      expect(result.sql).toContain("depth < ?");
+      expect(result.params).toContain(100);
     });
   });
 
@@ -998,7 +1001,7 @@ describe("Datalog SQL Compiler with Recursive Rules", () => {
 
       expect(result.sql).toContain("WITH RECURSIVE");
       expect(result.sql).toContain("FROM triples t0");
-      expect(result.sql).toContain("JOIN ancestor");
+      expect(result.sql).toContain('JOIN "ancestor"');
     });
   });
 
@@ -1030,6 +1033,25 @@ describe("Datalog SQL Compiler with Recursive Rules", () => {
       };
 
       expect(() => compileWithRules(query)).toThrow("no body clauses");
+    });
+
+    it("should reject invalid recursion depths before generating SQL", () => {
+      const query: DatalogQuery = {
+        find: ["?ancestor"],
+        where: [["ancestor", "alice", "?ancestor"]],
+        rules: [
+          { name: "ancestor", body: [["?x", ":parent", "?y"]], maxDepth: 0 },
+          {
+            name: "ancestor",
+            body: [
+              ["?x", ":parent", "?z"],
+              ["ancestor", "?z", "?y"],
+            ],
+          },
+        ],
+      };
+
+      expect(() => compileWithRules(query)).toThrow("positive safe integer");
     });
   });
 

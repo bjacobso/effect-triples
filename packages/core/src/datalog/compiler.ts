@@ -187,23 +187,14 @@ const applyTemporalBasis = (sql: string, basis: CompileOptions["basis"]): string
 // Helpers
 // =============================================================================
 
-/**
- * Escape a string value for safe SQL interpolation.
- * Used only for rule definitions (CTEs) which are developer-defined.
- * TODO: Refactor rule compilation to use parameterized queries.
- */
-const escapeStringForRules = (s: string): string => s.replace(/'/g, "''");
+const ruleNamePattern = /^[a-zA-Z_][a-zA-Z0-9_-]*$/;
 
-/**
- * Format a constant value for SQL using string escaping.
- * Used only for rule definitions (CTEs) which are developer-defined.
- * TODO: Refactor rule compilation to use parameterized queries.
- */
-const formatValueForRules = (value: Constant): string => {
-  if (isTypedConstant(value)) return `'${escapeStringForRules(value.value)}'`;
-  if (typeof value === "string") return `'${escapeStringForRules(value)}'`;
-  if (typeof value === "boolean") return value ? "1" : "0";
-  return String(value);
+/** Rule names are SQL identifiers, so validate and quote them rather than treating them as values. */
+const ruleIdentifier = (name: string): string => {
+  if (!ruleNamePattern.test(name) || name === "not" || name === "or") {
+    throw new Error(`Invalid Datalog rule name: ${JSON.stringify(name)}`);
+  }
+  return `"${name}"`;
 };
 
 /**
@@ -475,12 +466,6 @@ const compileValueTypeCondition = (
     return `${alias}.value_type = ${formatValue(types[0]!, ctx)}`;
   }
   return `${alias}.value_type IN (${types.map((type) => formatValue(type, ctx)).join(", ")})`;
-};
-
-const compileValueTypeConditionForRules = (alias: string, value: Constant): string => {
-  const types = compatibleValueTypes(value);
-  if (types.length === 1) return `${alias}.value_type = '${types[0]}'`;
-  return `${alias}.value_type IN (${types.map((type) => `'${type}'`).join(", ")})`;
 };
 
 /**
@@ -883,9 +868,10 @@ const optionalProjectionExpressions = (
   if (!rowBinding) return null;
 
   const entityExpr = resolveBinding(rowBinding, { valueMode: "string" });
-  const attributeExpr = `'${escapeStringForRules(projection.attribute)}'`;
 
-  const select = (expression: string): string => `(
+  const select = (expression: string): string => {
+    const attributeExpr = formatValue(projection.attribute, ctx);
+    return `(
     SELECT ${expression}
     FROM triples opt
     WHERE opt.entity_id = ${entityExpr}
@@ -893,6 +879,7 @@ const optionalProjectionExpressions = (
       AND opt.retracted_at IS NULL
     LIMIT 1
   )`;
+  };
 
   return {
     scalar: select(
@@ -1289,7 +1276,7 @@ const groupRulesByName = (rules: readonly Rule[]): Map<string, Rule[]> => {
  * Compile a single rule definition to SQL for a CTE
  * Returns SQL that selects (arg1, arg2) based on the rule body
  */
-const compileRuleDefinition = (rule: Rule): string => {
+const compileRuleDefinition = (rule: Rule, ctx: CompilerContext): string => {
   const { body } = rule;
 
   if (body.length === 0) {
@@ -1338,7 +1325,8 @@ const compileRuleDefinition = (rule: Rule): string => {
 
       // Add JOIN to the recursive CTE
       if (fromParts.length === 0) {
-        fromParts.push(`${ruleName} r0`);
+        fromParts.push(`${ruleIdentifier(ruleName)} r0`);
+        aliasCounter.value++;
 
         // Map the rule application arguments
         if (isVariable(clauseArg1)) {
@@ -1358,7 +1346,7 @@ const compileRuleDefinition = (rule: Rule): string => {
           }
           paramMap.set(clauseArg1, `r${aliasCounter.value}.arg1`);
         } else {
-          joinConditions.push(`r${aliasCounter.value}.arg1 = ${formatValueForRules(clauseArg1)}`);
+          joinConditions.push(`r${aliasCounter.value}.arg1 = ${formatValue(clauseArg1, ctx)}`);
         }
 
         if (isVariable(clauseArg2)) {
@@ -1368,10 +1356,12 @@ const compileRuleDefinition = (rule: Rule): string => {
           }
           paramMap.set(clauseArg2, `r${aliasCounter.value}.arg2`);
         } else {
-          joinConditions.push(`r${aliasCounter.value}.arg2 = ${formatValueForRules(clauseArg2)}`);
+          joinConditions.push(`r${aliasCounter.value}.arg2 = ${formatValue(clauseArg2, ctx)}`);
         }
 
-        allJoins.push(`JOIN ${ruleName} r${aliasCounter.value} ON ${joinConditions.join(" AND ")}`);
+        allJoins.push(
+          `JOIN ${ruleIdentifier(ruleName)} r${aliasCounter.value} ON ${joinConditions.join(" AND ")}`,
+        );
         aliasCounter.value++;
       }
     } else {
@@ -1386,14 +1376,14 @@ const compileRuleDefinition = (rule: Rule): string => {
         if (isVariable(entity)) {
           paramMap.set(entity, `${alias}.entity_id`);
         } else {
-          allConditions.push(`${alias}.entity_id = ${formatValueForRules(entity)}`);
+          allConditions.push(`${alias}.entity_id = ${formatValue(entity, ctx)}`);
         }
 
         // Handle attribute
         if (isVariable(attribute)) {
           paramMap.set(attribute, `${alias}.attribute`);
         } else {
-          allConditions.push(`${alias}.attribute = ${formatValueForRules(attribute)}`);
+          allConditions.push(`${alias}.attribute = ${formatValue(attribute, ctx)}`);
         }
 
         // Handle value
@@ -1401,8 +1391,8 @@ const compileRuleDefinition = (rule: Rule): string => {
           paramMap.set(value, `${alias}.value_string`);
         } else {
           const valueCol = getValueColumn(value);
-          allConditions.push(`${alias}.${valueCol} = ${formatValueForRules(value)}`);
-          allConditions.push(compileValueTypeConditionForRules(alias, value));
+          allConditions.push(`${alias}.${valueCol} = ${formatStoredValue(value, ctx)}`);
+          allConditions.push(compileValueTypeCondition(alias, value, ctx));
         }
       } else {
         // JOIN to the triples table
@@ -1416,7 +1406,7 @@ const compileRuleDefinition = (rule: Rule): string => {
           }
           paramMap.set(entity, `${alias}.entity_id`);
         } else {
-          joinConditions.push(`${alias}.entity_id = ${formatValueForRules(entity)}`);
+          joinConditions.push(`${alias}.entity_id = ${formatValue(entity, ctx)}`);
         }
 
         // Handle attribute
@@ -1427,7 +1417,7 @@ const compileRuleDefinition = (rule: Rule): string => {
           }
           paramMap.set(attribute, `${alias}.attribute`);
         } else {
-          joinConditions.push(`${alias}.attribute = ${formatValueForRules(attribute)}`);
+          joinConditions.push(`${alias}.attribute = ${formatValue(attribute, ctx)}`);
         }
 
         // Handle value
@@ -1439,8 +1429,8 @@ const compileRuleDefinition = (rule: Rule): string => {
           paramMap.set(value, `${alias}.value_string`);
         } else {
           const valueCol = getValueColumn(value);
-          joinConditions.push(`${alias}.${valueCol} = ${formatValueForRules(value)}`);
-          joinConditions.push(compileValueTypeConditionForRules(alias, value));
+          joinConditions.push(`${alias}.${valueCol} = ${formatStoredValue(value, ctx)}`);
+          joinConditions.push(compileValueTypeCondition(alias, value, ctx));
         }
 
         allJoins.push(`JOIN triples ${alias} ON ${joinConditions.join(" AND ")}`);
@@ -1480,7 +1470,7 @@ const compileRuleDefinition = (rule: Rule): string => {
  *     WHERE t.attribute = ':parent' AND a.depth < maxDepth
  *   )
  */
-const compileRecursiveCTE = (ruleName: string, rules: Rule[]): string => {
+const compileRecursiveCTE = (ruleName: string, rules: Rule[], ctx: CompilerContext): string => {
   // Separate base cases (no recursive calls) from recursive cases
   const baseCases: Rule[] = [];
   const recursiveCases: Rule[] = [];
@@ -1500,17 +1490,26 @@ const compileRecursiveCTE = (ruleName: string, rules: Rule[]): string => {
     throw new Error(`Rule "${ruleName}" has no base case (non-recursive definition)`);
   }
 
+  for (const rule of rules) {
+    if (
+      rule.maxDepth !== undefined &&
+      (!Number.isSafeInteger(rule.maxDepth) || rule.maxDepth < 1)
+    ) {
+      throw new Error(`Rule "${ruleName}" maxDepth must be a positive safe integer`);
+    }
+  }
+
   // Get max depth from any rule (default 100)
   const maxDepth = Math.max(...rules.map((r) => r.maxDepth ?? 100));
 
   // Build base case SQL (UNION ALL of all base cases)
-  const baseSqls = baseCases.map((rule) => compileRuleDefinition(rule));
+  const baseSqls = baseCases.map((rule) => compileRuleDefinition(rule, ctx));
   const baseUnion = baseSqls.join("\nUNION ALL\n");
 
   // Build recursive case SQL
   if (recursiveCases.length === 0) {
     // Non-recursive rule - just use base case
-    return `${ruleName} AS (\n${baseUnion}\n)`;
+    return `${ruleIdentifier(ruleName)} AS (\n${baseUnion}\n)`;
   }
 
   // For recursive rules, we need to build a proper SQLite-compatible recursive CTE
@@ -1541,11 +1540,14 @@ const compileRecursiveCTE = (ruleName: string, rules: Rule[]): string => {
     // FROM triples t JOIN ruleName r ON join_condition
     // WHERE t.attribute = ':attr' AND t.retracted_at IS NULL AND r.depth < maxDepth
 
-    const conditions: string[] = [`t.retracted_at IS NULL`, `r.depth < ${maxDepth}`];
+    const conditions: string[] = [
+      `t.retracted_at IS NULL`,
+      `r.depth < ${ctx.collector.add(maxDepth)}`,
+    ];
 
     // Handle attribute
     if (!isVariable(attribute)) {
-      conditions.push(`t.attribute = ${formatValueForRules(attribute)}`);
+      conditions.push(`t.attribute = ${formatValue(attribute, ctx)}`);
     }
 
     // Handle value - this is usually the link to the recursive call
@@ -1574,14 +1576,14 @@ const compileRecursiveCTE = (ruleName: string, rules: Rule[]): string => {
 
     const recursiveSql = `SELECT ${selectArg1} AS arg1, ${selectArg2} AS arg2, r.depth + 1 AS depth
 FROM triples t
-JOIN ${ruleName} r ON ${joinCondition}
+JOIN ${ruleIdentifier(ruleName)} r ON ${joinCondition}
 WHERE ${conditions.join(" AND ")}`;
 
     recursiveMembers.push(recursiveSql);
   }
 
   // SQLite recursive CTE format
-  return `${ruleName}(arg1, arg2, depth) AS (
+  return `${ruleIdentifier(ruleName)}(arg1, arg2, depth) AS (
   -- Base case
   SELECT arg1, arg2, 0 AS depth FROM (
     ${baseUnion.split("\n").join("\n    ")}
@@ -1595,9 +1597,18 @@ WHERE ${conditions.join(" AND ")}`;
 /**
  * Compile a rule application in the main query's WHERE clause
  */
-const compileRuleApplicationInWhere = (ruleApp: RuleApplication, ctx: CompilerContext): void => {
+interface CompiledRuleApplication {
+  readonly ruleName: string;
+  readonly alias: string;
+  readonly joinCondition: string;
+}
+
+const compileRuleApplicationInWhere = (
+  ruleApp: RuleApplication,
+  ctx: CompilerContext,
+): CompiledRuleApplication => {
   const [ruleName, arg1, arg2] = ruleApp;
-  const ruleAlias = `${ruleName}_ref`;
+  const ruleAlias = `rule_ref_${ctx.aliasCounter++}`;
 
   // Build join conditions
   const joinConditions: string[] = [];
@@ -1632,7 +1643,8 @@ const compileRuleApplicationInWhere = (ruleApp: RuleApplication, ctx: CompilerCo
 
   // Add the JOIN
   const joinCondition = joinConditions.length > 0 ? joinConditions.join(" AND ") : "1=1";
-  ctx.joins.push(`JOIN ${ruleName} ${ruleAlias} ON ${joinCondition}`);
+  ctx.joins.push(`JOIN ${ruleIdentifier(ruleName)} ${ruleAlias} ON ${joinCondition}`);
+  return { ruleName, alias: ruleAlias, joinCondition };
 };
 
 /**
@@ -1667,7 +1679,7 @@ export const compileWithRules = (
   // Generate CTEs for each rule
   const ctes: string[] = [];
   for (const [ruleName, ruleList] of groupedRules) {
-    ctes.push(compileRecursiveCTE(ruleName, ruleList));
+    ctes.push(compileRecursiveCTE(ruleName, ruleList, ctx));
   }
 
   const { patterns, predicates, notClauses, orClauses, ruleApplications } = classifyClauses(where, {
@@ -1685,9 +1697,9 @@ export const compileWithRules = (
   });
 
   // Compile rule applications
-  for (const ruleApp of ruleApplications) {
-    compileRuleApplicationInWhere(ruleApp, ctx);
-  }
+  const compiledRuleApplications = ruleApplications.map((ruleApp) =>
+    compileRuleApplicationInWhere(ruleApp, ctx),
+  );
 
   // Compile predicates (uses bindings)
   for (const predicate of predicates) {
@@ -1726,20 +1738,15 @@ export const compileWithRules = (
   let fromTable: string;
   if (patterns.length === 0 && ruleApplications.length > 0) {
     // First rule application becomes the FROM
-    const firstRule = ruleApplications[0]!;
-    const [ruleName] = firstRule;
-    fromTable = `${ruleName} ${ruleName}_ref`;
+    const firstRule = compiledRuleApplications[0]!;
+    fromTable = `${ruleIdentifier(firstRule.ruleName)} ${firstRule.alias}`;
 
     // Remove the first rule's JOIN since it's now in FROM
     // The JOIN conditions (including constant arguments) are already embedded in the JOIN string
     // and params were already added during compileRuleApplicationInWhere
-    if (ctx.joins.length > 0 && ctx.joins[0]?.includes(`${ruleName}_ref`)) {
-      // Extract the ON clause from the JOIN and add it to conditions
-      const joinStr = ctx.joins.shift()!;
-      const onMatch = joinStr.match(/ON (.+)$/);
-      if (onMatch?.[1] && onMatch[1] !== "1=1") {
-        ctx.conditions.push(onMatch[1]);
-      }
+    if (ctx.joins.length > 0) {
+      ctx.joins.shift();
+      if (firstRule.joinCondition !== "1=1") ctx.conditions.push(firstRule.joinCondition);
     }
   } else {
     fromTable = `triples t0`;

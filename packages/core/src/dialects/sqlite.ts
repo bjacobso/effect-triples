@@ -17,6 +17,8 @@ export const SqliteDialect: SqlDialect = {
   },
   castAsText: (expression) => `CAST(${expression} AS TEXT)`,
   booleanLiteral: (value) => (value ? "1" : "0"),
-  paramPlaceholder: (_index) => "?",
+  // Numbered parameters preserve collector identity when SELECT projections
+  // are compiled after WHERE/JOIN clauses but appear earlier in SQL text.
+  paramPlaceholder: (index) => `?${index + 1}`,
   escapeLikePattern: (value) => value.replace(/[%_\\]/g, "\\$&"),
 };

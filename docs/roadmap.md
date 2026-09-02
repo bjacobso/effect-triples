@@ -17,12 +17,14 @@ unique and durable consumer checkpoints are available through the `operational` 
 ## Immediate correctness gate: backend parity
 
 - The conformance corpus now runs identical typed projections, scalar joins, predicates, negation,
-  booleans, ref joins, bitemporal reads, and snapshot-stable pagination against KV, SQLite, and
-  PostgreSQL. Grow it with every query-engine bug.
-- Cover every value type, value-to-value joins, recursive rules, aggregation, unbound variables,
-  links, pagination, and hostile schema-valid inputs.
+  booleans, ref joins, recursive transitive closure, bitemporal reads, and snapshot-stable
+  pagination against KV, SQLite, and PostgreSQL. Grow it with every query-engine bug.
+- Cover every value type, aggregation, unbound variables, pagination, and hostile schema-valid
+  inputs.
 - SQL projection now carries hidden storage tags through execution, so strings such as `"007"`,
   numeric-looking entity IDs and refs, datetimes, booleans, and JSON are decoded without guessing.
+- Recursive SQL rule definitions, applications, optional projection attributes, and depth bounds
+  are parameterized; validated rule names are quoted identifiers.
 - Keep PostgreSQL, FoundationDB, and Cloudflare experimental until each backend passes the shared
   conformance and differential suites in CI.
 

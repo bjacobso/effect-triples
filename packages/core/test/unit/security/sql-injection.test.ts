@@ -182,6 +182,35 @@ describe("SQL Injection Prevention", () => {
       expect(result.sql).not.toContain("DROP TABLE");
       expect(result.params).toContain("'; DROP TABLE triples; --");
     });
+
+    it("should parameterize constants inside rule definitions", () => {
+      const payload = `:parent'; DROP TABLE triples; --`;
+      const query: DatalogQuery = {
+        find: ["?ancestor"],
+        where: [["ancestor", "person:alice", "?ancestor"]],
+        rules: [{ name: "ancestor", body: [["?x", payload, "?y"]] }],
+      };
+
+      const result = compileWithRules(query);
+
+      expect(result.sql).not.toContain("DROP TABLE");
+      expect(result.params).toContain(payload);
+    });
+
+    it("should reject invalid runtime rule identifiers", () => {
+      const query = {
+        find: ["?ancestor"],
+        where: [[`ancestor"; DROP TABLE triples; --`, "person:alice", "?ancestor"]],
+        rules: [
+          {
+            name: `ancestor"; DROP TABLE triples; --`,
+            body: [["?x", ":parent", "?y"]],
+          },
+        ],
+      } as unknown as DatalogQuery;
+
+      expect(() => compileWithRules(query)).toThrow("Invalid Datalog rule name");
+    });
   });
 
   describe("Params array is populated correctly", () => {

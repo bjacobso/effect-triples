@@ -338,6 +338,84 @@ export const triplesConformanceCases: readonly ConformanceCase[] = [
     }),
   },
   {
+    name: "datalog recursive rules compute the same transitive closure",
+    run: Effect.gen(function* () {
+      const t = yield* Triples;
+      yield* t.assertBatch([
+        {
+          entityId: "conf:rules:a",
+          attribute: ":conf/rules-parent",
+          value: ref("conf:rules:b"),
+        },
+        {
+          entityId: "conf:rules:b",
+          attribute: ":conf/rules-parent",
+          value: ref("conf:rules:c"),
+        },
+        {
+          entityId: "conf:rules:c",
+          attribute: ":conf/rules-parent",
+          value: ref("conf:rules:d"),
+        },
+        {
+          entityId: "conf:rules:unrelated",
+          attribute: ":conf/rules-parent",
+          value: ref("conf:rules:other"),
+        },
+      ]);
+
+      const { results } = yield* t.query({
+        find: ["?ancestor"],
+        where: [["conf-rules-ancestor", "conf:rules:a", "?ancestor"]],
+        rules: [
+          {
+            name: "conf-rules-ancestor",
+            body: [["?child", ":conf/rules-parent", "?parent"]],
+          },
+          {
+            name: "conf-rules-ancestor",
+            body: [
+              ["?child", ":conf/rules-parent", "?parent"],
+              ["conf-rules-ancestor", "?parent", "?ancestor"],
+            ],
+          },
+        ],
+      });
+      const ancestors = results.map((row) => row["?ancestor"]).sort();
+      yield* check(
+        JSON.stringify(ancestors) ===
+          JSON.stringify(["conf:rules:b", "conf:rules:c", "conf:rules:d"]),
+        "recursive rules should compute the complete transitive closure without unrelated rows",
+      );
+
+      const shared = yield* t.query({
+        find: ["?ancestor"],
+        where: [
+          ["conf-rules-ancestor", "conf:rules:a", "?ancestor"],
+          ["conf-rules-ancestor", "conf:rules:b", "?ancestor"],
+        ],
+        rules: [
+          {
+            name: "conf-rules-ancestor",
+            body: [["?child", ":conf/rules-parent", "?parent"]],
+          },
+          {
+            name: "conf-rules-ancestor",
+            body: [
+              ["?child", ":conf/rules-parent", "?parent"],
+              ["conf-rules-ancestor", "?parent", "?ancestor"],
+            ],
+          },
+        ],
+      });
+      yield* check(
+        JSON.stringify(shared.results.map((row) => row["?ancestor"]).sort()) ===
+          JSON.stringify(["conf:rules:c", "conf:rules:d"]),
+        "multiple applications of one rule should use independent aliases",
+      );
+    }),
+  },
+  {
     name: "datalog untyped strings match string and ref values while typed refs stay exact",
     run: Effect.gen(function* () {
       const t = yield* Triples;

@@ -9,12 +9,12 @@ import { PostgresqlDialect } from "../../src/dialects/postgresql.js";
 
 describe("ParamCollector", () => {
   describe("with SQLite dialect", () => {
-    it("should return ? placeholders", () => {
+    it("should return stable numbered placeholders", () => {
       const collector = createParamCollector(SqliteDialect);
 
-      expect(collector.add("Alice")).toBe("?");
-      expect(collector.add("Bob")).toBe("?");
-      expect(collector.add(42)).toBe("?");
+      expect(collector.add("Alice")).toBe("?1");
+      expect(collector.add("Bob")).toBe("?2");
+      expect(collector.add(42)).toBe("?3");
     });
 
     it("should collect params in order", () => {
@@ -121,7 +121,7 @@ describe("ParamCollector", () => {
 
       const sql = `SELECT * FROM users WHERE name = ${collector.add("Alice")} AND age > ${collector.add(18)}`;
 
-      expect(sql).toBe("SELECT * FROM users WHERE name = ? AND age > ?");
+      expect(sql).toBe("SELECT * FROM users WHERE name = ?1 AND age > ?2");
       expect(collector.params).toEqual(["Alice", 18]);
     });
 

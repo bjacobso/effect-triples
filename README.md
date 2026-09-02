@@ -727,7 +727,9 @@ Recursive rules (e.g. ancestor/descendant closures) run through `triples.query` 
 other query — provide `rules` alongside `find`/`where`. Each rule is
 `{ name, body, maxDepth? }`, and same-named rules union together. A rule-application
 clause `["ancestor", "person:alice", "?ancestor"]` invokes a rule. SQL backends compile
-rules to recursive CTEs; KV backends evaluate them to a fixpoint with deduplication.
+rules to recursive CTEs; KV backends evaluate them to a fixpoint with deduplication. Rule names
+may contain letters, digits, underscores, and hyphens; recursion depth is a positive safe integer.
+SQL compilation quotes rule identifiers and parameterizes rule bodies, applications, and depth.
 
 ```ts
 triples.query({

@@ -11,6 +11,7 @@ import {
   OrClause,
   Clause,
   DatalogQuery,
+  Rule,
   isVariable,
   isAttribute,
   isPredicateClause,
@@ -310,6 +311,37 @@ describe("Datalog Schema", () => {
       expect(() => decode({ where: [] })).toThrow(); // missing find
       expect(() => decode({ find: "?x", where: [] })).toThrow(); // find must be array
       expect(() => decode({ find: [], where: "x" })).toThrow(); // where must be array
+    });
+  });
+
+  describe("Rule", () => {
+    const decode = Schema.decodeUnknownSync(Rule);
+
+    it("accepts quoted-SQL-safe names and positive recursion depths", () => {
+      expect(
+        decode({
+          name: "ancestor-path",
+          body: [["?child", ":parent", "?parent"]],
+          maxDepth: 25,
+        }),
+      ).toEqual({
+        name: "ancestor-path",
+        body: [["?child", ":parent", "?parent"]],
+        maxDepth: 25,
+      });
+    });
+
+    it("rejects reserved or unsafe names and invalid recursion depths", () => {
+      expect(() => decode({ name: "not", body: [["?x", ":parent", "?y"]] })).toThrow();
+      expect(() =>
+        decode({ name: `ancestor"; DROP TABLE triples`, body: [["?x", ":parent", "?y"]] }),
+      ).toThrow();
+      expect(() =>
+        decode({ name: "ancestor", body: [["?x", ":parent", "?y"]], maxDepth: 0 }),
+      ).toThrow();
+      expect(() =>
+        decode({ name: "ancestor", body: [["?x", ":parent", "?y"]], maxDepth: 1.5 }),
+      ).toThrow();
     });
   });
 

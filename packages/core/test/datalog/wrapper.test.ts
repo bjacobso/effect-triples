@@ -123,7 +123,7 @@ describe("Datalog Wrapper Compiler", () => {
 
       const result = compileWrapped(query);
 
-      expect(result.sql).toContain('"?name" LIKE ? COLLATE NOCASE');
+      expect(result.sql).toContain('"?name" LIKE ?2 COLLATE NOCASE');
       expect(result.params).toContain("%smith%");
     });
 
@@ -267,7 +267,7 @@ describe("Datalog Wrapper Compiler", () => {
       const result = compileWrapped(query);
 
       expect(result.countSql).not.toBeNull();
-      expect(result.countSql).toContain('WHERE "?name" LIKE ? COLLATE NOCASE');
+      expect(result.countSql).toContain('WHERE "?name" LIKE ?2 COLLATE NOCASE');
       expect(result.countParams).toContain("%smith%");
     });
 

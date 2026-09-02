@@ -13,6 +13,6 @@ export const SqliteDialect: SqlDialect = {
   },
   castAsText: (expression) => `CAST(${expression} AS TEXT)`,
   booleanLiteral: (value) => (value ? "1" : "0"),
-  paramPlaceholder: (_index) => "?",
+  paramPlaceholder: (index) => `?${index + 1}`,
   escapeLikePattern: (value) => value.replace(/[%_\\]/g, "\\$&"),
 };

@@ -25,3 +25,5 @@ Add indexed dependency freshness and temporal scheduling across KV, SQLite, and 
 Add independently content-addressed graph constraints for required attributes, cardinality, uniqueness, and reference targets; generate them from the ontology DSL and materialize their findings as first-class validation facts.
 
 Allow hosts to enforce those same versioned graph constraints atomically in `Triples.transact`, checking complete projected commands across every valid-time boundary and rejecting concurrent uniqueness or absence races with a typed `ConstraintViolationError` on KV, SQLite, and PostgreSQL. Load enforcement candidates through source and reference-target type indexes plus batched subject reads instead of scanning unrelated live facts.
+
+Run recursive Datalog closure through the shared KV, SQLite, and PostgreSQL conformance corpus. Parameterize SQL rule definitions, applications, optional projections, and recursion depths; validate and quote rule identifiers, including schema-supported hyphenated names. Use numbered SQLite placeholders so projection and filter parameters keep their compiler-assigned identities.

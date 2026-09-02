@@ -251,13 +251,23 @@ export const RuleBodyClause = Schema.Union([PatternClause, RuleApplication]).ann
 export const Rule = Schema.Struct({
   /** Name of the rule (used in rule applications) */
   name: Schema.String.pipe(
-    Schema.check(Schema.isPattern(/^[a-zA-Z_][a-zA-Z0-9_-]*$/)),
+    Schema.check(
+      Schema.isPattern(/^[a-zA-Z_][a-zA-Z0-9_-]*$/),
+      Schema.makeFilter((name: string) => name !== "not" && name !== "or", {
+        expected: "a non-reserved rule name",
+      }),
+    ),
     Schema.annotate({ description: "Rule name" }),
   ),
   /** Body clauses that define when this rule matches */
   body: Schema.Array(RuleBodyClause),
   /** Maximum recursion depth (defaults to 100) */
-  maxDepth: Schema.optional(Schema.Number),
+  maxDepth: Schema.optional(
+    Schema.Int.pipe(
+      Schema.check(Schema.isGreaterThanOrEqualTo(1)),
+      Schema.annotate({ description: "Positive safe-integer recursion depth" }),
+    ),
+  ),
 }).annotate({
   identifier: "Rule",
   description: "A rule definition for recursive queries",
