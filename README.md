@@ -588,6 +588,13 @@ Datalog is the primary query language. Call `triples.query(query)`; it resolves 
 prefix. `find` lists the variables (or constants) to project; `where` is a list of
 clauses. Sharing a variable across two patterns joins them.
 
+Every backend runs the same schema and semantic preflight before compilation or execution.
+Malformed runtime input fails with `DatalogValidationError`; a variable referenced by `find`, a
+predicate, `having`, ordering, or a wrapper without a positive binding fails with
+`UnboundVariableError`. These are typed Effect failures rather than backend exceptions. Empty
+disjunctions, duplicate projections, undefined rules, and ambiguous aggregate/projection targets
+are rejected consistently instead of being interpreted differently by KV and SQL.
+
 ### Patterns and joins
 
 ```ts
@@ -666,6 +673,12 @@ where: [
 `max`; grouping is implicit over the non-aggregated `find` variables. `having`,
 `orderBy`, `limit`, and `offset` are also supported. Grouping, all five aggregate operators, and
 `having` share one conformance contract across KV, SQLite, and PostgreSQL.
+The aggregate source is an input and must not also appear in `find`; project its target and any
+grouping variables instead. Aggregate and optional-projection targets must be projected, while
+`having` and `orderBy` may reference only result bindings.
+`count` counts distinct flattened source values. `sum`, `avg`, `min`, and `max` preserve duplicate
+input rows. An ungrouped aggregate over no matches returns one row with `count` equal to zero and
+the numeric aggregates equal to `null`; an empty grouped aggregate returns no rows.
 
 ```ts
 triples.query({
@@ -735,6 +748,9 @@ clause `["ancestor", "person:alice", "?ancestor"]` invokes a rule. SQL backends 
 rules to recursive CTEs; KV backends evaluate them to a fixpoint with deduplication. Rule names
 may contain letters, digits, underscores, and hyphens; recursion depth is a positive safe integer.
 SQL compilation quotes rule identifiers and parameterizes rule bodies, applications, and depth.
+The current portable recursive form is deliberately binary: one base relationship plus recursive
+definitions shaped as `[head, attribute, next]`, `[ruleName, next, tail]`. Unsupported rule-body
+shapes fail preflight rather than being partially evaluated by one backend.
 
 ```ts
 triples.query({

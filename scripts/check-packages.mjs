@@ -116,8 +116,8 @@ try {
 
   writeFileSync(
     join(consumerDir, "consumer.ts"),
-    `import type { TripleInput } from "@bjacobso/triplex";
-import type { DatalogQuery } from "@bjacobso/triplex/datalog";
+    `import { DatalogValidationError, type TripleInput } from "@bjacobso/triplex";
+import { validateDatalogQuery, type DatalogQuery } from "@bjacobso/triplex/datalog";
 import { Attribute, ConfigRuntime, ConfigStore, EntityType, EntityValidation, Evaluate, GraphConstraint, TypeExpr } from "@bjacobso/triplex/config";
 import * as Derivation from "@bjacobso/triplex/derivation";
 import * as Cloudflare from "@bjacobso/triplex-cloudflare";
@@ -145,6 +145,8 @@ const Employer = EntityType.make("Employer", {
 const nameAssertion = Employer.name.assertion("Acme");
 void triple;
 void query;
+void validateDatalogQuery;
+void DatalogValidationError;
 void nameAssertion;
 void ConfigStore;
 void ConfigRuntime;

@@ -12,6 +12,7 @@
 import { Effect } from "effect";
 import {
   boolean,
+  blob,
   datetime,
   json,
   number,
@@ -19,8 +20,10 @@ import {
   string,
   CommandAlreadyCommittedError,
   ConstraintViolationError,
+  DatalogValidationError,
   TransactionConflictError,
   Triples,
+  UnboundVariableError,
   type EntityId,
 } from "@bjacobso/triplex";
 import { ConsumerCheckpoint } from "@bjacobso/triplex/operational";
@@ -140,10 +143,15 @@ export const triplesConformanceCases: readonly ConformanceCase[] = [
         { entityId: "42", attribute: ":conf/instant", value: datetime(1_700_000_000_000) },
         { entityId: "42", attribute: ":conf/data", value: json({ ok: true }) },
         { entityId: "42", attribute: ":conf/owner", value: ref("7") },
+        {
+          entityId: "42",
+          attribute: ":conf/blob",
+          value: blob("sha256:artifact", "application/pdf", 128, "artifact.pdf"),
+        },
       ]);
 
       const { results } = yield* t.query({
-        find: ["?entity", "?code", "?count", "?enabled", "?instant", "?data", "?owner"],
+        find: ["?entity", "?code", "?count", "?enabled", "?instant", "?data", "?owner", "?blob"],
         where: [
           ["?entity", ":conf/code", "?code"],
           ["?entity", ":conf/count", "?count"],
@@ -151,6 +159,7 @@ export const triplesConformanceCases: readonly ConformanceCase[] = [
           ["?entity", ":conf/instant", "?instant"],
           ["?entity", ":conf/data", "?data"],
           ["?entity", ":conf/owner", "?owner"],
+          ["?entity", ":conf/blob", "?blob"],
         ],
       });
       const row = results[0];
@@ -165,6 +174,10 @@ export const triplesConformanceCases: readonly ConformanceCase[] = [
       );
       yield* check(row?.["?data"] === '{"ok":true}', "JSON values must use canonical row text");
       yield* check(row?.["?owner"] === "7", "numeric-looking refs must stay strings");
+      yield* check(
+        row?.["?blob"] === "sha256:artifact",
+        "blob bindings must project their content identity",
+      );
     }),
   },
   {
@@ -177,6 +190,26 @@ export const triplesConformanceCases: readonly ConformanceCase[] = [
         { entityId: "conf:join:left:string", attribute: ":conf/left", value: string("7") },
         { entityId: "conf:join:right:string", attribute: ":conf/right", value: string("7") },
         { entityId: "conf:join:right:other", attribute: ":conf/right", value: number(8) },
+        {
+          entityId: "conf:join:left:json",
+          attribute: ":conf/left",
+          value: json({ stable: true }),
+        },
+        {
+          entityId: "conf:join:right:json",
+          attribute: ":conf/right",
+          value: json({ stable: true }),
+        },
+        {
+          entityId: "conf:join:left:blob",
+          attribute: ":conf/left",
+          value: blob("sha256:shared", "application/octet-stream", 32),
+        },
+        {
+          entityId: "conf:join:right:blob",
+          attribute: ":conf/right",
+          value: blob("sha256:shared", "application/pdf", 32),
+        },
       ]);
 
       const { results } = yield* t.query({
@@ -190,6 +223,8 @@ export const triplesConformanceCases: readonly ConformanceCase[] = [
       yield* check(
         JSON.stringify(pairs) ===
           JSON.stringify([
+            "conf:join:left:blob->conf:join:right:blob",
+            "conf:join:left:json->conf:join:right:json",
             "conf:join:left:number->conf:join:right:number",
             "conf:join:left:string->conf:join:right:string",
           ]),
@@ -455,6 +490,51 @@ export const triplesConformanceCases: readonly ConformanceCase[] = [
     }),
   },
   {
+    name: "datalog aggregates preserve duplicate rows and define empty and distinct results",
+    run: Effect.gen(function* () {
+      const t = yield* Triples;
+      yield* t.assertBatch([
+        { entityId: "conf:aggregate:duplicate:a", attribute: ":conf/amount", value: number(10) },
+        { entityId: "conf:aggregate:duplicate:b", attribute: ":conf/amount", value: number(10) },
+      ]);
+
+      const summed = yield* t.query({
+        find: ["?sum", "?count"],
+        where: [["?entity", ":conf/amount", "?amount"]],
+        aggregate: [
+          ["sum", "?amount", "?sum"],
+          ["count", "?amount", "?count"],
+        ],
+      });
+      yield* check(summed.results.length === 1, "ungrouped aggregation should return one row");
+      yield* check(summed.results[0]?.["?sum"] === 20, "sum must preserve equal input rows");
+      yield* check(
+        summed.results[0]?.["?count"] === 1,
+        "count uses distinct flattened input values",
+      );
+
+      const empty = yield* t.query({
+        find: ["?count", "?sum", "?average", "?minimum", "?maximum"],
+        where: [["?entity", ":conf/missing-amount", "?amount"]],
+        aggregate: [
+          ["count", "?amount", "?count"],
+          ["sum", "?amount", "?sum"],
+          ["avg", "?amount", "?average"],
+          ["min", "?amount", "?minimum"],
+          ["max", "?amount", "?maximum"],
+        ],
+      });
+      yield* check(empty.results.length === 1, "empty ungrouped aggregation should return one row");
+      yield* check(empty.results[0]?.["?count"] === 0, "empty count should be zero");
+      for (const variable of ["?sum", "?average", "?minimum", "?maximum"]) {
+        yield* check(
+          empty.results[0]?.[variable] === null,
+          `${variable} should be null when empty`,
+        );
+      }
+    }),
+  },
+  {
     name: "datalog conjunctions establish bindings independent of clause order",
     run: Effect.gen(function* () {
       const t = yield* Triples;
@@ -494,6 +574,58 @@ export const triplesConformanceCases: readonly ConformanceCase[] = [
         JSON.stringify(results.map((row) => row["?member"])) ===
           JSON.stringify(["conf:clause-order:eligible"]),
         "patterns should bind outer and negation-local variables before predicates run",
+      );
+    }),
+  },
+  {
+    name: "datalog rejects invalid and unbound queries with backend-neutral typed errors",
+    run: Effect.gen(function* () {
+      const t = yield* Triples;
+
+      const unbound = yield* t
+        .query({
+          find: ["?missing"],
+          where: [["?entity", ":conf/validation", "?value"]],
+        })
+        .pipe(Effect.flip);
+      yield* check(
+        unbound instanceof UnboundVariableError && unbound.variable === "?missing",
+        "unbound projections must fail with UnboundVariableError",
+      );
+
+      const malformed = yield* t
+        .query({ find: ["?entity"], where: "not-an-array" } as never)
+        .pipe(Effect.flip);
+      yield* check(
+        malformed instanceof DatalogValidationError,
+        "malformed runtime queries must fail with DatalogValidationError",
+      );
+
+      const ambiguousAggregate = yield* t
+        .query({
+          find: ["?value", "?count"],
+          where: [["?entity", ":conf/validation", "?value"]],
+          aggregate: [["count", "?value", "?count"]],
+        })
+        .pipe(Effect.flip);
+      yield* check(
+        ambiguousAggregate instanceof DatalogValidationError,
+        "aggregate inputs projected as group keys must fail validation",
+      );
+
+      const invalidPage = yield* t
+        .queryPage({
+          inner: {
+            find: ["?entity"],
+            where: [["?entity", ":conf/validation", "?value"]],
+          },
+          filters: [{ column: "?value", op: "=", value: "x" }],
+          limit: 10,
+        })
+        .pipe(Effect.flip);
+      yield* check(
+        invalidPage instanceof UnboundVariableError && invalidPage.variable === "?value",
+        "wrapped filters must reference an inner projected binding",
       );
     }),
   },

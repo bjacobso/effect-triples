@@ -61,6 +61,7 @@ export {
 } from "./datalog/schema.js";
 
 export type { Context, QueryResult } from "./datalog/types.js";
+export type { DatalogQueryValidationError } from "./datalog/validation.js";
 
 export {
   Triples,

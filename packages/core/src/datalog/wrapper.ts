@@ -19,6 +19,7 @@ import { SqliteDialect } from "../dialects/sqlite.js";
 import { createParamCollector, type ParamCollector } from "../params.js";
 import type { WrappedQuery, WrapperFilter, WrapperFilterOp, OrderBySpec } from "./types.js";
 import type { PaginationValue } from "../Pagination.js";
+import { assertWrappedQuery } from "./validation.js";
 
 // =============================================================================
 // Types
@@ -284,10 +285,11 @@ const compileKeysetClause = (
  * 4. Generate count query if requested
  */
 export const compileWrapped = (
-  query: WrappedQuery,
+  input: WrappedQuery,
   dialect: SqlDialect = SqliteDialect,
   options: CompileOptions & { readonly cursorValues?: readonly PaginationValue[] } = {},
 ): CompiledWrappedQuery => {
+  const query = assertWrappedQuery(input);
   const { inner, filters, orderBy, limit, includeCount } = query;
 
   // 1. Compile inner query (without wrapper's orderBy/limit/cursor)

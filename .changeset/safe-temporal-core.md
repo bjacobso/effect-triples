@@ -29,3 +29,7 @@ Allow hosts to enforce those same versioned graph constraints atomically in `Tri
 Run recursive Datalog closure through the shared KV, SQLite, and PostgreSQL conformance corpus. Parameterize SQL rule definitions, applications, optional projections, and recursion depths; validate and quote rule identifiers, including schema-supported hyphenated names. Use numbered SQLite placeholders so projection and filter parameters keep their compiler-assigned identities.
 
 Align grouped aggregation, `having`, and declarative clause ordering across KV, SQLite, and PostgreSQL. KV now establishes positive and negation-local bindings before evaluating predicates, so moving a predicate or negation before its binding pattern does not silently change results.
+
+Run Datalog runtime shape and semantic preflight through one backend-neutral validator. Invalid bindings, ambiguous projections and aggregates, empty disjunctions, wrapper column leaks, undefined rules, and unsupported recursive rule bodies now fail with typed query errors before KV or SQL execution.
+
+Align aggregate input multiplicity, distinct counts, and empty-input results across KV, SQLite, and PostgreSQL. Extend typed projection and equality joins to JSON and blob values without string-to-number guessing.

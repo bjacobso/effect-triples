@@ -72,11 +72,17 @@ export const constantToTripleValue = (c: Constant): TripleValue => {
  */
 const constantToScanValues = (c: Constant): readonly TripleValue[] => {
   if (typeof c === "string") {
-    return [
+    const values: TripleValue[] = [
       { type: "string", value: c },
       { type: "ref", value: c },
       { type: "blob", value: c, mimeType: "", size: 0 },
     ];
+    try {
+      values.push({ type: "json", value: JSON.parse(c) as unknown });
+    } catch {
+      // Only serialized JSON scalars participate in the flattened text family.
+    }
+    return values;
   }
   if (typeof c === "number") {
     return [

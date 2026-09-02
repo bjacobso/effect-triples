@@ -402,7 +402,7 @@ describe("Datalog Integration", () => {
           const datalog = yield* Triples;
 
           return yield* datalog.query({
-            find: ["?name"],
+            find: ["?person"],
             where: [["?person", ":name", "Nobody"]],
           });
         }).pipe(Effect.provide(TestLayer)),
@@ -1308,7 +1308,10 @@ describe("Recursive Datalog Queries", () => {
           return yield* datalog.query(
             {
               find: ["?name"],
-              where: [["?person", ":name", "Alice"]],
+              where: [
+                ["?person", ":name", "?name"],
+                ["=", "?name", "Alice"],
+              ],
             },
             { debug: true },
           );
@@ -1397,7 +1400,10 @@ describe("Recursive Datalog Queries", () => {
 
           return yield* datalog.explain({
             find: ["?name"],
-            where: [["?person", ":name", "Alice"]],
+            where: [
+              ["?person", ":name", "?name"],
+              ["=", "?name", "Alice"],
+            ],
           });
         }).pipe(Effect.provide(TestLayer)),
       );

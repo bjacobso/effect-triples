@@ -508,15 +508,13 @@ describe("Datalog SQL Compiler", () => {
   });
 
   describe("edge cases", () => {
-    it("should handle unbound find variables gracefully", () => {
+    it("should reject unbound find variables", () => {
       const query: DatalogQuery = {
         find: ["?unbound"],
         where: [["?person", ":name", "Alice"]],
       };
 
-      // Should not throw, just skip the unbound variable
-      const result = compile(query);
-      expect(result.sql).toBeDefined();
+      expect(() => compile(query)).toThrow("?unbound is not bound by a positive relation");
     });
 
     it("projects optional fields with nullable correlated subqueries", () => {
@@ -541,7 +539,7 @@ describe("Datalog SQL Compiler", () => {
         where: [[">=", "?x", 10]], // only predicate, no pattern
       };
 
-      expect(() => compile(query)).toThrow("at least one pattern clause");
+      expect(() => compile(query)).toThrow("must contain a positive pattern or rule application");
     });
 
     it("should use parameterized queries for special characters", () => {
@@ -639,7 +637,7 @@ describe("Datalog SQL Compiler", () => {
         having: [[">=", "?unbound", 5]],
       };
 
-      expect(() => compile(query)).toThrow("Unbound variable in HAVING");
+      expect(() => compile(query)).toThrow("having requires at least one aggregate");
     });
 
     it("should compile HAVING with != operator", () => {
@@ -711,7 +709,7 @@ describe("Datalog SQL Compiler", () => {
         orderBy: [{ variable: "?unbound" }],
       };
 
-      expect(() => compile(query)).toThrow("Unbound variable in ORDER BY");
+      expect(() => compile(query)).toThrow("?unbound is not bound by a positive relation");
     });
   });
 
@@ -1022,7 +1020,7 @@ describe("Datalog SQL Compiler with Recursive Rules", () => {
         ],
       };
 
-      expect(() => compileWithRules(query)).toThrow("no base case");
+      expect(() => compileWithRules(query)).toThrow("non-recursive base definition");
     });
 
     it("should throw when rule body is empty", () => {
@@ -1032,7 +1030,7 @@ describe("Datalog SQL Compiler with Recursive Rules", () => {
         rules: [{ name: "ancestor", body: [] }],
       };
 
-      expect(() => compileWithRules(query)).toThrow("no body clauses");
+      expect(() => compileWithRules(query)).toThrow("non-empty body");
     });
 
     it("should reject invalid recursion depths before generating SQL", () => {
@@ -1051,7 +1049,7 @@ describe("Datalog SQL Compiler with Recursive Rules", () => {
         ],
       };
 
-      expect(() => compileWithRules(query)).toThrow("positive safe integer");
+      expect(() => compileWithRules(query)).toThrow("greater than or equal to 1");
     });
   });
 
@@ -1507,7 +1505,7 @@ describe("Compiler Internals", () => {
         where: [["ancestor", "alice", "?ancestor"]],
       };
 
-      expect(() => compile(query)).toThrow("requires compileWithRules()");
+      expect(() => compile(query)).toThrow("has no definition");
     });
   });
 });

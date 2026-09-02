@@ -32,10 +32,13 @@ import type {
 import { queryToPattern } from "../Triple.js";
 import type { Pattern } from "../types/Pattern.js";
 import type { DatalogQuery, WrappedQuery } from "../datalog/types.js";
+import { validateWrappedQuery } from "../datalog/validation.js";
 import {
   WriteError,
   ReadError,
   DatalogError,
+  DatalogValidationError,
+  UnboundVariableError,
   CommandAlreadyCommittedError,
   TransactionConflictError,
   ConstraintViolationError,
@@ -568,12 +571,13 @@ export const TriplesLive = Layer.effect(
 
     const queryPage = (q: WrappedQuery, options?: QueryOptions) =>
       Effect.gen(function* () {
+        const query = yield* validateWrappedQuery(q);
         const currentTime = yield* now;
         const recordedPosition = yield* adapter.currentCommitPosition();
         const prepared = yield* Effect.try({
           try: () =>
             preparePagination({
-              query: q,
+              query,
               ...(options?.basis === undefined ? {} : { basis: options.basis }),
               now: currentTime,
               recordedPosition,
@@ -599,16 +603,20 @@ export const TriplesLive = Layer.effect(
 
     const explain = (q: DatalogQuery) =>
       executor.explain(q).pipe(
-        Effect.mapError(
-          (error) => new DatalogError({ message: error.message, cause: error.cause }),
+        Effect.mapError((error) =>
+          error instanceof DatalogValidationError || error instanceof UnboundVariableError
+            ? error
+            : new DatalogError({ message: error.message, cause: error.cause }),
         ),
         Effect.withSpan("triples.explain"),
       );
 
     const explainPage = (q: WrappedQuery) =>
       executor.explainPage(q).pipe(
-        Effect.mapError(
-          (error) => new DatalogError({ message: error.message, cause: error.cause }),
+        Effect.mapError((error) =>
+          error instanceof DatalogValidationError || error instanceof UnboundVariableError
+            ? error
+            : new DatalogError({ message: error.message, cause: error.cause }),
         ),
         Effect.withSpan("triples.explainPage"),
       );

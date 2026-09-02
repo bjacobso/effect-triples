@@ -13,7 +13,7 @@ import type { DatalogQuery } from "../datalog/types.js";
 import type {
   CommandAlreadyCommittedError,
   ConstraintViolationError,
-  DatalogError,
+  DatalogQueryError,
   ReadError,
   TransactionConflictError,
   WriteError,
@@ -195,12 +195,12 @@ export interface EntityValidationService {
   }) => Effect.Effect<ValidationRun, RevalidateError>;
   readonly currentInvalid: (
     ref: string,
-  ) => Effect.Effect<CurrentValidation, ReadError | DatalogError>;
-  readonly everInvalid: () => Effect.Effect<ReadonlyArray<string>, ReadError | DatalogError>;
+  ) => Effect.Effect<CurrentValidation, ReadError | DatalogQueryError>;
+  readonly everInvalid: () => Effect.Effect<ReadonlyArray<string>, ReadError | DatalogQueryError>;
   readonly violations: (input?: {
     readonly subject?: string;
     readonly resultEntityId?: string;
-  }) => Effect.Effect<ReadonlyArray<StoredViolation>, ReadError | DatalogError>;
+  }) => Effect.Effect<ReadonlyArray<StoredViolation>, ReadError | DatalogQueryError>;
 }
 
 export class EntityValidation extends Context.Service<EntityValidation, EntityValidationService>()(

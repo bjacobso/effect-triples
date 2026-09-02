@@ -65,5 +65,11 @@ export {
 // Wrapper Compiler (CTE-based subquery pagination)
 export { compileWrapped, type CompiledWrappedQuery } from "./wrapper.js";
 
+export {
+  validateDatalogQuery,
+  validateWrappedQuery,
+  type DatalogQueryValidationError,
+} from "./validation.js";
+
 // NOTE: QueryPlan translation (toDatalogQuery) and type checker (typeCheckDatalogQuery)
 // live in the compiler layer — they depend on compiler/lisp infrastructure.

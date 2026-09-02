@@ -123,6 +123,7 @@ export class DatalogError extends Data.TaggedError("DatalogError")<{
 export class UnboundVariableError extends Data.TaggedError("UnboundVariableError")<{
   readonly variable: string;
   readonly clause: unknown;
+  readonly message: string;
 }> {}
 
 export class InvalidPredicateError extends Data.TaggedError("InvalidPredicateError")<{
@@ -179,12 +180,13 @@ export type QueryErrorUnion = QueryError | InvalidPatternError;
 
 export type ParseErrorUnion = ParseError | UnexpectedTokenError | UndefinedVariableError;
 
-export type DatalogErrorUnion =
+export type DatalogQueryError =
   | DatalogError
   | UnboundVariableError
   | InvalidPredicateError
-  | DatalogValidationError
-  | PaginationCursorError;
+  | DatalogValidationError;
+
+export type DatalogErrorUnion = DatalogQueryError | PaginationCursorError;
 
 export type TripleStoreError =
   | WriteErrorUnion

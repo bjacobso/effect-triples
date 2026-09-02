@@ -9,7 +9,7 @@ import type { TemporalBasis } from "../Temporal.js";
 import type { Triple } from "../Triple.js";
 import type { TransactionRecord, TriplesService } from "../store/Triples.js";
 import type { TripleValue } from "../Value.js";
-import type { DatalogError, ReadError } from "../errors/index.js";
+import type { DatalogQueryError, ReadError } from "../errors/index.js";
 import { extractDependencies } from "../subscriptions/extract-dependencies.js";
 import * as TypeExpr from "../config/TypeExpr.js";
 import * as TypeSchema from "../config/TypeSchema.js";
@@ -408,7 +408,7 @@ export const evaluate = (
 ): Effect.Effect<
   Evaluation,
   | ReadError
-  | DatalogError
+  | DatalogQueryError
   | CanonicalJson.CanonicalEncodingError
   | Schema.SchemaError
   | CandidateConflictError

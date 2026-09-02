@@ -17,6 +17,7 @@ import {
 import type { SqlDialect } from "../dialects/index.js";
 import { SqliteDialect } from "../dialects/sqlite.js";
 import { createParamCollector, type ParamCollector } from "../params.js";
+import { assertDatalogQuery } from "./validation.js";
 import type {
   Constant,
   Term,
@@ -849,6 +850,18 @@ const getColumnExpression = (binding: VariableBinding): string => {
   return resolveBinding(binding, { valueMode: "coalesce" });
 };
 
+/** Encode a flattened binding with its scalar family for portable COUNT DISTINCT semantics. */
+const distinctCountExpression = (binding: VariableBinding): string => {
+  if (!isTripleValueBinding(binding)) return resolveBinding(binding);
+  const { alias } = binding;
+  return `CASE
+    WHEN ${numberScalarTypeCondition(alias)} THEN 'number:' || CAST(${numberScalarExpression(alias)} AS TEXT)
+    WHEN ${alias}.value_type = 'boolean' THEN 'boolean:' || CAST(${alias}.value_boolean AS TEXT)
+    WHEN ${textScalarTypeCondition(alias)} THEN 'text:' || ${textScalarExpression(alias)}
+    ELSE NULL
+  END`;
+};
+
 interface OptionalProjectionExpressions {
   readonly scalar: string;
   readonly type: string;
@@ -998,13 +1011,12 @@ const buildSelectAndGroupBy = (
       }
 
       const colName = `"${targetVar}"`;
-      const entityCol = resolveBinding(sourceBinding, { valueMode: "string" });
       const numericCol = resolveBinding(sourceBinding, { valueMode: "number" });
 
       let aggExpr: string;
       switch (op) {
         case "count":
-          aggExpr = `COUNT(DISTINCT ${entityCol})`;
+          aggExpr = `COUNT(DISTINCT ${distinctCountExpression(sourceBinding)})`;
           break;
         case "sum":
           aggExpr = `SUM(${numericCol})`;
@@ -1142,11 +1154,12 @@ const buildSelectAndGroupBy = (
  * @param includeMetrics - Whether to include compilation metrics (for debugging)
  */
 export const compile = (
-  query: DatalogQuery,
+  input: DatalogQuery,
   dialect: SqlDialect = SqliteDialect,
   includeMetrics = false,
   options: CompileOptions = {},
 ): CompiledQuery => {
+  const query = assertDatalogQuery(input);
   const startTime = includeMetrics ? performance.now() : 0;
   const ctx = createContext(dialect);
   const { find, where, aggregate, having, orderBy, limit, offset, optionalProjection } = query;
@@ -1651,11 +1664,12 @@ const compileRuleApplicationInWhere = (
  * Compile a Datalog query with recursive rules to SQL using CTEs
  */
 export const compileWithRules = (
-  query: DatalogQuery,
+  input: DatalogQuery,
   dialect: SqlDialect = SqliteDialect,
   includeMetrics = false,
   options: CompileOptions = {},
 ): CompiledQuery => {
+  const query = assertDatalogQuery(input);
   const { rules } = query;
 
   // If no rules, use the standard compiler

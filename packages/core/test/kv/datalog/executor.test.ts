@@ -401,22 +401,22 @@ describe("aggregation", () => {
 
   it("counts results", async () => {
     const query: DatalogQuery = {
-      find: ["?person", "?count"],
+      find: ["?count"],
       where: [["?person", ":person/name", "?name"]],
       aggregate: [["count", "?person", "?count"]],
     };
 
     const { results } = await run(executeQuery(store, query));
     // count aggregation with no group-by returns a single row
-    // since ?person is the aggregation input, and ?count is output
-    // and there's no non-aggregated variable, we get one group
+    // since ?person is the aggregation input and only ?count is projected,
+    // there is no grouping key and we get one group
     expect(results.length).toBe(1);
     expect(results[0]!["?count"]).toBe(3);
   });
 
   it("sums values", async () => {
     const query: DatalogQuery = {
-      find: ["?age", "?totalAge"],
+      find: ["?totalAge"],
       where: [["?person", ":person/age", "?age"]],
       aggregate: [["sum", "?age", "?totalAge"]],
     };
@@ -426,9 +426,56 @@ describe("aggregation", () => {
     expect(results[0]!["?totalAge"]).toBe(90); // 30 + 25 + 35
   });
 
+  it("preserves duplicate aggregate inputs while count remains distinct", async () => {
+    await run(
+      store.assertBatch([
+        makeDatom({ entity: "p:dana", attribute: ":person/age", value: num(30) }),
+      ]),
+    );
+
+    const { results } = await run(
+      executeQuery(store, {
+        find: ["?totalAge", "?distinctAges"],
+        where: [["?person", ":person/age", "?age"]],
+        aggregate: [
+          ["sum", "?age", "?totalAge"],
+          ["count", "?age", "?distinctAges"],
+        ],
+      }),
+    );
+
+    expect(results).toEqual([{ "?totalAge": 120, "?distinctAges": 3 }]);
+  });
+
+  it("returns SQL-compatible values for an empty ungrouped aggregate", async () => {
+    const { results } = await run(
+      executeQuery(store, {
+        find: ["?count", "?sum", "?average", "?minimum", "?maximum"],
+        where: [["?person", ":person/missing", "?value"]],
+        aggregate: [
+          ["count", "?value", "?count"],
+          ["sum", "?value", "?sum"],
+          ["avg", "?value", "?average"],
+          ["min", "?value", "?minimum"],
+          ["max", "?value", "?maximum"],
+        ],
+      }),
+    );
+
+    expect(results).toEqual([
+      {
+        "?count": 0,
+        "?sum": null,
+        "?average": null,
+        "?minimum": null,
+        "?maximum": null,
+      },
+    ]);
+  });
+
   it("computes average", async () => {
     const query: DatalogQuery = {
-      find: ["?age", "?avgAge"],
+      find: ["?avgAge"],
       where: [["?person", ":person/age", "?age"]],
       aggregate: [["avg", "?age", "?avgAge"]],
     };
@@ -440,7 +487,7 @@ describe("aggregation", () => {
 
   it("finds min and max", async () => {
     const queryMin: DatalogQuery = {
-      find: ["?age", "?minAge"],
+      find: ["?minAge"],
       where: [["?person", ":person/age", "?age"]],
       aggregate: [["min", "?age", "?minAge"]],
     };
@@ -449,7 +496,7 @@ describe("aggregation", () => {
     expect(minResults[0]!["?minAge"]).toBe(25);
 
     const queryMax: DatalogQuery = {
-      find: ["?age", "?maxAge"],
+      find: ["?maxAge"],
       where: [["?person", ":person/age", "?age"]],
       aggregate: [["max", "?age", "?maxAge"]],
     };
@@ -463,7 +510,7 @@ describe("aggregation", () => {
     await seedDepartments();
 
     const query: DatalogQuery = {
-      find: ["?dept", "?person", "?count"],
+      find: ["?dept", "?count"],
       where: [["?person", ":person/dept", "?dept"]],
       aggregate: [["count", "?person", "?count"]],
     };
@@ -490,7 +537,7 @@ describe("HAVING", () => {
 
   it("filters aggregated results", async () => {
     const query: DatalogQuery = {
-      find: ["?dept", "?person", "?count"],
+      find: ["?dept", "?count"],
       where: [["?person", ":person/dept", "?dept"]],
       aggregate: [["count", "?person", "?count"]],
       having: [[">=", "?count", 2]],

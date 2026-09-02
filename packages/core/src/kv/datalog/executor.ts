@@ -49,6 +49,11 @@ import { executePattern } from "./pattern.js";
 import { evaluatePredicate } from "./predicate.js";
 import { normalizeOrAlternatives } from "../../datalog/schema.js";
 import type { PaginationValue } from "../../Pagination.js";
+import {
+  validateDatalogQuery,
+  validateWrappedQuery,
+  type DatalogQueryValidationError,
+} from "../../datalog/validation.js";
 
 // ─── Clause execution ──────────────────────────────────────────────────────
 
@@ -251,7 +256,7 @@ const deriveRulePairs = (
     const definitions = rules.filter((rule) => rule.name === ruleName);
     if (definitions.length === 0) return [];
 
-    const maxDepth = Math.max(...definitions.map((rule) => rule.maxDepth ?? 50));
+    const maxDepth = Math.max(...definitions.map((rule) => rule.maxDepth ?? 100));
     const pairs: RulePair[] = [];
     const seen = new Set<string>();
 
@@ -420,6 +425,20 @@ const actualize = (contexts: readonly Context[], find: readonly Term[]): Context
   return results;
 };
 
+/** Project intermediate aggregate inputs without applying result-level DISTINCT. */
+const projectAggregateInputs = (contexts: readonly Context[], find: readonly Term[]): Context[] =>
+  contexts.map((ctx) => {
+    const row: Record<string, Constant | null> = {};
+    for (const term of find) {
+      if (isVariable(term)) {
+        row[term] = term in ctx ? ctx[term]! : null;
+      } else {
+        row[String(term)] = term as Constant;
+      }
+    }
+    return row;
+  });
+
 const tripleValueToResultValue = (value: TripleValue): Constant => {
   switch (value.type) {
     case "string":
@@ -517,17 +536,18 @@ const aggregate = (
     group.push(row);
     groups.set(groupKey, group);
   }
+  if (results.length === 0 && groupByVars.length === 0) groups.set("[]", []);
 
   // Compute aggregates per group
   const aggregatedResults: Context[] = [];
 
   for (const group of groups.values()) {
-    const representative = group[0]!;
-    const row: Record<string, Constant> = {};
+    const representative = group[0];
+    const row: Record<string, Constant | null> = {};
 
     // Copy group-by values
     for (const v of groupByVars) {
-      if (v in representative) {
+      if (representative !== undefined && v in representative) {
         row[v] = representative[v]!;
       }
     }
@@ -547,49 +567,42 @@ const aggregate = (
   return aggregatedResults;
 };
 
-const computeAggregate = (op: string, values: readonly Constant[]): Constant => {
+const aggregateValueKey = (value: Constant): string =>
+  `${typeof value}:${typeof value === "object" ? JSON.stringify(value) : String(value)}`;
+
+const computeAggregate = (op: string, values: readonly Constant[]): Constant | null => {
   switch (op) {
     case "count":
-      return values.length;
+      return new Set(values.map(aggregateValueKey)).size;
 
     case "sum": {
-      let sum = 0;
-      for (const v of values) {
-        if (typeof v === "number") sum += v;
-      }
-      return sum;
+      const numeric = values.filter((value): value is number => typeof value === "number");
+      return numeric.length === 0 ? null : numeric.reduce((sum, value) => sum + value, 0);
     }
 
     case "avg": {
-      let sum = 0;
-      let count = 0;
-      for (const v of values) {
-        if (typeof v === "number") {
-          sum += v;
-          count++;
-        }
-      }
-      return count > 0 ? sum / count : 0;
+      const numeric = values.filter((value): value is number => typeof value === "number");
+      return numeric.length === 0
+        ? null
+        : numeric.reduce((sum, value) => sum + value, 0) / numeric.length;
     }
 
     case "min": {
-      let min: number = Infinity;
-      for (const v of values) {
-        if (typeof v === "number" && v < min) min = v;
-      }
-      return min === Infinity ? 0 : min;
+      const numeric = values.filter((value): value is number => typeof value === "number");
+      return numeric.length === 0
+        ? null
+        : numeric.reduce((minimum, value) => (value < minimum ? value : minimum));
     }
 
     case "max": {
-      let max: number = -Infinity;
-      for (const v of values) {
-        if (typeof v === "number" && v > max) max = v;
-      }
-      return max === -Infinity ? 0 : max;
+      const numeric = values.filter((value): value is number => typeof value === "number");
+      return numeric.length === 0
+        ? null
+        : numeric.reduce((maximum, value) => (value > maximum ? value : maximum));
     }
 
     default:
-      return 0;
+      return null;
   }
 };
 
@@ -688,11 +701,12 @@ export interface QueryResult {
  */
 export const executeQuery = (
   store: KvTripleStore,
-  query: DatalogQuery,
+  input: DatalogQuery,
   rules: readonly Rule[] = [],
   options: { readonly basis?: ResolvedTemporalBasis } = {},
-): Effect.Effect<QueryResult> => {
+): Effect.Effect<QueryResult, DatalogQueryValidationError> => {
   return Effect.gen(function* () {
+    const query = yield* validateDatalogQuery(input);
     // 1. Execute WHERE clauses
     const contexts = yield* executeWhere(store, query.where, rules, options.basis);
 
@@ -706,7 +720,7 @@ export const executeQuery = (
         ...query.find,
         ...aggregateInputVars.filter((v) => !query.find.includes(v)),
       ];
-      results = actualize(contexts, extendedFind);
+      results = projectAggregateInputs(contexts, extendedFind);
       results = aggregate(results, query.find, query.aggregate);
     } else {
       results = actualize(contexts, query.find);
@@ -757,14 +771,15 @@ export interface WrappedQueryResult {
  */
 export const executeWrappedQuery = (
   store: KvTripleStore,
-  query: WrappedQuery,
+  input: WrappedQuery,
   rules: readonly Rule[] = [],
   options: {
     readonly basis?: ResolvedTemporalBasis;
     readonly cursorValues?: readonly PaginationValue[];
   } = {},
-): Effect.Effect<WrappedQueryResult> => {
+): Effect.Effect<WrappedQueryResult, DatalogQueryValidationError> => {
   return Effect.gen(function* () {
+    const query = yield* validateWrappedQuery(input);
     // 1. Execute inner query
     const innerResult = yield* executeQuery(store, query.inner, rules, options);
     let results = [...innerResult.results] as Context[];

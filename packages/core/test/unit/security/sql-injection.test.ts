@@ -209,7 +209,7 @@ describe("SQL Injection Prevention", () => {
         ],
       } as unknown as DatalogQuery;
 
-      expect(() => compileWithRules(query)).toThrow("Invalid Datalog rule name");
+      expect(() => compileWithRules(query)).toThrow("Invalid Datalog query shape");
     });
   });
 

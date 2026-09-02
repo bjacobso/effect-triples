@@ -26,7 +26,7 @@ import type { Pattern } from "../types/Pattern.js";
 import type {
   WriteError,
   ReadError,
-  DatalogError,
+  DatalogQueryError,
   CommandAlreadyCommittedError,
   TransactionConflictError,
   ConstraintViolationError,
@@ -235,16 +235,16 @@ export interface TriplesService {
   readonly query: (
     query: DatalogQuery,
     options?: QueryOptions,
-  ) => Effect.Effect<QueryResponse, ReadError | DatalogError>;
+  ) => Effect.Effect<QueryResponse, ReadError | DatalogQueryError>;
   /** Execute a wrapped/paginated Datalog query. */
   readonly queryPage: (
     query: WrappedQuery,
     options?: QueryOptions,
-  ) => Effect.Effect<PagedQueryResponse, ReadError | DatalogError | PaginationCursorError>;
+  ) => Effect.Effect<PagedQueryResponse, ReadError | DatalogQueryError | PaginationCursorError>;
   /** Explain a Datalog query without executing it. */
-  readonly explain: (query: DatalogQuery) => Effect.Effect<ExplainResult, DatalogError>;
+  readonly explain: (query: DatalogQuery) => Effect.Effect<ExplainResult, DatalogQueryError>;
   /** Explain a wrapped Datalog query without executing it. */
-  readonly explainPage: (query: WrappedQuery) => Effect.Effect<ExplainResult, DatalogError>;
+  readonly explainPage: (query: WrappedQuery) => Effect.Effect<ExplainResult, DatalogQueryError>;
 }
 
 /**

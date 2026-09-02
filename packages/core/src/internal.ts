@@ -88,6 +88,13 @@ export {
   type QueryMetrics,
 } from "./datalog/compiler.js";
 export { compileWrapped, type CompiledWrappedQuery } from "./datalog/wrapper.js";
+export {
+  assertDatalogQuery,
+  assertWrappedQuery,
+  validateDatalogQuery,
+  validateWrappedQuery,
+  type DatalogQueryValidationError,
+} from "./datalog/validation.js";
 export { type SqlDialect, CurrentDialect, SqliteDialect } from "./dialects/index.js";
 export { createParamCollector, type ParamCollector } from "./params.js";
 export {

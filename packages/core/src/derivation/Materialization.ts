@@ -17,7 +17,7 @@ import type { Constant, DatalogQuery } from "../datalog/types.js";
 import type {
   CommandAlreadyCommittedError,
   ConstraintViolationError,
-  DatalogError,
+  DatalogQueryError,
   ReadError,
   TransactionConflictError,
   WriteError,
@@ -152,7 +152,7 @@ export type MaterializationError =
   | TransactionConflictError
   | CommandAlreadyCommittedError
   | ConstraintViolationError
-  | DatalogError
+  | DatalogQueryError
   | CandidateConflictError
   | CorruptMaterializationError
   | CanonicalJson.CanonicalEncodingError

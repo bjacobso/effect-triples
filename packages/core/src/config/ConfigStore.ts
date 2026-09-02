@@ -12,7 +12,7 @@ import { Context, Data, Effect, Layer } from "effect";
 import type {
   CommandAlreadyCommittedError,
   ConstraintViolationError,
-  DatalogError,
+  DatalogQueryError,
   ReadError,
   TransactionConflictError,
   WriteError,
@@ -123,11 +123,11 @@ export interface ConfigStoreService {
   /** Revisions transitively depending on a logical config object. */
   readonly reverseDependencies: (
     object: InMemoryConfigStore.ObjectKey,
-  ) => Effect.Effect<ReadonlyArray<InMemoryConfigStore.Revision>, LoadError | DatalogError>;
+  ) => Effect.Effect<ReadonlyArray<InMemoryConfigStore.Revision>, LoadError | DatalogQueryError>;
   /** Alias that names the deploy-preview use of the reverse dependency index. */
   readonly impactCandidates: (
     object: InMemoryConfigStore.ObjectKey,
-  ) => Effect.Effect<ReadonlyArray<InMemoryConfigStore.Revision>, LoadError | DatalogError>;
+  ) => Effect.Effect<ReadonlyArray<InMemoryConfigStore.Revision>, LoadError | DatalogQueryError>;
   readonly recheck: (input: {
     readonly kind: string;
     readonly type: TypeExpr.TypeExpr;

@@ -12,7 +12,10 @@ hosts typed configuration as a modular layer over the same core.
   rule closure, grouped aggregation, and declarative clause ordering are covered by the shared
   KV/SQLite/PostgreSQL corpus; SQL rule identifiers are validated and quoted, while every rule
   value and recursion bound is parameterized. KV establishes positive and negation-local bindings
-  before predicates so written clause order cannot change query meaning.
+  before predicates so written clause order cannot change query meaning. A shared runtime preflight
+  schema-decodes queries and enforces binding, projection, aggregation, wrapper, and supported
+  binary-rule invariants before either engine runs; invalid input remains a typed Effect failure.
+  Aggregate duplicate, distinct-count, and empty-input behavior is also backend-independent.
 - Core's `content` module owns deterministic canonical encoding, domain-separated browser-safe
   SHA-256, and the shared `ContentId` format. Entity snapshots and configuration use distinct
   domains over this one foundation.

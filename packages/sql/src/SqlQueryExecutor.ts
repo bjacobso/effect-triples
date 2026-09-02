@@ -17,6 +17,8 @@ import {
   type QueryExecutorMetrics,
   CurrentDialect,
   ReadError,
+  DatalogValidationError,
+  UnboundVariableError,
   compile,
   compileWithRules,
   compileWrapped,
@@ -32,6 +34,11 @@ import {
 type ResultRow = Record<string, unknown>;
 type CompiledValueColumns =
   CompiledQuery["valueColumnMap"] extends Map<string, infer Columns> ? Columns : never;
+
+const compilationFailure = (error: unknown, message: string) =>
+  error instanceof DatalogValidationError || error instanceof UnboundVariableError
+    ? error
+    : new ReadError({ message: `${message}: ${String(error)}`, cause: error });
 
 // =============================================================================
 // Result Conversion
@@ -183,12 +190,7 @@ export const SqlQueryExecutorLive = Layer.effect(
             ? compileWithRules(q, dialect, debug, basis === undefined ? {} : { basis })
             : compile(q, dialect, debug, basis === undefined ? {} : { basis });
         } catch (error) {
-          return yield* Effect.fail(
-            new ReadError({
-              message: `Failed to compile Datalog query: ${String(error)}`,
-              cause: error,
-            }),
-          );
+          return yield* Effect.fail(compilationFailure(error, "Failed to compile Datalog query"));
         }
 
         // 2. Execute SQL
@@ -240,12 +242,7 @@ export const SqlQueryExecutorLive = Layer.effect(
             ...(cursorValues === undefined ? {} : { cursorValues }),
           });
         } catch (error) {
-          return yield* Effect.fail(
-            new ReadError({
-              message: `Failed to compile wrapped query: ${String(error)}`,
-              cause: error,
-            }),
-          );
+          return yield* Effect.fail(compilationFailure(error, "Failed to compile wrapped query"));
         }
 
         // 2. Execute main query
@@ -333,12 +330,7 @@ export const SqlQueryExecutorLive = Layer.effect(
             ? compileWithRules(q, dialect, true)
             : compile(q, dialect, true);
         } catch (error) {
-          return yield* Effect.fail(
-            new ReadError({
-              message: `Failed to compile Datalog query: ${String(error)}`,
-              cause: error,
-            }),
-          );
+          return yield* Effect.fail(compilationFailure(error, "Failed to compile Datalog query"));
         }
 
         return {
@@ -353,12 +345,7 @@ export const SqlQueryExecutorLive = Layer.effect(
         try {
           compiled = compileWrapped(q, dialect);
         } catch (error) {
-          return yield* Effect.fail(
-            new ReadError({
-              message: `Failed to compile wrapped query: ${String(error)}`,
-              cause: error,
-            }),
-          );
+          return yield* Effect.fail(compilationFailure(error, "Failed to compile wrapped query"));
         }
 
         return {

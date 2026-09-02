@@ -11,7 +11,7 @@
  */
 
 import { Context, Effect } from "effect";
-import type { ReadError } from "../errors/index.js";
+import type { DatalogQueryError, ReadError } from "../errors/index.js";
 import type { DatalogQuery, WrappedQuery } from "../datalog/types.js";
 import type { ResolvedTemporalBasis } from "../Temporal.js";
 import type { PaginationValue } from "../Pagination.js";
@@ -112,9 +112,8 @@ export interface QueryExecutorService {
   /**
    * Execute a Datalog query, returning variable bindings.
    *
-   * Callers pass an already-decoded {@link DatalogQuery}; validation happens
-   * upstream (in the `Triples` service or the RPC layer), so the executor
-   * never re-decodes.
+   * Implementations run the shared runtime and semantic preflight before
+   * selecting their backend execution strategy.
    *
    * @param query - The (pre-validated) Datalog query
    * @param debug - Whether to include debug metrics
@@ -124,7 +123,10 @@ export interface QueryExecutorService {
     query: DatalogQuery,
     debug?: boolean,
     basis?: ResolvedTemporalBasis,
-  ) => Effect.Effect<{ results: QueryResult; debug?: QueryDebugInfo }, ReadError>;
+  ) => Effect.Effect<
+    { results: QueryResult; debug?: QueryDebugInfo },
+    ReadError | DatalogQueryError
+  >;
 
   /**
    * Execute a wrapped query with pagination support.
@@ -138,7 +140,7 @@ export interface QueryExecutorService {
     debug?: boolean,
     basis?: ResolvedTemporalBasis,
     cursorValues?: readonly PaginationValue[],
-  ) => Effect.Effect<WrappedQueryResult, ReadError>;
+  ) => Effect.Effect<WrappedQueryResult, ReadError | DatalogQueryError>;
 
   /**
    * Explain a query plan without executing.
@@ -148,7 +150,10 @@ export interface QueryExecutorService {
    */
   readonly explain: (
     query: DatalogQuery,
-  ) => Effect.Effect<{ queryPlan: QueryPlan; metrics?: QueryMetrics }, ReadError>;
+  ) => Effect.Effect<
+    { queryPlan: QueryPlan; metrics?: QueryMetrics },
+    ReadError | DatalogQueryError
+  >;
 
   /**
    * Explain a wrapped query plan without executing.
@@ -156,7 +161,9 @@ export interface QueryExecutorService {
    * @param query - The wrapped query to explain
    * @returns The query plan (may include multiple steps for main + count)
    */
-  readonly explainPage: (query: WrappedQuery) => Effect.Effect<{ queryPlan: QueryPlan }, ReadError>;
+  readonly explainPage: (
+    query: WrappedQuery,
+  ) => Effect.Effect<{ queryPlan: QueryPlan }, ReadError | DatalogQueryError>;
 }
 
 // =============================================================================

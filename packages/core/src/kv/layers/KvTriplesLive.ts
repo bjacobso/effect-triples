@@ -26,7 +26,10 @@ import {
   TransactionConflictError,
   ConstraintViolationError,
   PaginationCursorError,
+  DatalogValidationError,
+  UnboundVariableError,
 } from "../../errors/index.js";
+import { validateDatalogQuery, validateWrappedQuery } from "../../datalog/validation.js";
 import * as Constraint from "../../Constraint.js";
 import { KvBackend, type KvBackendService, type KvTransaction } from "../kv/KvBackend.js";
 import { makeTestKvBackend } from "../kv/InMemoryKvBackend.js";
@@ -756,19 +759,22 @@ const makeKvTriplesService = Effect.gen(function* () {
           }
           return { results };
         }),
-        Effect.mapError(
-          (e) => new ReadError({ message: `Query execution failed: ${String(e)}`, cause: e }),
+        Effect.mapError((e) =>
+          e instanceof DatalogValidationError || e instanceof UnboundVariableError
+            ? e
+            : new ReadError({ message: `Query execution failed: ${String(e)}`, cause: e }),
         ),
       ),
 
     queryPage: (q: WrappedQuery, options?: QueryOptions) =>
       Effect.gen(function* () {
+        const query = yield* validateWrappedQuery(q);
         const currentTime = yield* runtime.now;
         const recordedPosition = yield* currentKvCommitPosition(kvBackend);
         const prepared = yield* Effect.try({
           try: () =>
             preparePagination({
-              query: q,
+              query,
               ...(options?.basis === undefined ? {} : { basis: options.basis }),
               now: currentTime,
               recordedPosition,
@@ -800,26 +806,32 @@ const makeKvTriplesService = Effect.gen(function* () {
         Effect.mapError((e) =>
           e instanceof PaginationCursorError
             ? e
-            : new ReadError({ message: `Wrapped query failed: ${String(e)}`, cause: e }),
+            : e instanceof DatalogValidationError || e instanceof UnboundVariableError
+              ? e
+              : new ReadError({ message: `Wrapped query failed: ${String(e)}`, cause: e }),
         ),
       ),
 
     explain: (q: DatalogQuery) =>
-      Effect.succeed({
-        queryPlan: {
-          backend: "kv-store" as const,
-          steps: [{ label: "main", query: JSON.stringify(q, null, 2) }],
-        },
-        metrics: makeKvMetrics(q),
-      }),
+      validateDatalogQuery(q).pipe(
+        Effect.map((query) => ({
+          queryPlan: {
+            backend: "kv-store" as const,
+            steps: [{ label: "main", query: JSON.stringify(query, null, 2) }],
+          },
+          metrics: makeKvMetrics(query),
+        })),
+      ),
 
     explainPage: (q: WrappedQuery) =>
-      Effect.succeed({
-        queryPlan: {
-          backend: "kv-store" as const,
-          steps: [{ label: "main", query: JSON.stringify(q, null, 2) }],
-        },
-      }),
+      validateWrappedQuery(q).pipe(
+        Effect.map((query) => ({
+          queryPlan: {
+            backend: "kv-store" as const,
+            steps: [{ label: "main", query: JSON.stringify(query, null, 2) }],
+          },
+        })),
+      ),
   };
 
   return service;

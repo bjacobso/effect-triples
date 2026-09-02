@@ -22,8 +22,11 @@ unique and durable consumer checkpoints are available through the `operational` 
   bug.
 - Datalog conjunctions are clause-order independent across engines: positive relations establish
   outer bindings and patterns inside negation establish local bindings before predicates run.
-- Cover every value type, truly unbound variables, pagination edge cases, and hostile schema-valid
-  inputs.
+- Runtime query shape, truly unbound variables, result/aggregate target collisions, empty
+  disjunctions, undefined rules, unsupported recursive bodies, and wrapper projection references
+  now fail through one backend-neutral typed preflight. Projection and joins cover all seven stored
+  value types, and aggregate duplicate, distinct-count, and empty-input semantics are differential
+  tested. Continue expanding pagination edge cases and hostile schema-valid input.
 - SQL projection now carries hidden storage tags through execution, so strings such as `"007"`,
   numeric-looking entity IDs and refs, datetimes, booleans, and JSON are decoded without guessing.
 - Recursive SQL rule definitions, applications, optional projection attributes, and depth bounds
