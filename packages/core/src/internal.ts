@@ -45,12 +45,6 @@ export {
 export { makeWriteInterceptors, type WriteEventCallback } from "./store/writeEventUtils.js";
 export { makeChangeEmissionCapability } from "./store/ChangeEmissionCapability.js";
 export {
-  PostMutationHook,
-  type PostMutationHookService,
-  NoopPostMutationHook,
-  NoopPostMutationHookLive,
-} from "./store/PostMutationHook.js";
-export {
   RuntimeClock,
   type RuntimeClockService,
   RuntimeClockLive,
@@ -74,8 +68,6 @@ export {
   DeterministicTripleStoreRuntimeLive,
   type DeterministicTripleStoreRuntimeOptions,
 } from "./store/TripleStoreRuntime.js";
-export { DatabaseFeatures, type DatabaseFeature } from "./store/DatabaseFeatures.js";
-
 export { SnapshotWriter, type SnapshotWriterShape } from "./snapshots/SnapshotService.js";
 export { SnapshotServiceLive, SnapshotWriterLive } from "./snapshots/SnapshotServiceLive.js";
 export { makeEntitySnapshotsCapability } from "./snapshots/EntitySnapshotsCapability.js";

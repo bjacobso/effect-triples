@@ -25,7 +25,6 @@ import {
   type StoreCapability,
   makeChangeEmissionCapability,
   TripleStoreRuntime,
-  DatabaseFeatures,
   SnapshotWriter,
   SnapshotService,
   SnapshotWriterLive,
@@ -33,7 +32,6 @@ import {
   makeEntitySnapshotsCapability,
   DatabaseAlreadyExists,
   getTripleStoreRuntime,
-  IdGenerator,
   DatabaseId,
 } from "@bjacobso/triplex/internal";
 import type { DatabaseId as DatabaseIdType } from "@bjacobso/triplex";
@@ -90,9 +88,8 @@ interface CachedServices {
  * Requires StorageBackend for database operations and DatabaseRegistry for metadata.
  * Optionally accepts ChangeEmitter -- if not provided, uses NoopChangeEmitter.
  *
- * Each database gets a full capability stack:
- * - ReactiveConstraints (priority 40) -- constraint evaluation on write
- * - ChangeEmission (priority 50) -- broadcast changes to connected clients
+ * Each database composes snapshot materialization and change emission over the
+ * raw Triples service.
  */
 export const DatabaseManagerLive = Layer.effect(
   DatabaseManager,
@@ -107,12 +104,7 @@ export const DatabaseManagerLive = Layer.effect(
       ),
     );
     const runtime = yield* getTripleStoreRuntime;
-    const ids = yield* IdGenerator;
     const runtimeNow = runtime.now;
-    // Resolve injectable features (optional -- empty if not provided)
-    const externalFeatures = yield* Effect.serviceOption(DatabaseFeatures).pipe(
-      Effect.map((opt) => (opt._tag === "Some" ? opt.value.features : [])),
-    );
 
     // Cache for database services
     const cacheRef = yield* Ref.make(HashMap.empty<string, CachedServices>());
@@ -177,8 +169,8 @@ export const DatabaseManagerLive = Layer.effect(
     };
 
     /**
-     * Create services for a database by building and running the layer.
-     * Runs feature initialization, then composes the capability stack.
+     * Create services for a database by building and running the layer, then
+     * compose its built-in capabilities.
      */
     const createDatabaseServices = (name: string): Effect.Effect<CachedServices, InternalError> =>
       Effect.gen(function* () {
@@ -200,18 +192,6 @@ export const DatabaseManagerLive = Layer.effect(
           makeChangeEmissionCapability(emitter, runtimeNow),
           makeEntitySnapshotsCapability(writer),
         ];
-
-        // Add externally-injected feature capabilities (reactive constraints, processes, etc.)
-        for (const feature of externalFeatures) {
-          if (feature.capabilityFactory) {
-            const cap = yield* feature
-              .capabilityFactory(rawTriples, runtimeNow)
-              .pipe(Effect.provideService(IdGenerator, ids));
-            if (cap) {
-              capabilities.push(cap);
-            }
-          }
-        }
 
         const triples = composeStore(rawTriples, ...capabilities);
 

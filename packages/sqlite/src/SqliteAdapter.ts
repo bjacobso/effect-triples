@@ -16,9 +16,9 @@ import {
   WriteError,
   ReadError,
   MigrationError,
+  isPatternVariable,
 } from "@bjacobso/triplex/internal";
 import { packValue, runMigrations, INDEX_DDLS, INDEX_NAMES } from "@bjacobso/triplex-sql";
-import { isVariable } from "@bjacobso/triplex/types/Pattern";
 
 // =============================================================================
 // Configuration
@@ -456,12 +456,12 @@ export const makeSqliteAdapter = (config: SqliteAdapterConfig = {}) =>
             const params: unknown[] = [];
             const conditions = temporalConditions(basis, params);
 
-            if (pattern.entityId && !isVariable(pattern.entityId)) {
+            if (pattern.entityId && !isPatternVariable(pattern.entityId)) {
               conditions.push("entity_id = ?");
               params.push(pattern.entityId);
             }
 
-            if (pattern.attribute && !isVariable(pattern.attribute)) {
+            if (pattern.attribute && !isPatternVariable(pattern.attribute)) {
               conditions.push("attribute = ?");
               params.push(pattern.attribute);
             }
@@ -471,7 +471,7 @@ export const makeSqliteAdapter = (config: SqliteAdapterConfig = {}) =>
               params.push(pattern.entityType);
             }
 
-            if (pattern.value && !isVariable(pattern.value)) {
+            if (pattern.value && !isPatternVariable(pattern.value)) {
               const packed = packValue(pattern.value);
               conditions.push("value_type = ?");
               params.push(packed.value_type);

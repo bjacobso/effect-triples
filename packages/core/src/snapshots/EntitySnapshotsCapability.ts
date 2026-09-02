@@ -74,8 +74,7 @@ const resolveRetractionMeta = (
 /**
  * Map snapshot errors to WriteError.
  *
- * Unlike ChangeEmission and ReactiveConstraints (which swallow errors), snapshot
- * projection errors are propagated so callers know the derived state is stale.
+ * Snapshot projection errors are propagated so callers know the derived state is stale.
  * The source fact transaction has already committed and is not rolled back.
  */
 const mapMaterializeError = (cause: unknown): WriteError =>

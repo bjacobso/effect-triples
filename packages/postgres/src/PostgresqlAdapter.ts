@@ -16,9 +16,9 @@ import {
   ReadError,
   MigrationError,
   createParamCollector,
+  isPatternVariable,
 } from "@bjacobso/triplex/internal";
 import { packValue, runMigrations } from "@bjacobso/triplex-sql";
-import { isVariable } from "@bjacobso/triplex/types/Pattern";
 import { PostgresqlDialect } from "./dialect.js";
 
 /**
@@ -380,11 +380,11 @@ export const makePostgresqlAdapter = (config: PostgresqlAdapterConfig = {}) =>
             const collector = createParamCollector(PostgresqlDialect);
             const conditions = temporalConditions(basis, collector);
 
-            if (pattern.entityId && !isVariable(pattern.entityId)) {
+            if (pattern.entityId && !isPatternVariable(pattern.entityId)) {
               conditions.push(`entity_id = ${collector.add(pattern.entityId)}`);
             }
 
-            if (pattern.attribute && !isVariable(pattern.attribute)) {
+            if (pattern.attribute && !isPatternVariable(pattern.attribute)) {
               conditions.push(`attribute = ${collector.add(pattern.attribute)}`);
             }
 
@@ -392,7 +392,7 @@ export const makePostgresqlAdapter = (config: PostgresqlAdapterConfig = {}) =>
               conditions.push(`entity_type = ${collector.add(pattern.entityType)}`);
             }
 
-            if (pattern.value && !isVariable(pattern.value)) {
+            if (pattern.value && !isPatternVariable(pattern.value)) {
               const packed = packValue(pattern.value);
               conditions.push(`value_type = ${collector.add(packed.value_type)}`);
 

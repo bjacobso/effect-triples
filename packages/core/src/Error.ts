@@ -1,52 +1,14 @@
 import { Schema } from "effect";
 
-export class DatabaseNotFound extends Schema.TaggedError<DatabaseNotFound>()(
-  "DatabaseNotFound",
-  { database: Schema.String },
-  { httpApiStatus: 404 },
-) {}
+export class DatabaseNotFound extends Schema.TaggedError<DatabaseNotFound>()("DatabaseNotFound", {
+  database: Schema.String,
+}) {}
 
 export class DatabaseAlreadyExists extends Schema.TaggedError<DatabaseAlreadyExists>()(
   "DatabaseAlreadyExists",
   { database: Schema.String },
-  { httpApiStatus: 409 },
 ) {}
 
-export class TripleNotFound extends Schema.TaggedError<TripleNotFound>()(
-  "TripleNotFound",
-  { id: Schema.String },
-  { httpApiStatus: 404 },
-) {}
-
-export class DatalogQueryError extends Schema.TaggedError<DatalogQueryError>()(
-  "DatalogQueryError",
-  { message: Schema.String },
-  { httpApiStatus: 400 },
-) {}
-
-export class AuthorizationDenied extends Schema.TaggedError<AuthorizationDenied>()(
-  "AuthorizationDenied",
-  {
-    code: Schema.Literal("AUTHORIZATION_DENIED"),
-    decisionId: Schema.String,
-    reason: Schema.String,
-    deniedFields: Schema.optional(Schema.Array(Schema.String)),
-    deniedAttributes: Schema.optional(Schema.Array(Schema.String)),
-  },
-  { httpApiStatus: 403 },
-) {}
-
-export class AccessDenied extends Schema.TaggedError<AccessDenied>()(
-  "AccessDenied",
-  {
-    message: Schema.String,
-    database: Schema.optional(Schema.String),
-  },
-  { httpApiStatus: 403 },
-) {}
-
-export class InternalError extends Schema.TaggedError<InternalError>()(
-  "InternalError",
-  { message: Schema.String },
-  { httpApiStatus: 500 },
-) {}
+export class InternalError extends Schema.TaggedError<InternalError>()("InternalError", {
+  message: Schema.String,
+}) {}

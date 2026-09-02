@@ -6,7 +6,6 @@
  */
 
 export * from "./Branded.js";
-export * from "./Error.js";
 export * from "./Snapshot.js";
 export * from "./Triple.js";
 export * from "./Temporal.js";
@@ -14,6 +13,7 @@ export { type PaginationCursor } from "./Pagination.js";
 export * from "./Value.js";
 export * from "./errors/index.js";
 export * from "./types/Pattern.js";
+export { isVariable as isPatternVariable } from "./types/Pattern.js";
 export {
   type Subscription,
   type AffectedSubscriptions,

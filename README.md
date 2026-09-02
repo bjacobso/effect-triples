@@ -775,19 +775,17 @@ The core package also exposes tree-shakeable ESM subpaths for focused schemas an
 types:
 
 ```ts
-import { TripleInput, TransactOp } from "@bjacobso/triplex/Triple";
+import { TripleInput, TransactOp, Pattern } from "@bjacobso/triplex";
 import { DatalogQuery } from "@bjacobso/triplex/datalog";
 import { SubscriptionManager } from "@bjacobso/triplex/subscriptions";
-import { Pattern } from "@bjacobso/triplex/types/Pattern";
 import { ConfigStore, TypeExpr } from "@bjacobso/triplex/config";
 import { ContentId } from "@bjacobso/triplex/content";
 import * as Derivation from "@bjacobso/triplex/derivation";
 ```
 
-Note that `./datalog` and `./Snapshot` contain query/response **schemas**, not the
-runtime service tags—import `Triples` and `SnapshotService` from the root. Triplex does
-not impose an HTTP or RPC transport contract; applications expose the core services
-through the transport that fits their runtime.
+The root exports the `Triples` and `SnapshotService` runtime tags as well as their
+schemas. Triplex does not impose an HTTP or RPC transport contract; applications expose
+the core services through the transport that fits their runtime.
 
 ## Content IDs and storage baseline
 

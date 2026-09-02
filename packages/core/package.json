@@ -41,16 +41,6 @@
       "import": "./dist/datalog/index.js",
       "default": "./dist/datalog/index.js"
     },
-    "./Snapshot": {
-      "types": "./dist/Snapshot.d.ts",
-      "import": "./dist/Snapshot.js",
-      "default": "./dist/Snapshot.js"
-    },
-    "./Triple": {
-      "types": "./dist/Triple.d.ts",
-      "import": "./dist/Triple.js",
-      "default": "./dist/Triple.js"
-    },
     "./subscriptions": {
       "types": "./dist/subscriptions/index.d.ts",
       "import": "./dist/subscriptions/index.js",
@@ -75,11 +65,6 @@
       "types": "./dist/internal.d.ts",
       "import": "./dist/internal.js",
       "default": "./dist/internal.js"
-    },
-    "./types/Pattern": {
-      "types": "./dist/types/Pattern.d.ts",
-      "import": "./dist/types/Pattern.js",
-      "default": "./dist/types/Pattern.js"
     }
   },
   "scripts": {

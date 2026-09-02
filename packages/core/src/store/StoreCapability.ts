@@ -5,13 +5,11 @@
  * enhanced `TriplesService`. Each capability:
  *
  * 1. Wraps the inner store's methods to add behavior (before/after hooks)
- * 2. May require additional services via the Effect context
- * 3. Preserves the `TriplesService` interface for the next capability
+ * 2. Preserves the `TriplesService` interface for the next capability
  *
  * Capabilities are composed by sorting by priority (higher = outermost) and
  * folding over the base store. Dependencies are validated at composition time.
  *
- * @see specs/core/composable-store.md
  */
 
 import { Data } from "effect";
@@ -90,8 +88,8 @@ export const validateDependencies = (capabilities: readonly StoreCapability[]): 
  * This means capabilities with higher priority see the result of capabilities with
  * lower priority, and are the first to intercept operations from callers.
  *
- * Example ordering (outermost → innermost):
- *   Metrics (100) → RateLimiter (90) → AuditLog (80) → EntitySnapshots (60) → ChangeEmission (50) → Base (0)
+ * Current ordering (outermost → innermost):
+ *   EntitySnapshots (60) → ChangeEmission (50) → Base (0)
  *
  * @param base - The base TriplesService (raw service without decorators)
  * @param capabilities - Capabilities to compose over the base

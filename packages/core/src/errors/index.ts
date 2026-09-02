@@ -141,14 +141,8 @@ export class MigrationError extends Data.TaggedError("MigrationError")<{
   readonly cause?: unknown;
 }> {}
 
-// Re-export HTTP-annotated errors from Error.ts
-export {
-  DatabaseNotFound,
-  DatabaseAlreadyExists,
-  TripleNotFound,
-  DatalogQueryError,
-  InternalError,
-} from "../Error.js";
+// Re-export database manager errors from Error.ts.
+export { DatabaseNotFound, DatabaseAlreadyExists, InternalError } from "../Error.js";
 
 // Error unions for convenience
 export type WriteErrorUnion =

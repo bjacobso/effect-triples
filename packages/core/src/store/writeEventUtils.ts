@@ -1,11 +1,8 @@
 /**
  * writeEventUtils — shared helpers for building ChangeEvents from write operations.
  *
- * Both ChangeEmissionCapability and ReactiveConstraintsCapability need to intercept
- * writes, build ChangeEvent objects, and invoke callbacks. This module extracts
- * the common logic so it isn't duplicated across capabilities.
- *
- * @see specs/core/composable-store.md
+ * ChangeEmissionCapability uses these helpers to intercept writes, build
+ * ChangeEvent objects, and invoke its emitter.
  */
 
 import { Effect, Option, pipe } from "effect";

@@ -2,14 +2,10 @@
  * ChangeEmission capability — emits ChangeEvents after every write operation.
  *
  * Responsibility: broadcast change events to the ChangeEmitter (e.g., for
- * WebSocket fanout to connected clients). This capability does NOT invoke
- * any mutation hooks — reactive constraint evaluation is handled by the separate
- * ReactiveConstraintsCapability.
+ * WebSocket fanout to connected clients).
  *
- * Priority: 50 (mid-stack — above ReactiveConstraints at 40, below EntitySnapshots at 60)
+ * Priority: 50 (inside EntitySnapshots at 60)
  * Requires: none
- *
- * @see specs/core/composable-store.md
  */
 
 import { Effect } from "effect";
