@@ -192,8 +192,8 @@ its product-specific response cache and authorization checks.
 ## Remaining limitations
 
 - Cardinality, uniqueness, required relationships, and reference targets are available both as
-  content-addressed observations and opt-in atomic transaction guards. Constraint enforcement
-  currently scans the live recorded fact set; indexed candidate loading is a future optimization.
+  content-addressed observations and opt-in atomic transaction guards. Constraint enforcement uses
+  entity-type indexes plus batched subject reads and loads only relevant reference target types.
 - Authorization and general cross-entity Datalog invariants remain host-owned.
 - Inbox/outbox records, response caching, retry policy, and timer delivery remain host-owned.
 - Derivation provenance currently rejects recursive rules, disjunction, aggregation, and dynamic

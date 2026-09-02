@@ -86,6 +86,13 @@ export interface ViolationAt extends Violation {
   readonly validAt: number;
 }
 
+export interface FactLoader<E> {
+  /** Load live-recorded rows that carry this entity type. */
+  readonly byEntityType: (entityType: string) => Effect.Effect<readonly Triple[], E>;
+  /** Batch-load every live-recorded fact for the selected entity IDs. */
+  readonly byEntities: (entityIds: readonly string[]) => Effect.Effect<readonly Triple[], E>;
+}
+
 export const keyOf = (rule: Rule): string => {
   const suffix =
     rule._tag === "Cardinality"
@@ -95,6 +102,50 @@ export const keyOf = (rule: Rule): string => {
         : rule._tag.toLowerCase();
   return `${rule.entityType}:${rule.attribute}:${suffix}`;
 };
+
+/**
+ * Load only the current-recorded facts that can influence a rule set.
+ *
+ * Source type scans discover existing subjects, one batch expands those
+ * subjects to their constrained attributes, and target type scans provide the
+ * existence intervals needed by reference constraints. Assertions that create
+ * a new source subject are included in the expansion before projection.
+ */
+export const loadRelevantFacts = <E>(
+  rules: readonly Rule[],
+  operations: readonly TransactOp[],
+  loader: FactLoader<E>,
+): Effect.Effect<readonly Triple[], E> =>
+  Effect.gen(function* () {
+    const sourceTypes = [...new Set(rules.map((rule) => rule.entityType))].sort();
+    const targetTypes = [
+      ...new Set(
+        rules.flatMap((rule) => (rule._tag === "ReferenceTarget" ? [rule.targetEntityType] : [])),
+      ),
+    ].sort();
+    const sourceTypeFacts = (yield* Effect.forEach(sourceTypes, loader.byEntityType)).flat();
+    const sourceIds = [
+      ...new Set([
+        ...sourceTypeFacts.map((fact) => fact.entityId as string),
+        ...operations.flatMap((operation) =>
+          operation.op === "assert" &&
+          operation.entityType !== undefined &&
+          sourceTypes.includes(operation.entityType)
+            ? [operation.entityId]
+            : [],
+        ),
+      ]),
+    ].sort();
+    const [sourceFacts, targetTypeFacts] = yield* Effect.all([
+      loader.byEntities(sourceIds),
+      Effect.forEach(targetTypes, loader.byEntityType).pipe(Effect.map((rows) => rows.flat())),
+    ]);
+    return [
+      ...new Map(
+        [...sourceTypeFacts, ...sourceFacts, ...targetTypeFacts].map((fact) => [fact.id, fact]),
+      ).values(),
+    ];
+  });
 
 const pathOf = (attribute: string): string => `$[${JSON.stringify(attribute)}]`;
 

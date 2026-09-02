@@ -37,9 +37,11 @@ unique and durable consumer checkpoints are available through the `operational` 
 - Delivered: opt-in transaction enforcement that rejects new or worsened post-state violations at
   every valid-time boundary and serializes concurrent absence/uniqueness decisions across KV,
   SQLite, and PostgreSQL.
+- Delivered: indexed constraint candidate loading by source entity type and referenced target type,
+  with batched subject expansion instead of a full live-fact scan.
 - Graph constraints remain separate from value-local `TypeExpr` definitions.
-- Next: indexed constraint reads and explicitly modelled general Datalog invariants. Observation
-  mode remains available for migrations and audit.
+- Next: explicitly modelled general Datalog invariants. Observation mode remains available for
+  migrations and audit.
 
 ## 2. Reactive "Live" Queries (Watch API)
 

@@ -290,7 +290,24 @@ export const TriplesLive = Layer.effect(
           const preconditionIds = livePreconditionIds(meta);
 
           if (meta?.enforce !== undefined) {
-            const current = (yield* adapter.query({})).map(rowToTriple);
+            const current = yield* Constraint.loadRelevantFacts(
+              meta.enforce.constraints,
+              operations,
+              {
+                byEntityType: (entityType) =>
+                  adapter.query({ entityType }).pipe(Effect.map((rows) => rows.map(rowToTriple))),
+                byEntities: (entityIds) =>
+                  adapter
+                    .getByEntities(entityIds)
+                    .pipe(
+                      Effect.map((rows) =>
+                        entityIds.flatMap((entityId) =>
+                          (rows.get(entityId) ?? []).map(rowToTriple),
+                        ),
+                      ),
+                    ),
+              },
+            );
             const violations = yield* Constraint.newlyViolated(
               current,
               operations,

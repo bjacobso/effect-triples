@@ -1,11 +1,12 @@
 import { describe, expect, it } from "vitest";
-import { Effect } from "effect";
+import { Effect, Option } from "effect";
 
 import {
   Constraint,
   ConstraintViolationError,
   KvTriples,
   Triples,
+  type Triple,
   type TripleId,
 } from "../src/index.js";
 
@@ -27,7 +28,69 @@ const enforced = { enforce: { constraints: rules }, configSnapshot: "sha256:test
 const run = <A, E>(effect: Effect.Effect<A, E, Triples>): Promise<A> =>
   Effect.runPromise(effect.pipe(Effect.provide(KvTriples.layer)));
 
+const fact = (input: {
+  readonly id: string;
+  readonly entityId: string;
+  readonly entityType: string;
+  readonly attribute: string;
+}): Triple => ({
+  id: input.id as Triple["id"],
+  entityId: input.entityId as Triple["entityId"],
+  entityType: Option.some(input.entityType),
+  attribute: input.attribute as Triple["attribute"],
+  value: { type: "string", value: "fixture" },
+  recordedAt: 1,
+  validFrom: 1,
+  validTo: Option.none(),
+  createdBy: Option.none(),
+  retractedAt: Option.none(),
+  schemaVersion: Option.none(),
+  txId: Option.none(),
+  retractTxId: Option.none(),
+});
+
 describe("transaction graph constraints", () => {
+  it("loads only constrained subjects and reference target types", async () => {
+    const typeCalls: string[] = [];
+    const entityCalls: string[][] = [];
+    const existing = fact({
+      id: "existing-type",
+      entityId: "person:existing",
+      entityType: "Person",
+      attribute: ":person/name",
+    });
+    const loaded = await Effect.runPromise(
+      Constraint.loadRelevantFacts(
+        rules,
+        [
+          {
+            op: "assert",
+            entityId: "person:new",
+            entityType: "Person",
+            attribute: ":person/name",
+            value: { type: "string", value: "New" },
+          },
+        ],
+        {
+          byEntityType: (entityType) =>
+            Effect.sync(() => {
+              typeCalls.push(entityType);
+              return entityType === "Person" ? [existing] : [];
+            }),
+          byEntities: (entityIds) =>
+            Effect.sync(() => {
+              entityCalls.push([...entityIds]);
+              return [existing];
+            }),
+        },
+      ),
+    );
+
+    expect(typeCalls.sort()).toEqual(["Employer", "Person"]);
+    expect(entityCalls).toEqual([["person:existing", "person:new"]]);
+    expect(loaded).toEqual([existing]);
+  });
+
   it("rejects violations atomically with a typed error", async () => {
     const result = await run(
       Effect.gen(function* () {

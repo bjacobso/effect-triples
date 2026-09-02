@@ -50,9 +50,11 @@ hosts typed configuration as a modular layer over the same core.
   evaluates the projected post-state at every valid-time boundary before mutation. Required,
   cardinality, uniqueness, and reference-target violations that are new or worse abort facts,
   journal, command receipt, and position together; unchanged legacy violations do not prevent an
-  unrelated write or repair. The shared commit-position contention point prevents concurrent
-  Triplex writers from both winning an absence or uniqueness check. Direct adapter writes remain
-  outside this guarantee, and authorization remains host-owned.
+  unrelated write or repair. Enforcement discovers candidate subjects through entity-type indexes,
+  batch-loads only their facts, and loads only referenced target types; it does not scan unrelated
+  live facts. The shared commit-position contention point prevents concurrent Triplex writers from
+  both winning an absence or uniqueness check. Direct adapter writes remain outside this guarantee,
+  and authorization remains host-owned.
 - The `operational` subpath owns consumer checkpoints as reserved, Datalog-queryable facts.
   Compare-and-retract prevents stale workers from overwriting a newer position. Checkpoint
   maintenance is the one unjournaled internal mutation: emitting it into the feed would cause a

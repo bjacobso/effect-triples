@@ -250,7 +250,8 @@ cardinality, uniqueness, or reference-target violation fails with `ConstraintVio
 rolls back the facts, journal, command receipt, and commit position together. Unchanged legacy
 violations do not block unrelated commands or repairs. KV, SQLite, and PostgreSQL serialize this
 check through the same commit-position boundary used by the journal, so concurrent Triplex writers
-cannot both win a uniqueness or absence check.
+cannot both win a uniqueness or absence check. Candidate loading uses source and reference-target
+type indexes plus batched subject reads, so unrelated live facts are not scanned.
 When a retraction and assertion replace the recorded value for the same business-time interval,
 carry the original fact's `validFrom`; using the transaction instant intentionally changes the
 currently-known valid-time history and is checked as such.

@@ -452,7 +452,22 @@ const makeKvTriplesService = Effect.gen(function* () {
             const preconditionIds = livePreconditionIds(meta);
 
             if (meta?.enforce !== undefined) {
-              const current = (yield* transactionStore.scanCollectAsync({})).map(datomToTriple);
+              const current = yield* Constraint.loadRelevantFacts(
+                meta.enforce.constraints,
+                operations,
+                {
+                  byEntityType: (entityType) =>
+                    transactionStore
+                      .getByEntityTypeAsync(entityType)
+                      .pipe(Effect.map((datoms) => datoms.map(datomToTriple))),
+                  byEntities: (entityIds) =>
+                    Effect.forEach(entityIds, (entityId) =>
+                      transactionStore
+                        .scanCollectAsync({ entity: entityId })
+                        .pipe(Effect.map((datoms) => datoms.map(datomToTriple))),
+                    ).pipe(Effect.map((rows) => rows.flat())),
+                },
+              );
               const violations = yield* Constraint.newlyViolated(
                 current,
                 operations,
