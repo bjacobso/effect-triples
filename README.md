@@ -317,14 +317,18 @@ logical head by source position within a definition rather than racing a mutable
 candidate bodies are schema-decoded and their content IDs are verified when read. Historical run
 membership is also available as ordinary Datalog through `Materialization.runsQuery`.
 
+For fixed dependency sets, `triples.dependencyState(attributes, basis)` computes that source
+position and temporal schedule through backend indexes. It includes assertion and retraction
+positions while deriving wakeups only from facts visible in the requested recorded-time view.
+
 Every evaluation also reports the earliest future `validFrom` or `validTo` among facts using a
 discovered dependency attribute. This conservative schedule includes facts that currently suppress
 a result through negation, so expiring evidence can reopen an obligation even when the current
 candidate set is empty. Materialized runs persist and content-bind the same
 `nextTemporalBoundary`; a host scheduler wakes the materializer there and owns timer delivery and
-retry. Boundary discovery currently scans the ordered journal and may schedule a harmless extra
-wakeup for an unrelated entity sharing a dependency attribute, but it does not omit recorded
-future-effective or expiring facts.
+retry. The schedule is attribute-conservative, so an unrelated entity sharing a dependency
+attribute may cause a harmless extra wakeup, but recorded future-effective or expiring facts are
+not omitted.
 
 Read-only planners can evaluate temporary assertions and retractions through
 `Derivation.Overlay`:
@@ -349,9 +353,9 @@ transaction provenance. This makes collect-versus-reuse previews comparable to c
 evaluation without pretending the preview happened.
 
 Overlay evaluation currently requires fixed attributes and rejects transaction-binding clauses.
-Provenance through recursive rules remains future work. Transaction-position and temporal-boundary
-discovery currently scan the ordered journal; large deployments should retain an application
-checkpoint until Triplex exposes indexed consumer receipts.
+Provenance through recursive rules remains future work. Fixed-attribute materializations use the
+backend dependency indexes; dynamic-attribute definitions retain the slower journal fallback
+because no bounded attribute lookup can preserve their semantics.
 
 ## Triples and values
 

@@ -204,6 +204,8 @@ const tripleMatches = (
   (clause.length === 3 || termMatches(clause[3], Option.getOrNull(triple.txId), row));
 
 export interface Reader extends Pick<TriplesService, "match" | "query" | "transaction"> {
+  /** Indexed freshness and temporal scheduling when backed by a full store. */
+  readonly dependencyState?: TriplesService["dependencyState"];
   /** Ordered journal access enables discovery of future valid-time boundaries. */
   readonly transactions?: TriplesService["transactions"];
   /** Private views may provide their own bounded temporal schedule. */
@@ -229,11 +231,10 @@ const transactionIsRelevant = (definition: Definition, transaction: TransactionR
 /**
  * Find the earliest future valid-time edge in the current recorded view.
  *
- * This intentionally scans the portable ordered journal. It is exact for the
- * recorded basis and conservative for query relevance: an unrelated entity
- * using a dependency attribute may cause an extra wakeup, but cannot cause a
- * missed wakeup. Indexed dependency schedules can replace the scan later
- * without changing the public evaluation contract.
+ * Full Triples stores use their indexed dependency state. Restricted readers
+ * may provide a private schedule; dynamic-attribute readers fall back to the
+ * portable journal. All paths are conservative for query relevance: an
+ * unrelated entity may cause an extra wakeup, but cannot cause a missed one.
  */
 const temporalBoundaryFromJournal = (
   triples: Reader,
@@ -242,6 +243,10 @@ const temporalBoundaryFromJournal = (
 ): Effect.Effect<number | undefined, ReadError> =>
   Effect.gen(function* () {
     if (triples.temporalBoundary) return yield* triples.temporalBoundary(definition, basis);
+    if (triples.dependencyState && !definition.dependencies.hasDynamicAttributes) {
+      return (yield* triples.dependencyState(definition.dependencies.attributes, basis))
+        .nextTemporalBoundary;
+    }
     if (!triples.transactions) return undefined;
 
     const attributes = new Set(definition.dependencies.attributes);

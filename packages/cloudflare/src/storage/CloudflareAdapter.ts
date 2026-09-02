@@ -165,6 +165,66 @@ export function makeCloudflareAdapter(ctx: DOState): StorageAdapterService {
         }),
     });
 
+  const dependencyState: StorageAdapterService["dependencyState"] = (attributes, basis) => {
+    const unique = [...new Set(attributes)];
+    if (unique.length === 0) return Effect.succeed({ sourcePosition: 0 });
+    return Effect.try({
+      try: () => {
+        const placeholders = unique.map(() => "?").join(", ");
+        const sourceParams: SqlStorageValue[] = [];
+        const sourceExpression =
+          basis.recordedPosition !== undefined
+            ? (sourceParams.push(basis.recordedPosition, basis.recordedPosition),
+              "CASE WHEN recorded_position > ? THEN 0 WHEN retracted_position IS NOT NULL AND retracted_position <= ? THEN retracted_position ELSE recorded_position END")
+            : basis.recordedAt !== undefined
+              ? (sourceParams.push(basis.recordedAt, basis.recordedAt),
+                "CASE WHEN recorded_at > ? THEN 0 WHEN retracted_at IS NOT NULL AND retracted_at <= ? THEN retracted_position ELSE recorded_position END")
+              : "CASE WHEN retracted_position IS NOT NULL THEN retracted_position ELSE recorded_position END";
+        sourceParams.push(...unique);
+        const source = sqlStorage
+          .exec<{ readonly source_position: number | null }>(
+            `SELECT MAX(${sourceExpression}) AS source_position
+             FROM triples WHERE attribute IN (${placeholders})`,
+            ...sourceParams,
+          )
+          .one();
+
+        const boundaryParams: SqlStorageValue[] = [basis.validAt, basis.validAt, ...unique];
+        const recordedVisibility =
+          basis.recordedPosition !== undefined
+            ? (boundaryParams.push(basis.recordedPosition, basis.recordedPosition),
+              "recorded_position <= ? AND (retracted_position IS NULL OR retracted_position > ?)")
+            : basis.recordedAt !== undefined
+              ? (boundaryParams.push(basis.recordedAt, basis.recordedAt),
+                "recorded_at <= ? AND (retracted_at IS NULL OR retracted_at > ?)")
+              : "retracted_at IS NULL";
+        const boundary = sqlStorage
+          .exec<{ readonly next_temporal_boundary: number | null }>(
+            `SELECT MIN(CASE
+               WHEN valid_from > ? THEN valid_from
+               WHEN valid_to > ? THEN valid_to
+             END) AS next_temporal_boundary
+             FROM triples
+             WHERE attribute IN (${placeholders}) AND ${recordedVisibility}`,
+            ...boundaryParams,
+          )
+          .one();
+        return {
+          sourcePosition: Number(source?.source_position ?? 0),
+          ...(boundary?.next_temporal_boundary === null ||
+          boundary?.next_temporal_boundary === undefined
+            ? {}
+            : { nextTemporalBoundary: Number(boundary.next_temporal_boundary) }),
+        };
+      },
+      catch: (error) =>
+        new ReadError({
+          message: `Failed to read dependency state: ${String(error)}`,
+          cause: error,
+        }),
+    });
+  };
+
   const claimCommand: StorageAdapterService["claimCommand"] = (
     commandId,
     transactionId,
@@ -577,6 +637,7 @@ export function makeCloudflareAdapter(ctx: DOState): StorageAdapterService {
     withTransaction,
     nextCommitPosition,
     currentCommitPosition,
+    dependencyState,
     claimCommand,
     insert,
     batchInsert,

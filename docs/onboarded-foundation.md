@@ -194,6 +194,9 @@ its product-specific response cache and authorization checks.
   attributes rather than returning an incomplete explanation.
 - Entity snapshots and derivation materializations are projections; callers must inspect their
   source position/freshness rather than treating absence as current truth.
+- Fixed derivation dependencies use indexed assertion/retraction positions and temporal edges;
+  dynamic-attribute definitions fall back to journal replay and should not be used for hot-path
+  materializers.
 - FoundationDB and Cloudflare remain experimental and are not Onboarded production targets.
 - A production migration must be rehearsed against an Onboarded database copy and shadow-compared
   before removing the vendored implementation.

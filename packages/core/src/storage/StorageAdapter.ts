@@ -10,6 +10,7 @@ import { Context, Effect } from "effect";
 import type { TripleInput, TripleRow, QueryPattern } from "./types.js";
 import type { ResolvedTemporalBasis } from "../Temporal.js";
 import { WriteError, ReadError, MigrationError } from "../errors/index.js";
+import type { DependencyState } from "../store/Triples.js";
 
 /**
  * StorageAdapterService - Backend-agnostic storage primitives
@@ -20,6 +21,11 @@ export interface StorageAdapterService {
   readonly nextCommitPosition: () => Effect.Effect<number, WriteError>;
   /** Read the latest committed position for an exact read snapshot boundary. */
   readonly currentCommitPosition: () => Effect.Effect<number, ReadError>;
+  /** Indexed projection freshness and valid-time scheduling for fixed attributes. */
+  readonly dependencyState: (
+    attributes: readonly string[],
+    basis: ResolvedTemporalBasis,
+  ) => Effect.Effect<DependencyState, ReadError>;
   /**
    * Atomically reserve a command idempotency identity inside the current
    * transaction. Returns the original transaction id when it was already

@@ -97,6 +97,68 @@ export const makePostgresqlAdapter = (config: PostgresqlAdapterConfig = {}) =>
           ),
         );
 
+      const dependencyState: StorageAdapterService["dependencyState"] = (attributes, basis) => {
+        const unique = [...new Set(attributes)];
+        if (unique.length === 0) return Effect.succeed({ sourcePosition: 0 });
+
+        const source = createParamCollector(PostgresqlDialect);
+        const sourceExpression =
+          basis.recordedPosition !== undefined
+            ? `CASE WHEN recorded_position > ${source.add(basis.recordedPosition)} THEN 0 WHEN retracted_position IS NOT NULL AND retracted_position <= ${source.add(basis.recordedPosition)} THEN retracted_position ELSE recorded_position END`
+            : basis.recordedAt !== undefined
+              ? `CASE WHEN recorded_at > ${source.add(basis.recordedAt)} THEN 0 WHEN retracted_at IS NOT NULL AND retracted_at <= ${source.add(basis.recordedAt)} THEN retracted_position ELSE recorded_position END`
+              : "CASE WHEN retracted_position IS NOT NULL THEN retracted_position ELSE recorded_position END";
+        const sourceAttributes = unique.map((attribute) => source.add(attribute)).join(", ");
+
+        const boundary = createParamCollector(PostgresqlDialect);
+        const validFrom = boundary.add(basis.validAt);
+        const validTo = boundary.add(basis.validAt);
+        const boundaryAttributes = unique.map((attribute) => boundary.add(attribute)).join(", ");
+        const recordedVisibility =
+          basis.recordedPosition !== undefined
+            ? `recorded_position <= ${boundary.add(basis.recordedPosition)} AND (retracted_position IS NULL OR retracted_position > ${boundary.add(basis.recordedPosition)})`
+            : basis.recordedAt !== undefined
+              ? `recorded_at <= ${boundary.add(basis.recordedAt)} AND (retracted_at IS NULL OR retracted_at > ${boundary.add(basis.recordedAt)})`
+              : "retracted_at IS NULL";
+
+        return provide(
+          Effect.all([
+            sql.unsafe<{ readonly source_position: number | string | null }>(
+              `SELECT MAX(${sourceExpression}) AS source_position
+               FROM triples WHERE attribute IN (${sourceAttributes})`,
+              [...source.params],
+            ),
+            sql.unsafe<{ readonly next_temporal_boundary: number | string | null }>(
+              `SELECT MIN(CASE
+                 WHEN valid_from > ${validFrom} THEN valid_from
+                 WHEN valid_to > ${validTo} THEN valid_to
+               END) AS next_temporal_boundary
+               FROM triples
+               WHERE attribute IN (${boundaryAttributes}) AND ${recordedVisibility}`,
+              [...boundary.params],
+            ),
+          ]).pipe(
+            Effect.map(([sourceRows, boundaryRows]) => {
+              const sourcePosition = Number(sourceRows[0]?.source_position ?? 0);
+              const next = boundaryRows[0]?.next_temporal_boundary;
+              return {
+                sourcePosition,
+                ...(next === null || next === undefined
+                  ? {}
+                  : { nextTemporalBoundary: Number(next) }),
+              };
+            }),
+            Effect.mapError(
+              (error) =>
+                new ReadError({
+                  message: `Failed to read dependency state: ${String(error)}`,
+                  cause: error,
+                }),
+            ),
+          ),
+        );
+      };
+
       const claimCommand: StorageAdapterService["claimCommand"] = (
         commandId,
         transactionId,
@@ -550,6 +612,7 @@ export const makePostgresqlAdapter = (config: PostgresqlAdapterConfig = {}) =>
         withTransaction,
         nextCommitPosition,
         currentCommitPosition,
+        dependencyState,
         claimCommand,
         insert,
         batchInsert,

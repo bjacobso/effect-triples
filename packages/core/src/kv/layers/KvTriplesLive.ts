@@ -111,6 +111,47 @@ const currentKvCommitPosition = (backend: KvBackendService): Effect.Effect<numbe
     ),
   );
 
+const dependencyStateFromDatoms = (
+  datoms: readonly Datom[],
+  basis: ResolvedTemporalBasis,
+): { readonly sourcePosition: number; readonly nextTemporalBoundary?: number } => {
+  let sourcePosition = 0;
+  let nextTemporalBoundary: number | undefined;
+  for (const datom of datoms) {
+    const assertionVisible =
+      basis.recordedPosition !== undefined
+        ? datom.recordedPosition <= basis.recordedPosition
+        : basis.recordedAt === undefined || datom.recordedAt <= basis.recordedAt;
+    if (!assertionVisible) continue;
+
+    sourcePosition = Math.max(sourcePosition, datom.recordedPosition);
+    const retractionVisible =
+      datom.retractedPosition !== null &&
+      (basis.recordedPosition !== undefined
+        ? datom.retractedPosition <= basis.recordedPosition
+        : basis.recordedAt === undefined ||
+          (datom.retractedAt !== null && datom.retractedAt <= basis.recordedAt));
+    if (retractionVisible) {
+      sourcePosition = Math.max(sourcePosition, datom.retractedPosition!);
+      continue;
+    }
+
+    for (const boundary of [datom.validFrom, datom.validTo]) {
+      if (
+        boundary !== null &&
+        boundary > basis.validAt &&
+        (nextTemporalBoundary === undefined || boundary < nextTemporalBoundary)
+      ) {
+        nextTemporalBoundary = boundary;
+      }
+    }
+  }
+  return {
+    sourcePosition,
+    ...(nextTemporalBoundary === undefined ? {} : { nextTemporalBoundary }),
+  };
+};
+
 // ─── Datom ↔ Triple conversion ─────────────────────────────────────────────
 
 const datomToTriple = (datom: Datom): Triple => ({
@@ -638,6 +679,19 @@ const makeKvTriplesService = Effect.gen(function* () {
     },
 
     currentPosition: () => currentKvCommitPosition(kvBackend),
+
+    dependencyState: (attributes, basis) =>
+      Effect.gen(function* () {
+        const unique = [...new Set(attributes)];
+        if (unique.length === 0) return { sourcePosition: 0 };
+        const resolved = resolveTemporalBasis(basis, yield* runtime.now);
+        const batches = yield* Effect.forEach(
+          unique,
+          (attribute) => hexaStore.scanCollectAsync({ attribute }, { includeRetracted: true }),
+          { concurrency: 16 },
+        );
+        return dependencyStateFromDatoms(batches.flat(), resolved);
+      }),
 
     // === Datalog reads =====================================================
 

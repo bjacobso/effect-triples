@@ -11,6 +11,7 @@ import { Data, Effect, Option, Schema } from "effect";
 
 import * as CanonicalJson from "../content/CanonicalJson.js";
 import * as ContentIds from "../content/ContentId.js";
+import { unsafe } from "../Branded.js";
 import { Constant as ConstantSchema } from "../datalog/schema.js";
 import type { Constant, DatalogQuery } from "../datalog/types.js";
 import type {
@@ -173,16 +174,6 @@ const stringValue = (row: Triple | undefined): string | undefined =>
 const numberValue = (row: Triple | undefined): number | undefined =>
   row?.value.type === "number" ? row.value.value : undefined;
 
-const grouped = (rows: readonly Triple[]): ReadonlyMap<string, readonly Triple[]> => {
-  const out = new Map<string, Triple[]>();
-  for (const row of rows) {
-    const entity = out.get(row.entityId) ?? [];
-    entity.push(row);
-    out.set(row.entityId, entity);
-  }
-  return out;
-};
-
 const basisEqual = (left: EvaluateOptions["basis"], right: EvaluateOptions["basis"]): boolean =>
   left.validAt === right.validAt && left.recordedAt === right.recordedAt;
 
@@ -217,21 +208,27 @@ const transactionIsRelevant = (definition: Definition, transaction: TransactionR
 export const currentSourcePosition = (
   triples: TriplesService,
   definition: Definition,
+  basis?: EvaluateOptions["basis"],
 ): Effect.Effect<number, ReadError> =>
-  Effect.gen(function* () {
-    let after = 0;
-    let latest = 0;
-    while (true) {
-      const page = yield* triples.transactions({ after, limit: 1_000 });
-      for (const transaction of page.transactions) {
-        if (transactionIsRelevant(definition, transaction)) latest = transaction.position;
-      }
-      if (page.next === undefined || page.next <= after || page.transactions.length < 1_000) {
-        return latest;
-      }
-      after = page.next;
-    }
-  });
+  definition.dependencies.hasDynamicAttributes
+    ? Effect.gen(function* () {
+        let after = 0;
+        let latest = 0;
+        while (true) {
+          const page = yield* triples.transactions({ after, limit: 1_000 });
+          for (const transaction of page.transactions) {
+            if (basis?.recordedAt !== undefined && transaction.instant > basis.recordedAt) continue;
+            if (transactionIsRelevant(definition, transaction)) latest = transaction.position;
+          }
+          if (page.next === undefined || page.next <= after || page.transactions.length < 1_000) {
+            return latest;
+          }
+          after = page.next;
+        }
+      })
+    : triples
+        .dependencyState(definition.dependencies.attributes, basis)
+        .pipe(Effect.map((state) => state.sourcePosition));
 
 const storedCandidate = (candidate: Candidate): StoredCandidate => ({
   id: candidate.id,
@@ -315,10 +312,16 @@ const loadRuns = (
   | Schema.SchemaError
 > =>
   Effect.gen(function* () {
-    const allRows = yield* triples.match({ entityType: System.entityType.run });
+    const namedRuns = yield* triples.match({
+      entityType: System.entityType.run,
+      attribute: System.attribute.name,
+      value: { type: "string", value: name },
+    });
+    const runEntities = [...new Set(namedRuns.map((row) => row.entityId))];
+    const runRows = yield* triples.entities(runEntities);
     const runs: StoredRun[] = [];
-    for (const [runEntity, rows] of grouped(allRows)) {
-      if (stringValue(rowsAt(rows, System.attribute.name)[0]) !== name) continue;
+    for (const [index, runEntity] of runEntities.entries()) {
+      const rows = runRows[index]!;
       const id = stringValue(rowsAt(rows, System.attribute.contentId)[0]);
       const definitionId = stringValue(rowsAt(rows, System.attribute.definition)[0]);
       const configSnapshot = stringValue(rowsAt(rows, System.attribute.configSnapshot)[0]);
@@ -352,9 +355,7 @@ const loadRuns = (
             .filter((value): value is string => value !== undefined),
         ),
       ];
-      const candidateRows = yield* Effect.forEach(candidateEntities, (candidateEntity) =>
-        triples.match({ entityId: candidateEntity }),
-      );
+      const candidateRows = yield* triples.entities(candidateEntities.map(unsafe.entityId));
       const candidates = yield* Effect.forEach(candidateRows, (candidate) =>
         decodeCandidate(candidate, name, basis),
       );
@@ -438,7 +439,7 @@ export const materialize = (
 ): Effect.Effect<MaterializationRun, MaterializationError> =>
   Effect.gen(function* () {
     const [sourcePosition, previous] = yield* Effect.all([
-      currentSourcePosition(triples, definition),
+      currentSourcePosition(triples, definition, options.basis),
       latestRunForName(triples, definition.name),
     ]);
     const evaluation = yield* evaluate(triples, definition, options);
@@ -561,7 +562,7 @@ export const current = (
   Effect.gen(function* () {
     const [runs, currentPosition] = yield* Effect.all([
       loadRuns(triples, definition.name),
-      currentSourcePosition(triples, definition),
+      currentSourcePosition(triples, definition, options.basis),
     ]);
     const run =
       latestRunForDefinition(runs, definition.id) ??

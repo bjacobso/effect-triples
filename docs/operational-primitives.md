@@ -106,9 +106,10 @@ attribute dependencies, and configuration snapshot. Evaluation returns `Candidat
 The complete `Evaluation` also exposes a conservative `nextTemporalBoundary` across the current
 recorded view of every dependency attribute. It includes both future `validFrom` and `validTo`
 edges, including facts inside negated clauses that currently suppress every candidate. This lets a
-host wake exactly when evidence may expire or become effective without a daily full scan. The
-portable implementation scans the ordered journal and can produce harmless extra wakeups for
-unrelated entities that share an attribute, but it does not omit a recorded boundary.
+host wake exactly when evidence may expire or become effective without a daily full scan.
+`Triples.dependencyState` derives both the dependency-relevant source position and this schedule
+through backend attribute indexes. It can produce harmless extra wakeups for unrelated entities
+that share an attribute, but it does not omit a recorded boundary.
 
 `reconcile` is a pure diff that classifies candidates as `added`, `removed`, `changed`, or
 `unchanged`. A host can translate that diff into durable requirement occurrences, tasks, or other
@@ -162,13 +163,12 @@ uniqueness, required relationships, reference target kinds, and Datalog invarian
 support observation mode, which writes first-class violations, and enforcement mode, which rejects
 a command. Cross-entity policy must not be hidden inside value decoding.
 
-### Indexed projection checkpoints
+### Projection ownership
 
-Derivation freshness currently discovers its dependency-relevant source position by scanning the
-ordered transaction journal. Add conventional consumer receipts/checkpoints and an indexed latest
-relevant position so long-running materializers can resume without a full scan. Triplex should not
-turn an added candidate into a Task or a removed candidate into a cancellation; applications own
-durable occurrences, assignment, evidence disposition, conversations, and retry policy.
+Indexed dependency state and durable consumer checkpoints now let long-running materializers avoid
+a full journal replay. Triplex should not turn an added candidate into a Task or a removed candidate
+into a cancellation; applications own durable occurrences, assignment, evidence disposition,
+conversations, and retry policy.
 
 ### Content-addressed blobs
 

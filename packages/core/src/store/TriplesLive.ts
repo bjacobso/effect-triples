@@ -579,6 +579,11 @@ export const TriplesLive = Layer.effect(
       transactionByCommand,
       transactions,
       currentPosition: adapter.currentCommitPosition,
+      dependencyState: (attributes, basis) =>
+        Effect.gen(function* () {
+          const resolved = resolveTemporalBasis(basis, yield* now);
+          return yield* adapter.dependencyState(attributes, resolved);
+        }),
       query,
       queryPage,
       explain,

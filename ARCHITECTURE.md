@@ -47,6 +47,10 @@ hosts typed configuration as a modular layer over the same core.
   Compare-and-retract prevents stale workers from overwriting a newer position. Checkpoint
   maintenance is the one unjournaled internal mutation: emitting it into the feed would cause a
   consumer to recursively consume and checkpoint its own cursor update.
+- `Triples.dependencyState` is the storage-independent projection index. SQL implementations query
+  covering attribute/history indexes, while KV scans the AEVT prefix. It returns the latest
+  assertion-or-retraction position and earliest future valid-time edge for one fixed dependency
+  set, so freshness checks and temporal wakeups do not replay the transaction journal.
 - Wrapped Datalog pagination uses versioned opaque cursors whose content-addressed fingerprints bind
   the canonical query, complete projected-row keyset order, temporal basis, and database scope.
   Facts retain assertion and retraction commit positions internally, so subsequent pages read the

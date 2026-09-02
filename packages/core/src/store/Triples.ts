@@ -117,6 +117,13 @@ export interface TransactionPage {
   readonly next?: number;
 }
 
+export interface DependencyState {
+  /** Latest assertion or retraction position for the selected attributes. */
+  readonly sourcePosition: number;
+  /** Earliest future valid-time edge in the selected attributes' recorded view. */
+  readonly nextTemporalBoundary?: number;
+}
+
 /**
  * Options accepted by the Datalog read methods.
  */
@@ -201,6 +208,14 @@ export interface TriplesService {
   ) => Effect.Effect<TransactionPage, ReadError>;
   /** Latest committed backend position, including internal maintenance writes. */
   readonly currentPosition: () => Effect.Effect<number, ReadError>;
+  /**
+   * Indexed freshness and valid-time schedule for a fixed attribute dependency
+   * set. An empty set has source position zero and no temporal boundary.
+   */
+  readonly dependencyState: (
+    attributes: readonly string[],
+    basis?: TemporalBasis,
+  ) => Effect.Effect<DependencyState, ReadError>;
 
   // --- Datalog reads -------------------------------------------------------
   /** Execute a Datalog query. */

@@ -70,6 +70,7 @@ export {
   type TransactionRecord,
   type TransactionPageRequest,
   type TransactionPage,
+  type DependencyState,
   type QueryOptions,
   type QueryResponse,
   type PagedQueryResponse,

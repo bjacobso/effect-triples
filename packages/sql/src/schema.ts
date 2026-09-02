@@ -109,6 +109,8 @@ export const COMMAND_RECEIPTS_TABLE_DDL = `
 export const INDEX_DDLS = [
   "CREATE INDEX IF NOT EXISTS idx_entity ON triples(entity_id) WHERE retracted_at IS NULL",
   "CREATE INDEX IF NOT EXISTS idx_attribute ON triples(attribute) WHERE retracted_at IS NULL",
+  "CREATE INDEX IF NOT EXISTS idx_attribute_history ON triples(attribute, recorded_position, retracted_position)",
+  "CREATE INDEX IF NOT EXISTS idx_attribute_temporal ON triples(attribute, valid_from, valid_to) WHERE retracted_at IS NULL",
   "CREATE INDEX IF NOT EXISTS idx_type ON triples(entity_type) WHERE retracted_at IS NULL",
   "CREATE INDEX IF NOT EXISTS idx_attr_string ON triples(attribute, value_string) WHERE retracted_at IS NULL AND value_type = 'string'",
   "CREATE INDEX IF NOT EXISTS idx_attr_number ON triples(attribute, value_number) WHERE retracted_at IS NULL AND value_type = 'number'",
@@ -125,6 +127,8 @@ export const INDEX_DDLS = [
 export const INDEX_NAMES = [
   "idx_entity",
   "idx_attribute",
+  "idx_attribute_history",
+  "idx_attribute_temporal",
   "idx_type",
   "idx_attr_string",
   "idx_attr_number",

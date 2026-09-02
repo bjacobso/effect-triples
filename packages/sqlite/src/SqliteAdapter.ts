@@ -135,6 +135,68 @@ export const makeSqliteAdapter = (config: SqliteAdapterConfig = {}) =>
           ),
         );
 
+      const dependencyState: StorageAdapterService["dependencyState"] = (attributes, basis) => {
+        const unique = [...new Set(attributes)];
+        if (unique.length === 0) return Effect.succeed({ sourcePosition: 0 });
+        const placeholders = unique.map(() => "?").join(", ");
+        const sourceParams: unknown[] = [];
+        const sourceExpression =
+          basis.recordedPosition !== undefined
+            ? (sourceParams.push(basis.recordedPosition, basis.recordedPosition),
+              "CASE WHEN recorded_position > ? THEN 0 WHEN retracted_position IS NOT NULL AND retracted_position <= ? THEN retracted_position ELSE recorded_position END")
+            : basis.recordedAt !== undefined
+              ? (sourceParams.push(basis.recordedAt, basis.recordedAt),
+                "CASE WHEN recorded_at > ? THEN 0 WHEN retracted_at IS NOT NULL AND retracted_at <= ? THEN retracted_position ELSE recorded_position END")
+              : "CASE WHEN retracted_position IS NOT NULL THEN retracted_position ELSE recorded_position END";
+        sourceParams.push(...unique);
+
+        const boundaryParams: unknown[] = [...unique];
+        const recordedVisibility =
+          basis.recordedPosition !== undefined
+            ? (boundaryParams.push(basis.recordedPosition, basis.recordedPosition),
+              "recorded_position <= ? AND (retracted_position IS NULL OR retracted_position > ?)")
+            : basis.recordedAt !== undefined
+              ? (boundaryParams.push(basis.recordedAt, basis.recordedAt),
+                "recorded_at <= ? AND (retracted_at IS NULL OR retracted_at > ?)")
+              : "retracted_at IS NULL";
+        return provide(
+          Effect.all([
+            sql.unsafe<{ readonly source_position: number | null }>(
+              `SELECT MAX(${sourceExpression}) AS source_position
+               FROM triples WHERE attribute IN (${placeholders})`,
+              sourceParams,
+            ),
+            sql.unsafe<{ readonly next_temporal_boundary: number | null }>(
+              `SELECT MIN(CASE
+                 WHEN valid_from > ? THEN valid_from
+                 WHEN valid_to > ? THEN valid_to
+               END) AS next_temporal_boundary
+               FROM triples
+               WHERE attribute IN (${placeholders}) AND ${recordedVisibility}`,
+              [basis.validAt, basis.validAt, ...boundaryParams],
+            ),
+          ]).pipe(
+            Effect.map(([sourceRows, boundaryRows]) => {
+              const sourcePosition = Number(sourceRows[0]?.source_position ?? 0);
+              const boundary = boundaryRows[0]?.next_temporal_boundary;
+              return {
+                sourcePosition,
+                ...(boundary === null || boundary === undefined
+                  ? {}
+                  : { nextTemporalBoundary: Number(boundary) }),
+              };
+            }),
+            Effect.mapError(
+              (error) =>
+                new ReadError({
+                  message: `Failed to read dependency state: ${String(error)}`,
+                  cause: error,
+                }),
+            ),
+          ),
+        );
+      };
+
       const claimCommand: StorageAdapterService["claimCommand"] = (
         commandId,
         transactionId,
@@ -629,6 +691,7 @@ export const makeSqliteAdapter = (config: SqliteAdapterConfig = {}) =>
         withTransaction,
         nextCommitPosition,
         currentCommitPosition,
+        dependencyState,
         claimCommand,
         insert,
         batchInsert,

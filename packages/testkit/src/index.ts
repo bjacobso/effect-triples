@@ -23,6 +23,7 @@ import {
   type EntityId,
 } from "@bjacobso/triplex";
 import { ConsumerCheckpoint } from "@bjacobso/triplex/operational";
+import * as Derivation from "@bjacobso/triplex/derivation";
 
 // ─── Lightweight fixture descriptors (unchanged) ────────────────────────────
 
@@ -540,6 +541,132 @@ export const triplesConformanceCases: readonly ConformanceCase[] = [
       yield* check(
         page.transactions[0]?.txId === committed.txId && page.next === committed.position,
         "transaction journals should be resumable from an ordered commit position",
+      );
+    }),
+  },
+  {
+    name: "dependency state is attribute-scoped and schedules temporal edges",
+    run: Effect.gen(function* () {
+      const t = yield* Triples;
+      const attribute = ":conf-dependency/status";
+      const future = yield* t.transact([
+        {
+          op: "assert",
+          entityId: "conf:dependency:future",
+          attribute,
+          value: string("scheduled"),
+          validFrom: 500,
+          validTo: 800,
+        },
+      ]);
+      const expiring = yield* t.transact([
+        {
+          op: "assert",
+          entityId: "conf:dependency:expiring",
+          attribute,
+          value: string("active"),
+          validFrom: 50,
+          validTo: 300,
+        },
+      ]);
+      yield* t.transact([
+        {
+          op: "assert",
+          entityId: "conf:dependency:unrelated",
+          attribute: ":conf-dependency/unrelated",
+          value: string("ignored"),
+        },
+      ]);
+
+      const initial = yield* t.dependencyState([attribute, attribute], { validAt: 100 });
+      yield* check(
+        initial.sourcePosition === expiring.position && initial.nextTemporalBoundary === 300,
+        "dependency state should deduplicate attributes, ignore unrelated commits, and choose the earliest edge",
+      );
+
+      const retractFuture = yield* t.transact([{ op: "retract", id: future.triples[0]!.id }]);
+      const withoutFuture = yield* t.dependencyState([attribute], { validAt: 100 });
+      yield* check(
+        withoutFuture.sourcePosition === retractFuture.position &&
+          withoutFuture.nextTemporalBoundary === 300,
+        "a retraction should advance freshness and remove the retracted fact's schedule",
+      );
+
+      const retractExpiring = yield* t.transact([{ op: "retract", id: expiring.triples[0]!.id }]);
+      const empty = yield* t.dependencyState([attribute], { validAt: 100 });
+      yield* check(
+        empty.sourcePosition === retractExpiring.position &&
+          empty.nextTemporalBoundary === undefined,
+        "a dependency with only retracted facts should retain its change position but no wakeup",
+      );
+      yield* check(
+        JSON.stringify(yield* t.dependencyState([], { validAt: 100 })) ===
+          JSON.stringify({ sourcePosition: 0 }),
+        "an empty dependency set should have a stable empty state",
+      );
+    }),
+  },
+  {
+    name: "derivation materialization uses indexed dependency freshness",
+    run: Effect.gen(function* () {
+      const t = yield* Triples;
+      const definition = yield* Derivation.make({
+        name: "conf.dependency.projection",
+        configSnapshot: "conf:config:dependency-v1",
+        identity: ["?entity"],
+        query: {
+          find: ["?entity", "?status"],
+          where: [["?entity", ":conf-projection/status", "?status"]],
+        },
+      });
+      yield* check(
+        (yield* Derivation.Materialization.current(t, definition, { basis: { validAt: 100 } }))
+          .status === "unmaterialized",
+        "a new indexed projection should be explicitly unmaterialized",
+      );
+
+      yield* t.assert({
+        entityId: "conf:projection:current",
+        attribute: ":conf-projection/status",
+        value: string("ready"),
+        validFrom: 50,
+      });
+      const first = yield* Derivation.Materialization.materialize(t, definition, {
+        basis: { validAt: 100 },
+      });
+      yield* check(
+        first.candidates.length === 1 && first.nextTemporalBoundary === undefined,
+        "the first indexed materialization should persist its current candidate",
+      );
+
+      yield* t.assert({
+        entityId: "conf:projection:unrelated",
+        attribute: ":conf-projection/note",
+        value: string("ignored"),
+      });
+      yield* check(
+        (yield* Derivation.Materialization.current(t, definition, { basis: { validAt: 100 } }))
+          .status === "current",
+        "an unrelated attribute must not stale an indexed projection",
+      );
+
+      yield* t.assert({
+        entityId: "conf:projection:future",
+        attribute: ":conf-projection/status",
+        value: string("scheduled"),
+        validFrom: 500,
+      });
+      yield* check(
+        (yield* Derivation.Materialization.current(t, definition, { basis: { validAt: 100 } }))
+          .status === "stale",
+        "a relevant future-effective assertion must stale the projection",
+      );
+      const refreshed = yield* Derivation.Materialization.materialize(t, definition, {
+        basis: { validAt: 100 },
+      });
+      yield* check(
+        refreshed.candidates.length === 1 && refreshed.nextTemporalBoundary === 500,
+        "refresh should retain current results and persist the future wakeup",
       );
     }),
   },

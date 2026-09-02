@@ -8,10 +8,10 @@ compare-and-retract conditions, causal transaction envelopes, and per-transactio
 are implemented, including a backend-issued commit cursor and resumable transaction pages. The
 portable derivation candidates and their immutable, freshness-aware materialization runs are also
 implemented, including durable temporal wakeups for future-effective and expiring evidence. The
-wrapped Datalog API now has typed, scope-bound, commit-position-stable keyset cursors. The next
-reliability milestone is indexed dependency schedules and projection freshness, followed by graph
-constraints. Command receipts are atomically unique and durable consumer checkpoints are available
-through the `operational` subpath.
+wrapped Datalog API now has typed, scope-bound, commit-position-stable keyset cursors. Fixed
+attribute dependency sets now have indexed freshness positions and temporal schedules across KV,
+SQLite, and PostgreSQL. The next reliability milestone is graph constraints. Command receipts are
+atomically unique and durable consumer checkpoints are available through the `operational` subpath.
 
 ## Immediate correctness gate: backend parity
 
@@ -65,8 +65,8 @@ through the `operational` subpath.
 - Structural derivations expose the earliest recorded future `validFrom` or `validTo` across their
   dependency attributes. Immutable materialization runs persist and content-bind that schedule,
   including zero-candidate runs suppressed by negated evidence. A host scheduler can therefore
-  reopen expiry-driven projections without a daily full scan. Next: replace the conservative
-  journal scan with indexed dependency schedules and durable consumer checkpoints.
+  reopen expiry-driven projections without a daily full scan. Fixed attribute sets use backend
+  dependency indexes; dynamic-attribute definitions retain an explicit journal fallback.
 
 ## 4. Integrated Full-Text Search (FTS)
 

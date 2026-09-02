@@ -30,7 +30,10 @@ describe("host-owned SQLite migrations", () => {
         const receiptColumns = yield* sql.unsafe<{ name: string }>(
           "PRAGMA table_info(triplex_command_receipts)",
         );
-        return { before, applied, columns, snapshotColumns, blobColumns, receiptColumns };
+        const indexes = yield* sql<{ name: string }>`
+          SELECT name FROM sqlite_master WHERE type = 'index' AND tbl_name = 'triples'
+        `;
+        return { before, applied, columns, snapshotColumns, blobColumns, receiptColumns, indexes };
       }),
     );
 
@@ -53,6 +56,9 @@ describe("host-owned SQLite migrations", () => {
     expect(result.blobColumns.map(({ name }) => name)).not.toContain("ref_count");
     expect(result.receiptColumns.map(({ name }) => name)).toEqual(
       expect.arrayContaining(["command_id", "transaction_id", "recorded_at"]),
+    );
+    expect(result.indexes.map(({ name }) => name)).toEqual(
+      expect.arrayContaining(["idx_attribute_history", "idx_attribute_temporal"]),
     );
   });
 });
