@@ -53,7 +53,6 @@ function stubStore(triple: Triple | null): TriplesService {
     entity: () => Effect.succeed([]),
     entities: () => Effect.succeed([]),
     match: () => Effect.succeed([]),
-    matchAsOf: () => Effect.succeed([]),
     history: () => Effect.succeed([]),
     transaction: () =>
       Effect.succeed({
@@ -89,7 +88,6 @@ function stubStore(triple: Triple | null): TriplesService {
     queryPage: () => Effect.succeed({ results: [] }),
     explain: () => Effect.succeed({ queryPlan: { backend: "test", steps: [] } }),
     explainPage: () => Effect.succeed({ queryPlan: { backend: "test", steps: [] } }),
-    withTransaction: (effect) => effect,
   };
 }
 

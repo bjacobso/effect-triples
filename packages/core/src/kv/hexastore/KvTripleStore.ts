@@ -852,16 +852,6 @@ export class KvTripleStore {
     });
   }
 
-  /** Synchronous scan at one historical instant, when the backend supports it. */
-  scanCollectAsOf(pattern: ScanPattern, asOf: number): Datom[] | null {
-    return this.scanCollectTemporal(pattern, { recordedAt: asOf, validAt: asOf });
-  }
-
-  /** Batched asynchronous scan at one historical instant. */
-  scanCollectAsOfAsync(pattern: ScanPattern, asOf: number): Effect.Effect<Datom[]> {
-    return this.scanCollectTemporalAsync(pattern, { recordedAt: asOf, validAt: asOf });
-  }
-
   /** Synchronous bitemporal scan, when the backend supports it. */
   scanCollectTemporal(pattern: ScanPattern, basis: ResolvedTemporalBasis): Datom[] | null {
     const datoms = this.scanCollect(pattern, { includeRetracted: true });
@@ -904,14 +894,6 @@ export class KvTripleStore {
       }
       return results;
     });
-  }
-
-  /**
-   * Scan as-of a point in time.
-   * Returns only datoms that were active (non-retracted) at the given timestamp.
-   */
-  scanAsOf(pattern: ScanPattern, asOf: number): Stream.Stream<Datom> {
-    return this.scanTemporal(pattern, { recordedAt: asOf, validAt: asOf });
   }
 
   /** Stream facts visible at one bitemporal basis. */

@@ -11,3 +11,5 @@
 Harden configuration identity, validation, subscriptions, and backend safety; add bitemporal reads, durable journals, batch loading, scope-bound snapshot-stable Datalog pagination, and content-addressed derivation candidates with provenance, durable materialization checkpoints and temporal wakeups, read-only hypothetical overlays, and a standalone compliance-host example and adoption guide.
 
 Establish the greenfield storage and API baseline: one v1 SQL migration, one recorded-time retraction field, one bitemporal query basis, actor-only journal provenance, and raw Datalog as the sole structural query language.
+
+Remove redundant pre-release surfaces: the unused demo database schemas, transaction-time-only aliases, the non-portable transaction escape hatch, duplicate snapshot composition, synthetic snapshot triple compatibility, and advisory blob reference counts.

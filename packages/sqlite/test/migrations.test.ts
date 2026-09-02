@@ -26,7 +26,8 @@ describe("host-owned SQLite migrations", () => {
         const snapshotColumns = yield* sql.unsafe<{ name: string }>(
           "PRAGMA table_info(entity_snapshots)",
         );
-        return { before, applied, columns, snapshotColumns };
+        const blobColumns = yield* sql.unsafe<{ name: string }>("PRAGMA table_info(entity_blobs)");
+        return { before, applied, columns, snapshotColumns, blobColumns };
       }),
     );
 
@@ -46,5 +47,6 @@ describe("host-owned SQLite migrations", () => {
     expect(result.columns.map(({ name }) => name)).not.toContain("created_at");
     expect(result.columns.map(({ name }) => name)).not.toContain("recorded_retracted_at");
     expect(result.snapshotColumns.map(({ name }) => name)).toContain("tx_position");
+    expect(result.blobColumns.map(({ name }) => name)).not.toContain("ref_count");
   });
 });

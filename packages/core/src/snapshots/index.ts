@@ -26,8 +26,5 @@ export {
 // Layer implementations
 export { SnapshotServiceLive, SnapshotWriterLive } from "./SnapshotServiceLive.js";
 
-// Store wrapper (decorator for automatic snapshot materialization)
-export { wrapStoreWithSnapshots } from "./wrapStoreWithSnapshots.js";
-
 // StoreCapability (composable capability interface)
 export { makeEntitySnapshotsCapability } from "./EntitySnapshotsCapability.js";

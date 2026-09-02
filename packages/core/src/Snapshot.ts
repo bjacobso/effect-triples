@@ -2,7 +2,6 @@
  * Snapshot Module
  *
  * Schemas for entity snapshots and transaction history.
- * Used by the /tx page to visualize transactions and entity state over time.
  */
 
 import { Schema } from "effect";

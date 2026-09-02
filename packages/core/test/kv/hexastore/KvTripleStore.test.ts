@@ -280,9 +280,9 @@ describe("ref values", () => {
   });
 });
 
-// ─── ScanAsOf ──────────────────────────────────────────────────────────────
+// ─── Temporal scan ─────────────────────────────────────────────────────────
 
-describe("scanAsOf", () => {
+describe("scanTemporal", () => {
   it("shows datoms active at a given time", async () => {
     const d1 = makeDatom({
       entity: "emp:alice",
@@ -295,20 +295,28 @@ describe("scanAsOf", () => {
     await run(store.retract(d1.tripleId, 3000, "tx:2", 2));
 
     // Before creation → nothing
-    const before = await run(collect(store.scanAsOf({ entity: "emp:alice" }, 500)));
+    const before = await run(
+      collect(store.scanTemporal({ entity: "emp:alice" }, { recordedAt: 500, validAt: 500 })),
+    );
     expect(before.length).toBe(0);
 
     // After creation, before retraction → visible
-    const during = await run(collect(store.scanAsOf({ entity: "emp:alice" }, 2000)));
+    const during = await run(
+      collect(store.scanTemporal({ entity: "emp:alice" }, { recordedAt: 2000, validAt: 2000 })),
+    );
     expect(during.length).toBe(1);
     expect(during[0]!.tripleId).toBe(d1.tripleId);
 
     // At retraction time → not visible (retractedAt is exclusive: retractedAt > asOf)
-    const atRetraction = await run(collect(store.scanAsOf({ entity: "emp:alice" }, 3000)));
+    const atRetraction = await run(
+      collect(store.scanTemporal({ entity: "emp:alice" }, { recordedAt: 3000, validAt: 3000 })),
+    );
     expect(atRetraction.length).toBe(0);
 
     // After retraction → not visible
-    const after = await run(collect(store.scanAsOf({ entity: "emp:alice" }, 5000)));
+    const after = await run(
+      collect(store.scanTemporal({ entity: "emp:alice" }, { recordedAt: 5000, validAt: 5000 })),
+    );
     expect(after.length).toBe(0);
   });
 
@@ -335,14 +343,24 @@ describe("scanAsOf", () => {
 
     // At t=1500, only v1 is visible
     const at1500 = await run(
-      collect(store.scanAsOf({ entity: "emp:alice", attribute: ":employee/name" }, 1500)),
+      collect(
+        store.scanTemporal(
+          { entity: "emp:alice", attribute: ":employee/name" },
+          { recordedAt: 1500, validAt: 1500 },
+        ),
+      ),
     );
     expect(at1500.length).toBe(1);
     expect((at1500[0]!.value as { value: string }).value).toBe("Alice");
 
     // At t=2500, only v2 is visible
     const at2500 = await run(
-      collect(store.scanAsOf({ entity: "emp:alice", attribute: ":employee/name" }, 2500)),
+      collect(
+        store.scanTemporal(
+          { entity: "emp:alice", attribute: ":employee/name" },
+          { recordedAt: 2500, validAt: 2500 },
+        ),
+      ),
     );
     expect(at2500.length).toBe(1);
     expect((at2500[0]!.value as { value: string }).value).toBe("Alice Smith");

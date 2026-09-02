@@ -48,7 +48,7 @@ import {
   reservedAssertError,
   reservedWriteError,
 } from "../../store/systemNamespace.js";
-import { basisFromAsOf, resolveTemporalBasis, type ResolvedTemporalBasis } from "../../Temporal.js";
+import { resolveTemporalBasis, type ResolvedTemporalBasis } from "../../Temporal.js";
 import { TxAttributes } from "../../utils/id.js";
 import { finishPagination, preparePagination } from "../../Pagination.js";
 
@@ -473,14 +473,6 @@ const makeKvTriplesService = Effect.gen(function* () {
           ),
         )),
 
-    withTransaction: <A, E>(effect: Effect.Effect<A, E>) =>
-      effect.pipe(
-        Effect.catch((e) => {
-          if (e instanceof WriteError) return Effect.fail(e) as Effect.Effect<A, E | WriteError>;
-          return Effect.fail(e);
-        }),
-      ),
-
     // === Triple-level reads ================================================
 
     get: (id: TripleId) =>
@@ -528,19 +520,6 @@ const makeKvTriplesService = Effect.gen(function* () {
       Effect.gen(function* () {
         return yield* match(pattern, resolveTemporalBasis(basis, yield* runtime.now));
       }),
-
-    matchAsOf: (pattern: Pattern, asOf: number) =>
-      Effect.gen(function* () {
-        const scanPat = patternToScan(pattern);
-        const datoms = yield* Stream.runCollect(
-          hexaStore.scanTemporal(scanPat, resolveTemporalBasis(basisFromAsOf(asOf), asOf)),
-        );
-        return Array.from(datoms).map(datomToTriple);
-      }).pipe(
-        Effect.catch((e) =>
-          Effect.fail(new ReadError({ message: `MatchAsOf failed: ${String(e)}`, cause: e })),
-        ),
-      ),
 
     history: (entityId: EntityId) =>
       Effect.gen(function* () {

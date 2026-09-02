@@ -451,10 +451,11 @@ methods expose this directly:
 Effect.gen(function* () {
   const triples = yield* Triples;
 
-  // point-in-time: facts that were live at a given instant (epoch millis)
-  const asOfLastWeek = yield* triples.matchAsOf(
+  // Point-in-time: facts that were recorded and valid at the given instant.
+  const lastWeek = Date.now() - 7 * 24 * 60 * 60 * 1000;
+  const asOfLastWeek = yield* triples.match(
     { attribute: ":person/name" },
-    Date.now() - 7 * 24 * 60 * 60 * 1000,
+    { recordedAt: lastWeek, validAt: lastWeek },
   );
 
   // full assertion/retraction history for one entity
@@ -770,8 +771,8 @@ Typed configuration stays under `@bjacobso/triplex/config`, and shared content-a
 primitives stay under `@bjacobso/triplex/content`. Portable derivations stay under
 `@bjacobso/triplex/derivation`, keeping these entrypoints tree-shakeable.
 
-The core package also exposes tree-shakeable ESM subpaths for the schemas, types, and
-transport surface:
+The core package also exposes tree-shakeable ESM subpaths for focused schemas and
+types:
 
 ```ts
 import { TripleInput, TransactOp } from "@bjacobso/triplex/Triple";

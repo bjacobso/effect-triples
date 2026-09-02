@@ -198,7 +198,7 @@ export const DatabaseManagerLive = Layer.effect(
         // Built-in capabilities
         const capabilities: StoreCapability[] = [
           makeChangeEmissionCapability(emitter, runtimeNow),
-          makeEntitySnapshotsCapability(writer, reader),
+          makeEntitySnapshotsCapability(writer),
         ];
 
         // Add externally-injected feature capabilities (reactive constraints, processes, etc.)

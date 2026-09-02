@@ -225,7 +225,13 @@ const makeSnapshotWriter = Effect.gen(function* () {
                 }
                 return result;
               })
-            : store.matchAsOf({ entityId }, txTime)
+            : store.match(
+                { entityId },
+                {
+                  recordedAt: txTime,
+                  validAt: txTime,
+                },
+              )
         ).pipe(
           Effect.mapError(
             (e) =>
@@ -248,15 +254,12 @@ const makeSnapshotWriter = Effect.gen(function* () {
           return Option.isSome(t.entityType) ? t.entityType.value : null;
         }, null);
 
-        // Upsert blob (INSERT OR IGNORE for dedup, then increment ref_count).
-        // TODO: ref_count is incremented here but never decremented — the
-        // decrement side should be implemented when blob garbage collection
-        // is built (delete blobs where ref_count = 0). See entity-snapshots spec.
+        // Store the content-addressed blob once; snapshots share it by hash.
         yield* adapter
           .rawQuery(
-            `INSERT INTO entity_blobs (hash, data, format_version, byte_size, ref_count)
-             VALUES (?, ?, ?, ?, 1)
-             ON CONFLICT(hash) DO UPDATE SET ref_count = entity_blobs.ref_count + excluded.ref_count`,
+            `INSERT INTO entity_blobs (hash, data, format_version, byte_size)
+             VALUES (?, ?, ?, ?)
+             ON CONFLICT(hash) DO NOTHING`,
             [hash, canonical, FORMAT_VERSION, byteSize],
           )
           .pipe(

@@ -87,8 +87,6 @@ export {
   EMPTY_ENTITY_HASH,
   diffAttributes,
 } from "./snapshots/canonical.js";
-export { wrapStoreWithSnapshots } from "./snapshots/wrapStoreWithSnapshots.js";
-
 export {
   compile,
   compileToSql,

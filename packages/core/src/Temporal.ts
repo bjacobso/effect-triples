@@ -44,9 +44,3 @@ export const resolveTemporalBasis = (
     validAt: basis?.validAt ?? now,
   };
 };
-
-/** Compatibility basis for the former transaction-time-only `asOf` API. */
-export const basisFromAsOf = (asOf: number): TemporalBasis => ({
-  recordedAt: asOf,
-  validAt: asOf,
-});

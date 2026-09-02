@@ -137,8 +137,7 @@ export const ENTITY_BLOBS_TABLE_DDL = `
     hash TEXT PRIMARY KEY NOT NULL,
     data TEXT NOT NULL,
     format_version INTEGER NOT NULL DEFAULT 1,
-    byte_size INTEGER NOT NULL,
-    ref_count INTEGER NOT NULL DEFAULT 1
+    byte_size INTEGER NOT NULL
   )
 `;
 

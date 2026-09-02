@@ -308,9 +308,9 @@ describe("KvTriplesLive - transact", () => {
   });
 });
 
-// ─── MatchAsOf (time travel) ───────────────────────────────────────────────
+// ─── Temporal matching ─────────────────────────────────────────────────────
 
-describe("KvTriplesLive - matchAsOf", () => {
+describe("KvTriplesLive - temporal match", () => {
   it("returns triples active at a point in time", async () => {
     await runTest(
       Effect.gen(function* () {
@@ -331,11 +331,18 @@ describe("KvTriplesLive - matchAsOf", () => {
         yield* store.retract(triple.id);
 
         // Query at time before retraction — should see the triple
-        const beforeRetract = yield* store.matchAsOf({ entityId: "e:1" }, afterAssert);
+        const beforeRetract = yield* store.match(
+          { entityId: "e:1" },
+          { recordedAt: afterAssert, validAt: afterAssert },
+        );
         expect(beforeRetract.length).toBe(1);
 
         // Query at current time — should not see the triple
-        const afterRetract = yield* store.matchAsOf({ entityId: "e:1" }, Date.now());
+        const now = Date.now();
+        const afterRetract = yield* store.match(
+          { entityId: "e:1" },
+          { recordedAt: now, validAt: now },
+        );
         expect(afterRetract.length).toBe(0);
       }),
     );

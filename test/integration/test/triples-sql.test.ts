@@ -486,7 +486,10 @@ describe("Triples", () => {
           });
 
           // Query as of before the change
-          const pastState = yield* store.matchAsOf({ entityId: "person-1" }, timeAfterFirst);
+          const pastState = yield* store.match(
+            { entityId: "person-1" },
+            { recordedAt: timeAfterFirst, validAt: timeAfterFirst },
+          );
 
           expect(pastState).toHaveLength(1);
           expect(pastState[0]!.value).toEqual({ type: "string", value: "Alice" });

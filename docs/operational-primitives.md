@@ -16,9 +16,6 @@ metadata writes commit or roll back together. The in-memory backend serializes t
 buffers their writes. A completed KV transaction clears the shared decoded-datom cache so reads
 observe its result.
 
-`withTransaction` remains an adapter escape hatch. Because arbitrary effects cannot be rebound to
-a KV transaction-scoped `Triples` service, portable code must use `transact`.
-
 ### Compare-and-retract
 
 A transaction may declare `TripleLive` preconditions. Each condition must identify an explicit

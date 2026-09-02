@@ -2,52 +2,19 @@
  * EntitySnapshots capability — materializes JSON snapshots + content hashes
  * on every write operation.
  *
- * This is a proper `StoreCapability` wrapping the snapshot materialization logic
- * from `wrapStoreWithSnapshots`. Write operations trigger post-commit snapshot
- * materialization for all touched entities. The `getEntity` method is enhanced
- * with a snapshot fast-path when a reader is available.
+ * Write operations trigger post-commit snapshot materialization for all touched
+ * entities. Snapshot reads remain explicit through `SnapshotService`.
  *
- * Priority: 60 (above ChangeEmission at 50, below AuditLog)
- * Requires: none
- *
- * @see specs/core/entity-snapshots.md
- * @see specs/core/composable-store.md
+ * Priority: 60 (outside change emission at 50). Requires no other capability.
  */
 
-import { Effect, Result, Encoding, Option, pipe } from "effect";
+import { Effect, Option, pipe } from "effect";
 import type { StoreCapability } from "../store/StoreCapability.js";
 import type { TriplesService } from "../store/Triples.js";
-import type { SnapshotWriterShape, SnapshotServiceShape } from "./SnapshotService.js";
+import type { SnapshotWriterShape } from "./SnapshotService.js";
 import type { Triple, EntityId } from "../Triple.js";
 import { generateTransactionId, SystemPrefixes, TxAttributes } from "../utils/id.js";
 import { WriteError } from "../errors/index.js";
-
-const SNAPSHOT_ID_PREFIX = "snap:";
-
-const decodePart = (value: string): string =>
-  Result.getOrThrow(Encoding.decodeBase64UrlString(value));
-
-const parseSnapshotTripleId = (
-  id: string,
-): { entityId: string; attribute: string; index: number; value: Triple["value"] } | null => {
-  if (!id.startsWith(SNAPSHOT_ID_PREFIX)) return null;
-  const parts = id.slice(SNAPSHOT_ID_PREFIX.length).split(":");
-  if (parts.length !== 4) return null;
-  const [encodedEntityId, encodedAttribute, indexRaw, encodedValue] = parts;
-  const index = Number(indexRaw);
-  if (!Number.isInteger(index) || index < 0) return null;
-
-  try {
-    return {
-      entityId: decodePart(encodedEntityId!),
-      attribute: decodePart(encodedAttribute!),
-      index,
-      value: JSON.parse(decodePart(encodedValue!)) as Triple["value"],
-    };
-  } catch {
-    return null;
-  }
-};
 
 const resolveTxTime = (
   store: TriplesService,
@@ -136,27 +103,13 @@ const uniqueEntityIds = (triples: readonly Triple[]): string[] => [
  * Create an EntitySnapshots capability.
  *
  * @param writer - Snapshot writer for materializing snapshots on writes
- * @param _reader - Reserved for future snapshot-based read fast paths
  */
-export const makeEntitySnapshotsCapability = (
-  writer: SnapshotWriterShape,
-  _reader?: SnapshotServiceShape,
-): StoreCapability => ({
+export const makeEntitySnapshotsCapability = (writer: SnapshotWriterShape): StoreCapability => ({
   name: "EntitySnapshots",
   priority: 60,
   requires: [],
   wrap: (store: TriplesService): TriplesService => ({
     ...store,
-    // -----------------------------------------------------------------------
-    // Read operations — enhanced getEntity, rest pass through
-    // -----------------------------------------------------------------------
-
-    // NOTE: The snapshot-based getEntity fast-path is intentionally disabled.
-    // snapshotToTriples() produces synthetic `snap:` IDs that don't conform
-    // to the TripleId brand (^[0-9A-Z]{26}$), causing schema validation
-    // failures in callers that serialize Triple objects. The SnapshotService
-    // should be queried directly for snapshot data; getEntity always returns
-    // real triples from the underlying store.
     // -----------------------------------------------------------------------
     // Write operations — materialize snapshots after each write
     // -----------------------------------------------------------------------
@@ -194,38 +147,6 @@ export const makeEntitySnapshotsCapability = (
 
     retract: (id) =>
       Effect.gen(function* () {
-        const parsed = parseSnapshotTripleId(id as string);
-
-        if (parsed) {
-          const candidates = yield* store
-            .match({
-              entityId: parsed.entityId,
-              attribute: parsed.attribute,
-              value: parsed.value,
-            })
-            .pipe(Effect.catch(() => Effect.succeed([] as readonly Triple[])));
-
-          if (candidates.length === 0) {
-            return;
-          }
-
-          const sortedCandidates = [...candidates].sort((a, b) => a.id.localeCompare(b.id));
-          const target = sortedCandidates[Math.min(parsed.index, sortedCandidates.length - 1)]!;
-          yield* store.retract(target.id);
-          const meta = yield* resolveRetractionMeta(store, target.entityId as EntityId, target.id);
-          if (!meta) {
-            return yield* Effect.fail(
-              new WriteError({
-                message: `Unable to resolve retract tx metadata for triple ${target.id}`,
-              }),
-            );
-          }
-          yield* writer
-            .materialize(meta.txId, meta.txTime, [target.entityId])
-            .pipe(Effect.mapError(mapMaterializeError));
-          return;
-        }
-
         const triple = yield* store.get(id).pipe(Effect.catch(() => Effect.succeed(null)));
         if (!triple) {
           yield* store.retract(id);
@@ -325,8 +246,5 @@ export const makeEntitySnapshotsCapability = (
 
         return result;
       }),
-
-    // Transaction scope — pass through unchanged
-    withTransaction: store.withTransaction,
   }),
 });

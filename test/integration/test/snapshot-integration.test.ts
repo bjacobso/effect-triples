@@ -12,7 +12,6 @@ import {
   SnapshotWriterLive,
   string,
   number,
-  wrapStoreWithSnapshots,
   EMPTY_ENTITY_HASH,
   // Composable capabilities
   composeStore,
@@ -59,14 +58,13 @@ const makeIntegrationLayer = () => {
   );
   const readerLayer = SnapshotServiceLive.pipe(Layer.provide(adapterLayer));
 
-  // Combined: wrap the Triples with automatic snapshot materialization
+  // Combined: compose automatic snapshot materialization over Triples.
   const wrappedStoreLayer = Layer.effect(
     Triples,
     Effect.gen(function* () {
       const baseStore = yield* Triples;
       const writer = yield* SnapshotWriter;
-      const reader = yield* SnapshotService;
-      return wrapStoreWithSnapshots(baseStore, writer, reader);
+      return composeStore(baseStore, makeEntitySnapshotsCapability(writer));
     }),
   ).pipe(Layer.provide(Layer.mergeAll(baseStoreLayer, writerLayer, readerLayer)));
 
@@ -661,8 +659,7 @@ describe("StoreCapability composition", () => {
 
   describe("composeStore with EntitySnapshotsCapability", () => {
     /**
-     * Build a test layer using `composeStore` + `makeEntitySnapshotsCapability`
-     * alongside the direct `wrapStoreWithSnapshots` composition helper.
+     * Build a test layer using `composeStore` + `makeEntitySnapshotsCapability`.
      *
      * Uses the same layer construction pattern as `makeIntegrationLayer` above
      * to ensure layer memoization shares the same Triples + StorageAdapter
@@ -695,9 +692,8 @@ describe("StoreCapability composition", () => {
         Effect.gen(function* () {
           const baseStore = yield* Triples;
           const writer = yield* SnapshotWriter;
-          const reader = yield* SnapshotService;
 
-          const snapshotCap = makeEntitySnapshotsCapability(writer, reader);
+          const snapshotCap = makeEntitySnapshotsCapability(writer);
           return composeStore(baseStore, snapshotCap);
         }),
       ).pipe(Layer.provide(Layer.mergeAll(baseStoreLayer, writerLayer, readerLayer)));
@@ -754,9 +750,8 @@ describe("StoreCapability composition", () => {
         Effect.gen(function* () {
           const baseStore = yield* Triples;
           const writer = yield* SnapshotWriter;
-          const reader = yield* SnapshotService;
 
-          const snapshotCap = makeEntitySnapshotsCapability(writer, reader);
+          const snapshotCap = makeEntitySnapshotsCapability(writer);
           const emitCap = makeChangeEmissionCapability(
             { emit: () => Effect.void },
             Effect.sync(() => Date.now()),
@@ -909,9 +904,8 @@ describe("StoreCapability composition", () => {
         Effect.gen(function* () {
           const baseStore = yield* Triples;
           const writer = yield* SnapshotWriter;
-          const reader = yield* SnapshotService;
 
-          const snapshotCap = makeEntitySnapshotsCapability(writer, reader);
+          const snapshotCap = makeEntitySnapshotsCapability(writer);
           return composeStore(baseStore, snapshotCap);
         }),
       ).pipe(Layer.provide(Layer.mergeAll(baseStoreLayer, writerLayer, readerLayer)));

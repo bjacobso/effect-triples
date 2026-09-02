@@ -10,15 +10,11 @@
  * someone else's serializer output. For a system of record that is not a
  * caveat, it is a bug.
  *
- * Second, and more fundamentally: an Effect Schema is a TypeScript value
- * written by a developer, and in this product **customers define attributes at
- * runtime**. `custom_properties.scalar_type` is a plain string column with
- * `enum_options` and `value_validation_regex` beside it, and 223 files in the
- * app know something about scalar types. The type language already exists - it
- * is just implicit, unversioned, and smeared across the codebase. Written down,
- * it becomes ordinary content-addressed config: a customer adding an enum
- * attribute produces a value, and that value is versioned, diffed and deployed
- * by exactly the machinery every other config node uses.
+ * Second, and more fundamentally: an Effect Schema is executable TypeScript,
+ * while Triplex configuration must also represent types authored dynamically.
+ * Making that type language explicit turns runtime schema declarations into
+ * ordinary content-addressed values that can be versioned, diffed, and deployed
+ * by the same machinery as every other config node.
  *
  * The algebra is deliberately small and closed. That is what makes
  * `TypeSubsumption.subsumes` total rather than sound-but-incomplete: over a
@@ -46,9 +42,8 @@ import * as ContentId from "../content/ContentId";
 const TYPE_DOMAIN = ContentId.Domain.typeExpr;
 
 /**
- * Scalars. `instant` is a point in time; `date` is a calendar date with no zone
- * - the distinction the app already draws for stored dates of birth, and one
- * you cannot recover later if both collapse to a single `datetime`.
+ * Scalars. `instant` is a point in time; `date` is a calendar date with no zone.
+ * That distinction cannot be recovered after both collapse to one `datetime`.
  */
 /** A literal usable as a struct field's fallback. */
 export type Value = string | number | boolean;

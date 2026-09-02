@@ -164,9 +164,6 @@ export interface TriplesService {
     operations: readonly TransactOp[],
     meta?: TransactionMeta,
   ) => Effect.Effect<TransactionResult, WriteError | ReadError | TransactionConflictError>;
-  /** Wrap an arbitrary effect in a database transaction (no-op on KV backends). */
-  readonly withTransaction: <A, E>(effect: Effect.Effect<A, E>) => Effect.Effect<A, E | WriteError>;
-
   // --- Triple-level reads --------------------------------------------------
   /** Fetch a single triple by id. */
   readonly get: (id: TripleId) => Effect.Effect<Triple | null, ReadError>;
@@ -184,11 +181,6 @@ export interface TriplesService {
   readonly match: (
     pattern: Pattern,
     basis?: TemporalBasis,
-  ) => Effect.Effect<readonly Triple[], ReadError>;
-  /** Match triples as of a point in time. */
-  readonly matchAsOf: (
-    pattern: Pattern,
-    asOf: number,
   ) => Effect.Effect<readonly Triple[], ReadError>;
   /** Full history (including retracted) for an entity. */
   readonly history: (entityId: EntityId) => Effect.Effect<readonly Triple[], ReadError>;

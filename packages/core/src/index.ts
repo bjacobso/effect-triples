@@ -6,7 +6,6 @@
  */
 
 export * from "./Branded.js";
-export * from "./Database.js";
 export * from "./Error.js";
 export * from "./Snapshot.js";
 export * from "./Triple.js";

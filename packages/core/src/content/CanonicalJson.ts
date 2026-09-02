@@ -5,11 +5,9 @@
  * The contract is byte-identity: two values that mean the same thing MUST
  * encode to the same bytes, on any machine, in any process, forever. That is
  * stronger than `JSON.stringify`, which preserves insertion order and so lets
- * JSONB column round-trips, `Object.assign` spreads, and Prisma `select` order
- * silently change a hash. The rules:
+ * database round-trips or object assembly order silently change a hash. The rules:
  *
- * - object keys are emitted in ascending UTF-16 code-unit order (`<`), matching
- *   the deep-sort already used by `automationYaml.ts`
+ * - object keys are emitted in ascending UTF-16 code-unit order (`<`)
  * - `undefined` object properties are dropped; `undefined` array slots become
  *   `null` (an array's length is content, an absent property is not)
  * - `NaN` / `Infinity` are rejected rather than coerced to `null`, because a
@@ -17,8 +15,8 @@
  * - `Date`, `BigInt`, functions and class instances are rejected: a timestamp
  *   in a content hash means the hash changes when nothing did, so projections
  *   must strip them explicitly rather than have this module guess a format
- * - cycles are rejected; the config graph's genuine cycles (form -> automation
- *   -> form) are modelled as `refs` by key, never as nested values
+ * - cycles are rejected; graph relationships are modelled as references rather
+ *   than recursively nested values
  *
  * Numbers use `JSON.stringify`'s shortest-round-trip representation, which is
  * specified behaviour (ECMA-262 Number::toString) and therefore stable across

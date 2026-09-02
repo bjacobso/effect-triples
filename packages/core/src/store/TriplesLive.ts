@@ -53,7 +53,7 @@ import {
   reservedAssertError,
   reservedWriteError,
 } from "./systemNamespace.js";
-import { basisFromAsOf, resolveTemporalBasis } from "../Temporal.js";
+import { resolveTemporalBasis } from "../Temporal.js";
 import { TxAttributes } from "../utils/id.js";
 import { finishPagination, preparePagination } from "../Pagination.js";
 
@@ -429,15 +429,6 @@ export const TriplesLive = Layer.effect(
         return rows.map(rowToTriple);
       });
 
-    const matchAsOf = (
-      pattern: Pattern,
-      asOf: number,
-    ): Effect.Effect<readonly Triple[], ReadError> =>
-      Effect.gen(function* () {
-        const rows = yield* adapter.query(pattern, resolveTemporalBasis(basisFromAsOf(asOf), asOf));
-        return rows.map(rowToTriple);
-      });
-
     const history = (entityId: EntityId): Effect.Effect<readonly Triple[], ReadError> =>
       Effect.gen(function* () {
         const rows = yield* adapter.history(entityId);
@@ -547,25 +538,16 @@ export const TriplesLive = Layer.effect(
         Effect.withSpan("triples.explainPage"),
       );
 
-    // =========================================================================
-    // Transaction scope
-    // =========================================================================
-
-    const withTransaction = <A, E>(effect: Effect.Effect<A, E>): Effect.Effect<A, E | WriteError> =>
-      adapter.withTransaction(effect);
-
     return {
       assert: assert_,
       assertBatch,
       retract,
       retractByPattern,
       transact,
-      withTransaction,
       get,
       entity,
       entities,
       match,
-      matchAsOf,
       history,
       transaction,
       transactionsByCommand,
