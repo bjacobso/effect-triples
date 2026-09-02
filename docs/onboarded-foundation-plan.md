@@ -66,9 +66,9 @@ Triplex and stays application-independent.
 
 ### 6. Host-owned migrations
 
-- [ ] Export ordered, namespaced migration definitions and an explicit runner.
-- [ ] Provide SQL layers that can opt out of automatic DDL.
-- [ ] Verify idempotent fresh setup and upgrade/backfill from the `9c7dd80`
+- [x] Export ordered, namespaced migration definitions and an explicit runner.
+- [x] Provide SQL layers and adapters that can opt out of automatic DDL.
+- [x] Verify idempotent fresh setup and upgrade/backfill from the `9c7dd80`
       schema without losing transaction or retraction history.
 
 ### 7. Configuration foundation and adoption guide

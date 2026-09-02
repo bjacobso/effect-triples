@@ -5,7 +5,12 @@
  */
 
 export { PostgresqlDialect } from "./dialect.js";
-export { makePostgresqlAdapter, PostgresqlAdapterLive } from "./PostgresqlAdapter.js";
+export {
+  makePostgresqlAdapter,
+  PostgresqlAdapterLive,
+  PostgresqlAdapterUnmigrated,
+  type PostgresqlAdapterConfig,
+} from "./PostgresqlAdapter.js";
 export {
   makePostgresqlBackend,
   makePostgresqlBackendFromUrl,
@@ -15,6 +20,8 @@ export {
 export {
   makePostgresqlLayer,
   makePostgresqlLayerFromUrl,
+  makePostgresqlLayerUnmigrated,
+  makePostgresqlLayerUnmigratedFromUrl,
   PostgresqlLive,
   PostgresqlLiveFromUrl,
   type PostgresqlConfig,

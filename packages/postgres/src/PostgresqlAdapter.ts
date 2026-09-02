@@ -26,11 +26,17 @@ import { PostgresqlDialect } from "./dialect.js";
  *
  * @returns A Layer that provides StorageAdapter, requiring SqlClient.SqlClient
  */
-export const makePostgresqlAdapter = () =>
+export interface PostgresqlAdapterConfig {
+  /** Run Triplex DDL from `initialize()`. Disable when the host owns migrations. */
+  readonly autoMigrate?: boolean;
+}
+
+export const makePostgresqlAdapter = (config: PostgresqlAdapterConfig = {}) =>
   Layer.effect(
     StorageAdapter,
     Effect.gen(function* () {
       const sql = yield* SqlClient.SqlClient;
+      const { autoMigrate = true } = config;
 
       // Helper to provide SqlClient to inner effects
       const provide = <A, E>(effect: Effect.Effect<A, E, SqlClient.SqlClient>) =>
@@ -447,20 +453,22 @@ export const makePostgresqlAdapter = () =>
       // =========================================================================
 
       const initialize: StorageAdapterService["initialize"] = () =>
-        provide(
-          runMigrations.pipe(
-            Effect.mapError((error) =>
-              error instanceof MigrationError
-                ? error
-                : new MigrationError({
-                    version: 0,
-                    name: "unknown",
-                    message: `Migration failed: ${String(error)}`,
-                    cause: error,
-                  }),
-            ),
-          ),
-        );
+        autoMigrate
+          ? provide(
+              runMigrations.pipe(
+                Effect.mapError((error) =>
+                  error instanceof MigrationError
+                    ? error
+                    : new MigrationError({
+                        version: 0,
+                        name: "unknown",
+                        message: `Migration failed: ${String(error)}`,
+                        cause: error,
+                      }),
+                ),
+              ),
+            )
+          : Effect.void;
 
       const close: StorageAdapterService["close"] = () => Effect.void;
 
@@ -487,3 +495,6 @@ export const makePostgresqlAdapter = () =>
  * Default PostgreSQL adapter.
  */
 export const PostgresqlAdapterLive = makePostgresqlAdapter();
+
+/** Adapter for production hosts that execute exported migrations themselves. */
+export const PostgresqlAdapterUnmigrated = makePostgresqlAdapter({ autoMigrate: false });

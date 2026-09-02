@@ -29,6 +29,8 @@ import { isVariable } from "@bjacobso/triplex/types/Pattern";
  * All thresholds are optional - undefined means "never apply this optimization".
  */
 export interface SqliteAdapterConfig {
+  /** Run Triplex DDL from `initialize()`. Disable when the host owns migrations. */
+  readonly autoMigrate?: boolean;
   /**
    * Drop indexes for batches >= this size for faster inserts.
    * Indexes will be recreated after the batch completes.
@@ -73,7 +75,7 @@ export const makeSqliteAdapter = (config: SqliteAdapterConfig = {}) =>
     StorageAdapter,
     Effect.gen(function* () {
       const sql = yield* SqlClient.SqlClient;
-      const { dropIndexesThreshold, unsafeModeThreshold } = config;
+      const { autoMigrate = true, dropIndexesThreshold, unsafeModeThreshold } = config;
 
       // Helper to provide SqlClient to inner effects
       const provide = <A, E>(effect: Effect.Effect<A, E, SqlClient.SqlClient>) =>
@@ -525,20 +527,22 @@ export const makeSqliteAdapter = (config: SqliteAdapterConfig = {}) =>
       // =========================================================================
 
       const initialize: StorageAdapterService["initialize"] = () =>
-        provide(
-          runMigrations.pipe(
-            Effect.mapError((error) =>
-              error instanceof MigrationError
-                ? error
-                : new MigrationError({
-                    version: 0,
-                    name: "unknown",
-                    message: `Migration failed: ${String(error)}`,
-                    cause: error,
-                  }),
-            ),
-          ),
-        );
+        autoMigrate
+          ? provide(
+              runMigrations.pipe(
+                Effect.mapError((error) =>
+                  error instanceof MigrationError
+                    ? error
+                    : new MigrationError({
+                        version: 0,
+                        name: "unknown",
+                        message: `Migration failed: ${String(error)}`,
+                        cause: error,
+                      }),
+                ),
+              ),
+            )
+          : Effect.void;
 
       const close: StorageAdapterService["close"] = () => Effect.void;
 
@@ -570,3 +574,6 @@ export const makeSqliteAdapter = (config: SqliteAdapterConfig = {}) =>
  * For bulk loading optimizations, use makeSqliteAdapter() with a config.
  */
 export const SqliteAdapterLive = makeSqliteAdapter();
+
+/** Adapter for production hosts that execute exported migrations themselves. */
+export const SqliteAdapterUnmigrated = makeSqliteAdapter({ autoMigrate: false });

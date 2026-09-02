@@ -7,7 +7,7 @@ The operational foundation and its ordering constraints are specified in
 compare-and-retract conditions, causal transaction envelopes, and per-transaction change journals
 are implemented, including a backend-issued commit cursor and resumable transaction pages. The
 next reliability milestone is conventional consumer checkpoints and command receipts, followed by
-graph constraints and temporal Datalog.
+graph constraints and portable derivation candidates with checkpointed reconciliation.
 
 ## Immediate correctness gate: backend parity
 
@@ -62,9 +62,12 @@ graph constraints and temporal Datalog.
 
 **Goal:** Distinguish between when a fact was recorded and when it became true.
 
-- Add `valid_from` and `valid_to` columns to the `triples` table.
-- Enable "What was the state of the world on Jan 1st, as we knew it on Feb 1st?" style queries.
-- Critical for auditing, legal compliance, and correcting historical data.
+- Implemented across KV, SQLite, and PostgreSQL with a shared recorded/valid basis for direct reads
+  and Datalog.
+- Differential tests cover historical corrections, future-effective facts, retractions, joins, and
+  negation.
+- Next: surface temporal wakeup boundaries from derivations so expiry-driven projections reopen
+  without relying on a daily full scan.
 
 ## 6. Integrated Full-Text Search (FTS)
 

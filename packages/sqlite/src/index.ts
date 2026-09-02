@@ -5,7 +5,17 @@
  */
 
 export { SqliteDialect } from "./dialect.js";
-export { makeSqliteAdapter, SqliteAdapterLive, type SqliteAdapterConfig } from "./SqliteAdapter.js";
+export {
+  makeSqliteAdapter,
+  SqliteAdapterLive,
+  SqliteAdapterUnmigrated,
+  type SqliteAdapterConfig,
+} from "./SqliteAdapter.js";
 export { makeSqliteBackend, SqliteBackendLive, type SqliteBackendConfig } from "./SqliteBackend.js";
-export { makeSqliteLayer, SqliteTestLayer, SqliteLive } from "./SqliteLayer.js";
+export {
+  makeSqliteLayer,
+  makeSqliteLayerUnmigrated,
+  SqliteTestLayer,
+  SqliteLive,
+} from "./SqliteLayer.js";
 export { SqliteTriples, type SqliteTriplesLayer } from "./SqliteTriples.js";

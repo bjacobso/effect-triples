@@ -8,11 +8,13 @@ that belong in an application.
 
 ### Atomic transactions
 
-`Triples.transact` is the only portable command boundary. SQL adapters execute it in a native SQL
-transaction. KV implementations create a transaction-scoped hexastore over `KvBackend.transact`;
-all index and metadata writes commit or roll back together. The in-memory backend serializes
-transactions and buffers their writes. A completed KV transaction clears the shared decoded-datom
-cache so reads observe its result.
+`Triples.transact` is the authoritative portable command boundary. `assert`, `assertBatch`,
+`retract`, and `retractByPattern` delegate to it, so every supported write receives one commit
+position and causal envelope. SQL adapters execute it in a native SQL transaction. KV
+implementations create a transaction-scoped hexastore over `KvBackend.transact`; all index and
+metadata writes commit or roll back together. The in-memory backend serializes transactions and
+buffers their writes. A completed KV transaction clears the shared decoded-datom cache so reads
+observe its result.
 
 `withTransaction` remains an adapter escape hatch. Because arbitrary effects cannot be rebound to
 a KV transaction-scoped `Triples` service, portable code must use `transact`.
@@ -54,10 +56,16 @@ envelopes in that order and exposes the last position as the next durable resume
 transactions publish neither facts nor a position. This avoids treating timestamps or
 client-generated ULIDs as commit order under concurrency.
 
-The feed covers successful `transact` commands; standalone low-level writes intentionally do not
-create envelopes. Delivery built on repeated page reads is at least once, so consumers retain a
-checkpoint and deduplicate by command or transaction identity. `ChangeEmitter` remains a
-best-effort wake-up mechanism and never replaces catch-up reads.
+The feed covers every successful public write. Delivery built on repeated page reads is at least
+once, so consumers retain a checkpoint and deduplicate by command or transaction identity.
+`ChangeEmitter` remains a best-effort wake-up mechanism and never replaces catch-up reads.
+
+### Bitemporal query basis
+
+Facts carry separate recorded and valid intervals. Direct matching, entity reads, batched reads,
+and Datalog accept the same `{ recordedAt?, validAt? }` basis, so every clause in a join,
+negation, or rule sees one coherent cut. Historical corrections append new facts; they do not
+rewrite the recorded history.
 
 ## Next primitives
 
@@ -80,11 +88,45 @@ Add an explicit transaction-time basis to Datalog so joins, rules, negation, and
 run against one historical cut. EntitySnapshot and ConfigSnapshot remain distinct; temporal
 Datalog does not introduce valid/business time by implication.
 
-### Durable materializations
+### Portable derivations and reconciliation
 
-Persist a materialization definition, current result head, observed dependencies, evaluation
-proof, source transaction, and retry state. A materializer derives facts; Onboarded decides whether
-a changed result opens a Thread or advances a Routine.
+Add a content-addressed `DerivationDefinition` that pins a Datalog query, result schema, canonical
+identity projection, dependency set, and configuration snapshot. Evaluation should return
+`DerivationCandidate` values rather than directly inventing workflow objects. Each candidate
+needs:
+
+- a stable identity computed from the declared result key (for example subject, requirement, and
+  scope);
+- the typed result binding and temporal basis;
+- the exact config snapshot and derivation definition;
+- source triple IDs and transaction IDs/positions, including merged provenance when several graph
+  paths produce the same identity; and
+- the next known temporal boundary, such as an evidence fact's `validTo`, at which the answer can
+  change without a new write.
+
+A generic reconciliation operation can diff candidates against a checkpointed materialization and
+emit `added`, `removed`, `changed`, and `unchanged` identities. It must atomically move a
+materialization head with its source transaction position, expose lag/staleness, and be safely
+rebuildable. The resulting projection is disposable; the transaction feed and pinned definition
+remain authoritative.
+
+Triplex should not turn an added candidate into a Task or a removed candidate into a cancellation.
+Onboarded owns durable requirement occurrences, assignment, evidence disposition, conversations,
+and retry policy.
+
+### Hypothetical evaluation
+
+Support a read-only overlay of asserted and retracted facts evaluated at a pinned temporal and
+configuration basis. This enables planners to answer "what obligations would this placement
+create?" without committing facts or mutating materializations. The overlay must use the normal
+Datalog semantics and return the same candidate/provenance shape as committed evaluation.
+
+### Temporal wakeups
+
+Dependency invalidation handles new transactions, but expiring valid-time facts can change an
+answer with no transaction. Derivation evaluation should report its earliest next temporal
+boundary. A host scheduler wakes the materializer at that boundary and checkpoints the resulting
+reconciliation; Triplex does not need to own cron or workflow timers.
 
 ### Content-addressed blobs
 

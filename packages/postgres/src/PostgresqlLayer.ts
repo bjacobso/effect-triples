@@ -20,6 +20,19 @@ export interface PostgresqlConfig {
   };
 }
 
+const clientLayer = (config: PostgresqlConfig) =>
+  PgClient.layer({
+    host: config.host,
+    port: config.port,
+    database: config.database,
+    username: config.username,
+    password: config.password,
+    ssl: config.ssl,
+    minConnections: config.pool?.min,
+    maxConnections: config.pool?.max,
+    idleTimeout: config.pool?.idleTimeout,
+  });
+
 /**
  * Create PostgreSQL layer with connection pooling and migrations.
  *
@@ -28,14 +41,10 @@ export interface PostgresqlConfig {
  * to runMigrations so it doesn't leak as an unsatisfied requirement.
  */
 export const makePostgresqlLayer = (config: PostgresqlConfig) =>
-  PgClient.layer({
-    host: config.host,
-    port: config.port,
-    database: config.database,
-    username: config.username,
-    password: config.password,
-    ssl: config.ssl,
-  }).pipe(Layer.tap((context) => Effect.provide(runMigrations, context)));
+  clientLayer(config).pipe(Layer.tap((context) => Effect.provide(runMigrations, context)));
+
+/** SQL client only; the production host must execute `runMigrations`. */
+export const makePostgresqlLayerUnmigrated = (config: PostgresqlConfig) => clientLayer(config);
 
 /**
  * Create PostgreSQL layer from a connection URL.
@@ -45,6 +54,18 @@ export const makePostgresqlLayer = (config: PostgresqlConfig) =>
 export const makePostgresqlLayerFromUrl = (url: string) => {
   const parsed = new URL(url);
   return makePostgresqlLayer({
+    database: parsed.pathname.slice(1),
+    ...(parsed.hostname && { host: parsed.hostname }),
+    ...(parsed.port && { port: parseInt(parsed.port, 10) }),
+    ...(parsed.username && { username: parsed.username }),
+    ...(parsed.password && { password: Redacted.make(parsed.password) }),
+    ...(parsed.searchParams.get("ssl") === "true" && { ssl: true }),
+  });
+};
+
+export const makePostgresqlLayerUnmigratedFromUrl = (url: string) => {
+  const parsed = new URL(url);
+  return makePostgresqlLayerUnmigrated({
     database: parsed.pathname.slice(1),
     ...(parsed.hostname && { host: parsed.hostname }),
     ...(parsed.port && { port: parseInt(parsed.port, 10) }),
