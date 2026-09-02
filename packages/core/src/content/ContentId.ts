@@ -43,6 +43,9 @@ export const Domain = {
   validationState: "triplex/validation-state",
   observationClosure: "triplex/observation-closure",
   observationValue: "triplex/observation-value",
+  derivationDefinition: "triplex/derivation-definition",
+  derivationIdentity: "triplex/derivation-identity",
+  derivationCandidate: "triplex/derivation-candidate",
 } as const;
 
 export type Domain = (typeof Domain)[keyof typeof Domain];

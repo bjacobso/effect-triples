@@ -7,7 +7,7 @@ The operational foundation and its ordering constraints are specified in
 compare-and-retract conditions, causal transaction envelopes, and per-transaction change journals
 are implemented, including a backend-issued commit cursor and resumable transaction pages. The
 next reliability milestone is conventional consumer checkpoints and command receipts, followed by
-graph constraints and portable derivation candidates with checkpointed reconciliation.
+graph constraints and durable checkpointing for the now-implemented portable derivation candidates.
 
 ## Immediate correctness gate: backend parity
 
@@ -66,8 +66,9 @@ graph constraints and portable derivation candidates with checkpointed reconcili
   and Datalog.
 - Differential tests cover historical corrections, future-effective facts, retractions, joins, and
   negation.
-- Next: surface temporal wakeup boundaries from derivations so expiry-driven projections reopen
-  without relying on a daily full scan.
+- Structural derivations now expose the earliest `validTo` among positive supporting facts. Next:
+  model wakeups caused by expiring negated evidence and persist scheduler/materializer checkpoints
+  so expiry-driven projections reopen without relying on a daily full scan.
 
 ## 6. Integrated Full-Text Search (FTS)
 

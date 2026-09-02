@@ -67,6 +67,28 @@ and Datalog accept the same `{ recordedAt?, validAt? }` basis, so every clause i
 negation, or rule sees one coherent cut. Historical corrections append new facts; they do not
 rewrite the recorded history.
 
+### Portable derivations and pure reconciliation
+
+`@bjacobso/triplex/derivation` provides a content-addressed `Definition` that pins a complete
+structural Datalog query, optional result `TypeExpr`, canonical identity projection, discovered
+attribute dependencies, and configuration snapshot. Evaluation returns `Candidate` values with:
+
+- a stable logical identity derived from the definition name and declared result key;
+- a revision covering the exact definition, config pin, result, and explanation;
+- the pinned bitemporal basis;
+- merged source triple IDs and assertion transaction IDs/positions from every positive graph path;
+  and
+- the earliest future `validTo` among supporting facts, when one is known.
+
+`reconcile` is a pure diff that classifies candidates as `added`, `removed`, `changed`, or
+`unchanged`. A host can translate that diff into durable requirement occurrences, tasks, or other
+governed work without coupling those concepts to Triplex. Conflicting outputs for the same
+declared identity fail with a typed error rather than being selected arbitrarily.
+
+The initial provenance contract supports patterns, predicates, and negation. Recursive rules,
+disjunction, aggregation, and pagination are rejected until their exact provenance semantics are
+implemented.
+
 ## Next primitives
 
 ### Consumer checkpoints and command receipts
@@ -82,37 +104,13 @@ uniqueness, required relationships, reference target kinds, and Datalog invarian
 support observation mode, which writes first-class violations, and enforcement mode, which rejects
 a command. Cross-entity policy must not be hidden inside value decoding.
 
-### Temporal Datalog
+### Durable derivation materializations
 
-Add an explicit transaction-time basis to Datalog so joins, rules, negation, and aggregation can
-run against one historical cut. EntitySnapshot and ConfigSnapshot remain distinct; temporal
-Datalog does not introduce valid/business time by implication.
-
-### Portable derivations and reconciliation
-
-Add a content-addressed `DerivationDefinition` that pins a Datalog query, result schema, canonical
-identity projection, dependency set, and configuration snapshot. Evaluation should return
-`DerivationCandidate` values rather than directly inventing workflow objects. Each candidate
-needs:
-
-- a stable identity computed from the declared result key (for example subject, requirement, and
-  scope);
-- the typed result binding and temporal basis;
-- the exact config snapshot and derivation definition;
-- source triple IDs and transaction IDs/positions, including merged provenance when several graph
-  paths produce the same identity; and
-- the next known temporal boundary, such as an evidence fact's `validTo`, at which the answer can
-  change without a new write.
-
-A generic reconciliation operation can diff candidates against a checkpointed materialization and
-emit `added`, `removed`, `changed`, and `unchanged` identities. It must atomically move a
-materialization head with its source transaction position, expose lag/staleness, and be safely
-rebuildable. The resulting projection is disposable; the transaction feed and pinned definition
-remain authoritative.
-
-Triplex should not turn an added candidate into a Task or a removed candidate into a cancellation.
-Onboarded owns durable requirement occurrences, assignment, evidence disposition, conversations,
-and retry policy.
+Persist derivation candidates behind an atomically moved checkpoint that records the definition,
+temporal basis, and source transaction position. The materialization must expose lag/staleness and
+remain safely rebuildable from the transaction feed and pinned definition. Triplex should not turn
+an added candidate into a Task or a removed candidate into a cancellation; applications own
+durable occurrences, assignment, evidence disposition, conversations, and retry policy.
 
 ### Hypothetical evaluation
 

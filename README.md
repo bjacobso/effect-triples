@@ -222,6 +222,51 @@ command boundary.
 The browser example at [`examples/config-explorer`](examples/config-explorer) walks
 through typed nodes, releases, refs, impact, evaluation, and proof verification.
 
+## Portable derivations
+
+`@bjacobso/triplex/derivation` turns a pinned structural Datalog query into typed,
+content-addressed candidates without inventing application workflow objects:
+
+```ts
+import * as Derivation from "@bjacobso/triplex/derivation";
+
+const openI9 =
+  yield *
+  Derivation.make({
+    name: "task.i9",
+    configSnapshot: deployedSnapshot.id,
+    identity: ["?worker", "?scope"],
+    query: {
+      find: ["?worker", "?scope"],
+      where: [
+        ["?placement", ":placement/worker", "?worker"],
+        ["?placement", ":placement/employer", "?scope"],
+        ["not", ["?worker", ":submission/i9", "?scope"]],
+      ],
+    },
+  });
+
+const evaluation =
+  yield *
+  Derivation.evaluate(triples, openI9, {
+    basis: { validAt: Date.now() },
+  });
+```
+
+Repeated graph paths with the same declared identity produce one candidate whose source
+triple and transaction provenance is merged. Candidate identity remains stable across
+definition revisions; its revision changes when the result, definition, configuration pin,
+or explanation changes. `Derivation.reconcile` classifies candidates as `added`, `removed`,
+`changed`, or `unchanged`, so an application can create durable requirement occurrences or
+tasks at its own command boundary. Definitions also expose discovered attribute dependencies
+for transaction-feed-driven invalidation.
+
+This first release intentionally accepts complete structural queries with patterns,
+predicates, and negation—no rules, disjunction, aggregation, or pagination—so exact positive
+source provenance is well-defined. Evaluation is read-only and storage-independent. Durable
+materialization checkpoints, hypothetical fact overlays, and provenance through recursive
+rules remain future work.
+
 ## Triples and values
 
 A fact is asserted from a `TripleInput`:
@@ -594,7 +639,8 @@ tag. For manual wiring, provide `TriplesLive` over a `StorageAdapter`, a
 
 The package root exports the triples, query, entity-snapshot, and subscription APIs.
 Typed configuration stays under `@bjacobso/triplex/config`, and shared content-addressing
-primitives stay under `@bjacobso/triplex/content`, keeping both entrypoints tree-shakeable.
+primitives stay under `@bjacobso/triplex/content`. Portable derivations stay under
+`@bjacobso/triplex/derivation`, keeping these entrypoints tree-shakeable.
 
 The core package also exposes tree-shakeable ESM subpaths for the schemas, types, and
 transport surface:
@@ -606,6 +652,7 @@ import { SubscriptionManager } from "@bjacobso/triplex/subscriptions";
 import { Pattern } from "@bjacobso/triplex/types/Pattern";
 import { ConfigStore, TypeExpr } from "@bjacobso/triplex/config";
 import { ContentId } from "@bjacobso/triplex/content";
+import * as Derivation from "@bjacobso/triplex/derivation";
 ```
 
 Note that `./datalog` and `./Snapshot` contain query/response **schemas**, not the

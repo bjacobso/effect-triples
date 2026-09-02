@@ -8,4 +8,4 @@
 "@bjacobso/triplex-testkit": patch
 ---
 
-Harden configuration identity, validation, subscriptions, and backend safety while consolidating the public Datalog contract.
+Harden configuration identity, validation, subscriptions, and backend safety; add bitemporal reads, durable journals, batch loading, and content-addressed derivation candidates with provenance.

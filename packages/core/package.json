@@ -71,6 +71,11 @@
       "import": "./dist/content/index.js",
       "default": "./dist/content/index.js"
     },
+    "./derivation": {
+      "types": "./dist/derivation/index.d.ts",
+      "import": "./dist/derivation/index.js",
+      "default": "./dist/derivation/index.js"
+    },
     "./internal": {
       "types": "./dist/internal.d.ts",
       "import": "./dist/internal.js",

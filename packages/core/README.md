@@ -79,6 +79,15 @@ the exported Datalog query builders can be composed with application queries.
 `EntitySnapshot` is a temporal materialization of one triple entity. `ConfigSnapshot`
 is a complete immutable configuration release; they have separate APIs and identities.
 
+## Portable derivations
+
+`@bjacobso/triplex/derivation` evaluates content-addressed structural Datalog definitions
+at a pinned bitemporal basis. It deduplicates results by an explicit logical identity,
+merges source triple and transaction provenance from every matching graph path, discovers
+attribute dependencies, and returns candidates suitable for application-owned reconciliation.
+`Derivation.reconcile` reports added, removed, changed, and unchanged candidates; it does not
+create tasks or other domain objects.
+
 ## Content addressing
 
 `@bjacobso/triplex/content` exports deterministic canonical encoding and browser-safe,
