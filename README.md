@@ -782,7 +782,8 @@ The current portable recursive form is deliberately binary: one base relationshi
 definitions shaped as `[head, attribute, next]`, `[ruleName, next, tail]`. Unsupported rule-body
 shapes fail preflight rather than being partially evaluated by one backend. Rule relations connect
 string identities: application arguments are entity-id strings or variables, and numeric or boolean
-fact values do not become rule endpoints.
+fact values do not become rule endpoints. Repeating a variable in a rule body or application is an
+equality constraint, using normal Datalog unification semantics.
 
 ```ts
 triples.query({

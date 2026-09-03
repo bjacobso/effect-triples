@@ -1464,6 +1464,14 @@ const compileRuleDefinition = (rule: Rule, ctx: CompilerContext): string => {
   const fromParts: string[] = [];
   const allConditions: string[] = [];
   const allJoins: string[] = [];
+  const bindRuleVariable = (variable: string, expression: string, conditions: string[]): void => {
+    const existing = paramMap.get(variable);
+    if (existing === undefined) {
+      paramMap.set(variable, expression);
+    } else {
+      conditions.push(`${expression} = ${existing}`);
+    }
+  };
 
   // Process each clause in the body
   for (let i = 0; i < body.length; i++) {
@@ -1481,31 +1489,23 @@ const compileRuleDefinition = (rule: Rule, ctx: CompilerContext): string => {
 
         // Map the rule application arguments
         if (isVariable(clauseArg1)) {
-          paramMap.set(clauseArg1, "r0.arg1");
+          bindRuleVariable(clauseArg1, "r0.arg1", allConditions);
         }
         if (isVariable(clauseArg2)) {
-          paramMap.set(clauseArg2, "r0.arg2");
+          bindRuleVariable(clauseArg2, "r0.arg2", allConditions);
         }
       } else {
         // Join condition - link to previously bound variables
         const joinConditions: string[] = [];
 
         if (isVariable(clauseArg1)) {
-          const boundCol = paramMap.get(clauseArg1);
-          if (boundCol) {
-            joinConditions.push(`r${aliasCounter.value}.arg1 = ${boundCol}`);
-          }
-          paramMap.set(clauseArg1, `r${aliasCounter.value}.arg1`);
+          bindRuleVariable(clauseArg1, `r${aliasCounter.value}.arg1`, joinConditions);
         } else {
           joinConditions.push(`r${aliasCounter.value}.arg1 = ${formatValue(clauseArg1, ctx)}`);
         }
 
         if (isVariable(clauseArg2)) {
-          const boundCol = paramMap.get(clauseArg2);
-          if (boundCol) {
-            joinConditions.push(`r${aliasCounter.value}.arg2 = ${boundCol}`);
-          }
-          paramMap.set(clauseArg2, `r${aliasCounter.value}.arg2`);
+          bindRuleVariable(clauseArg2, `r${aliasCounter.value}.arg2`, joinConditions);
         } else {
           joinConditions.push(`r${aliasCounter.value}.arg2 = ${formatValue(clauseArg2, ctx)}`);
         }
@@ -1525,14 +1525,14 @@ const compileRuleDefinition = (rule: Rule, ctx: CompilerContext): string => {
 
         // Handle entity
         if (isVariable(entity)) {
-          paramMap.set(entity, `${alias}.entity_id`);
+          bindRuleVariable(entity, `${alias}.entity_id`, allConditions);
         } else {
           allConditions.push(`${alias}.entity_id = ${formatValue(entity, ctx)}`);
         }
 
         // Handle attribute
         if (isVariable(attribute)) {
-          paramMap.set(attribute, `${alias}.attribute`);
+          bindRuleVariable(attribute, `${alias}.attribute`, allConditions);
         } else {
           allConditions.push(`${alias}.attribute = ${formatValue(attribute, ctx)}`);
         }
@@ -1540,7 +1540,7 @@ const compileRuleDefinition = (rule: Rule, ctx: CompilerContext): string => {
         // Handle value
         if (isVariable(value)) {
           allConditions.push(textScalarTypeCondition(alias));
-          paramMap.set(value, textScalarExpression(alias));
+          bindRuleVariable(value, textScalarExpression(alias), allConditions);
         } else {
           allConditions.push(compilePatternValueCondition(alias, value, ctx));
         }
@@ -1550,34 +1550,22 @@ const compileRuleDefinition = (rule: Rule, ctx: CompilerContext): string => {
 
         // Handle entity - check if it should join to a previous binding
         if (isVariable(entity)) {
-          const boundCol = paramMap.get(entity);
-          if (boundCol) {
-            joinConditions.push(`${alias}.entity_id = ${boundCol}`);
-          }
-          paramMap.set(entity, `${alias}.entity_id`);
+          bindRuleVariable(entity, `${alias}.entity_id`, joinConditions);
         } else {
           joinConditions.push(`${alias}.entity_id = ${formatValue(entity, ctx)}`);
         }
 
         // Handle attribute
         if (isVariable(attribute)) {
-          const boundCol = paramMap.get(attribute);
-          if (boundCol) {
-            joinConditions.push(`${alias}.attribute = ${boundCol}`);
-          }
-          paramMap.set(attribute, `${alias}.attribute`);
+          bindRuleVariable(attribute, `${alias}.attribute`, joinConditions);
         } else {
           joinConditions.push(`${alias}.attribute = ${formatValue(attribute, ctx)}`);
         }
 
         // Handle value
         if (isVariable(value)) {
-          const boundCol = paramMap.get(value);
-          if (boundCol) {
-            joinConditions.push(`${textScalarExpression(alias)} = ${boundCol}`);
-          }
           joinConditions.push(textScalarTypeCondition(alias));
-          paramMap.set(value, textScalarExpression(alias));
+          bindRuleVariable(value, textScalarExpression(alias), joinConditions);
         } else {
           joinConditions.push(compilePatternValueCondition(alias, value, ctx));
         }

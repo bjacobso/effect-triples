@@ -791,6 +791,40 @@ export const triplesConformanceCases: readonly ConformanceCase[] = [
     }),
   },
   {
+    name: "datalog rule patterns unify repeated variables",
+    run: Effect.gen(function* () {
+      const t = yield* Triples;
+      yield* t.assertBatch([
+        {
+          entityId: "conf:rules:self",
+          attribute: ":conf/rules-same",
+          value: ref("conf:rules:self"),
+        },
+        {
+          entityId: "conf:rules:not-self",
+          attribute: ":conf/rules-same",
+          value: ref("conf:rules:other"),
+        },
+      ]);
+
+      const { results } = yield* t.query({
+        find: ["?node"],
+        where: [["conf-rules-self", "?node", "?node"]],
+        rules: [
+          {
+            name: "conf-rules-self",
+            body: [["?node", ":conf/rules-same", "?node"]],
+          },
+        ],
+      });
+
+      yield* check(
+        JSON.stringify(results.map((row) => row["?node"])) === JSON.stringify(["conf:rules:self"]),
+        "a repeated variable in a rule body and application should enforce equality",
+      );
+    }),
+  },
+  {
     name: "datalog aggregations group, filter, and order consistently",
     run: Effect.gen(function* () {
       const t = yield* Triples;
