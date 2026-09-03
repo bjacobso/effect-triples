@@ -1,6 +1,6 @@
 import { Effect } from "effect";
 
-import type { TripleInput, TransactOp } from "../Triple.js";
+import type { TransactOp } from "../Triple.js";
 import { WriteError } from "../errors/index.js";
 import type { TransactionMeta, TransactionResult, TriplesService } from "./Triples.js";
 
@@ -55,18 +55,20 @@ export const isReservedAttribute = (attribute: string): boolean =>
 export const isReservedEntityType = (entityType: string | undefined): boolean =>
   entityType === "_Transaction" || entityType?.startsWith("triplex.") === true;
 
-export const reservedWriteReason = (
-  input: Pick<TripleInput, "entityId" | "attribute" | "entityType">,
-): string | undefined => {
+interface ReservedWriteTarget {
+  readonly entityId: string;
+  readonly attribute: string;
+  readonly entityType?: string | undefined;
+}
+
+export const reservedWriteReason = (input: ReservedWriteTarget): string | undefined => {
   if (isReservedEntityId(input.entityId)) return `entity ${input.entityId}`;
   if (isReservedAttribute(input.attribute)) return `attribute ${input.attribute}`;
   if (isReservedEntityType(input.entityType)) return `entity type ${input.entityType}`;
   return undefined;
 };
 
-export const reservedWriteError = (
-  input: Pick<TripleInput, "entityId" | "attribute" | "entityType">,
-): WriteError | undefined => {
+export const reservedWriteError = (input: ReservedWriteTarget): WriteError | undefined => {
   const reason = reservedWriteReason(input);
   return reason
     ? new WriteError({

@@ -9,9 +9,11 @@
 
 import { describe, it, expect } from "vitest";
 import { Effect } from "effect";
-import { Triples } from "@bjacobso/triplex";
+import { EntityId, Triples } from "@bjacobso/triplex";
 import { SqliteTriples } from "@bjacobso/triplex-sqlite";
 import { triplesConformanceCases, makeTriplesConformanceSuite } from "@bjacobso/triplex-testkit";
+
+const eid = EntityId.make;
 
 const provide = <A, E>(effect: Effect.Effect<A, E, Triples>): Promise<A> =>
   Effect.runPromise(effect.pipe(Effect.provide(SqliteTriples.layerMemory)));
@@ -32,8 +34,8 @@ describe("SqliteTriples convenience layer", () => {
       Effect.gen(function* () {
         const t = yield* Triples;
         yield* t.assertBatch([
-          { entityId: "a", attribute: ":parent", value: { type: "ref", value: "b" } },
-          { entityId: "b", attribute: ":parent", value: { type: "ref", value: "c" } },
+          { entityId: eid("a"), attribute: ":parent", value: { type: "ref", value: eid("b") } },
+          { entityId: eid("b"), attribute: ":parent", value: { type: "ref", value: eid("c") } },
         ]);
         const { results } = yield* t.query({
           find: ["?ancestor"],

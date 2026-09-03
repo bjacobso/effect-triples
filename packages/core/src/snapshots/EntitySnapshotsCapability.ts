@@ -15,6 +15,7 @@ import type { SnapshotWriterShape } from "./SnapshotService.js";
 import type { Triple, EntityId } from "../Triple.js";
 import { generateTransactionId, SystemPrefixes, TxAttributes } from "../utils/id.js";
 import { WriteError } from "../errors/index.js";
+import { unsafe } from "../Branded.js";
 
 const resolveTxTime = (
   store: TriplesService,
@@ -27,7 +28,7 @@ const resolveTxTime = (
     }
 
     const txMetaTriples = yield* store
-      .match({ entityId: txId, attribute: TxAttributes.INSTANT })
+      .match({ entityId: unsafe.entityId(txId), attribute: TxAttributes.INSTANT })
       .pipe(Effect.catch(() => Effect.succeed([] as readonly Triple[])));
     const txInstant = txMetaTriples.find((triple) => triple.value.type === "datetime");
     if (txInstant && txInstant.value.type === "datetime") {

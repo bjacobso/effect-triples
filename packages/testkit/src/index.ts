@@ -16,7 +16,7 @@ import {
   datetime,
   json,
   number,
-  ref,
+  ref as makeRef,
   string,
   CommandAlreadyCommittedError,
   ConstraintViolationError,
@@ -24,11 +24,14 @@ import {
   TransactionConflictError,
   Triples,
   UnboundVariableError,
-  type EntityId,
+  EntityId,
 } from "@bjacobso/triplex";
 import { ConsumerCheckpoint } from "@bjacobso/triplex/operational";
 import * as Derivation from "@bjacobso/triplex/derivation";
 import { GraphConstraint } from "@bjacobso/triplex/config";
+
+const eid = EntityId.make;
+const ref = (value: string) => makeRef(eid(value));
 
 // ─── Lightweight fixture descriptors (unchanged) ────────────────────────────
 
@@ -73,7 +76,7 @@ export const triplesConformanceCases: readonly ConformanceCase[] = [
     run: Effect.gen(function* () {
       const t = yield* Triples;
       const triple = yield* t.assert({
-        entityId: "conf:person:1",
+        entityId: eid("conf:person:1"),
         attribute: ":name",
         value: { type: "string", value: "Alice" },
         entityType: "Person",
@@ -82,7 +85,7 @@ export const triplesConformanceCases: readonly ConformanceCase[] = [
       const got = yield* t.get(triple.id);
       yield* check(got !== null && got.id === triple.id, "get should return the asserted triple");
 
-      const matched = yield* t.match({ entityId: "conf:person:1", attribute: ":name" });
+      const matched = yield* t.match({ entityId: eid("conf:person:1"), attribute: ":name" });
       yield* check(
         matched.length === 1 && matched[0]!.value.type === "string",
         "match should return exactly the asserted triple",
@@ -97,13 +100,13 @@ export const triplesConformanceCases: readonly ConformanceCase[] = [
     run: Effect.gen(function* () {
       const t = yield* Triples;
       const input = {
-        entityId: "conf:duplicate:1",
+        entityId: eid("conf:duplicate:1"),
         attribute: ":conf/value",
         value: string("same"),
       } as const;
       const asserted = yield* t.assertBatch([input, input]);
       const matched = yield* t.match({
-        entityId: input.entityId,
+        entityId: eid(input.entityId),
         attribute: input.attribute,
         value: input.value,
       });
@@ -118,7 +121,7 @@ export const triplesConformanceCases: readonly ConformanceCase[] = [
     run: Effect.gen(function* () {
       const t = yield* Triples;
       yield* t.assert({
-        entityId: "conf:person:2",
+        entityId: eid("conf:person:2"),
         attribute: ":name",
         value: { type: "string", value: "Bob" },
         entityType: "Person",
@@ -137,14 +140,14 @@ export const triplesConformanceCases: readonly ConformanceCase[] = [
     run: Effect.gen(function* () {
       const t = yield* Triples;
       yield* t.assertBatch([
-        { entityId: "42", attribute: ":conf/code", value: string("007") },
-        { entityId: "42", attribute: ":conf/count", value: number(7) },
-        { entityId: "42", attribute: ":conf/enabled", value: boolean(true) },
-        { entityId: "42", attribute: ":conf/instant", value: datetime(1_700_000_000_000) },
-        { entityId: "42", attribute: ":conf/data", value: json({ ok: true }) },
-        { entityId: "42", attribute: ":conf/owner", value: ref("7") },
+        { entityId: eid("42"), attribute: ":conf/code", value: string("007") },
+        { entityId: eid("42"), attribute: ":conf/count", value: number(7) },
+        { entityId: eid("42"), attribute: ":conf/enabled", value: boolean(true) },
+        { entityId: eid("42"), attribute: ":conf/instant", value: datetime(1_700_000_000_000) },
+        { entityId: eid("42"), attribute: ":conf/data", value: json({ ok: true }) },
+        { entityId: eid("42"), attribute: ":conf/owner", value: ref("7") },
         {
-          entityId: "42",
+          entityId: eid("42"),
           attribute: ":conf/blob",
           value: blob("sha256:artifact", "application/pdf", 128, "artifact.pdf"),
         },
@@ -186,12 +189,16 @@ export const triplesConformanceCases: readonly ConformanceCase[] = [
       const t = yield* Triples;
       const textValue = "sha256:dedupe-seven";
       yield* t.assertBatch([
-        { entityId: "conf:dedupe:number", attribute: ":conf/dedupe", value: number(7) },
-        { entityId: "conf:dedupe:datetime", attribute: ":conf/dedupe", value: datetime(7) },
-        { entityId: "conf:dedupe:string", attribute: ":conf/dedupe", value: string(textValue) },
-        { entityId: "conf:dedupe:ref", attribute: ":conf/dedupe", value: ref(textValue) },
+        { entityId: eid("conf:dedupe:number"), attribute: ":conf/dedupe", value: number(7) },
+        { entityId: eid("conf:dedupe:datetime"), attribute: ":conf/dedupe", value: datetime(7) },
         {
-          entityId: "conf:dedupe:blob",
+          entityId: eid("conf:dedupe:string"),
+          attribute: ":conf/dedupe",
+          value: string(textValue),
+        },
+        { entityId: eid("conf:dedupe:ref"), attribute: ":conf/dedupe", value: ref(textValue) },
+        {
+          entityId: eid("conf:dedupe:blob"),
           attribute: ":conf/dedupe",
           value: blob(textValue, "application/octet-stream", 7),
         },
@@ -265,7 +272,7 @@ export const triplesConformanceCases: readonly ConformanceCase[] = [
       const t = yield* Triples;
       const projectedRef = ref("conf:constant-projection:ref");
       yield* t.assert({
-        entityId: "conf:constant-projection:entity",
+        entityId: eid("conf:constant-projection:entity"),
         attribute: ":conf/constant-projection",
         value: string("anchor"),
       });
@@ -304,15 +311,15 @@ export const triplesConformanceCases: readonly ConformanceCase[] = [
       const t = yield* Triples;
       const jsonText = '{"kind":"same"}';
       const facts = [
-        { entityId: "conf:constant:number", value: number(7) },
-        { entityId: "conf:constant:datetime", value: datetime(7) },
-        { entityId: "conf:constant:string", value: string(jsonText) },
-        { entityId: "conf:constant:ref", value: ref(jsonText) },
+        { entityId: eid("conf:constant:number"), value: number(7) },
+        { entityId: eid("conf:constant:datetime"), value: datetime(7) },
+        { entityId: eid("conf:constant:string"), value: string(jsonText) },
+        { entityId: eid("conf:constant:ref"), value: ref(jsonText) },
         {
-          entityId: "conf:constant:blob",
+          entityId: eid("conf:constant:blob"),
           value: blob(jsonText, "application/octet-stream", 7),
         },
-        { entityId: "conf:constant:json", value: json({ kind: "same" }) },
+        { entityId: eid("conf:constant:json"), value: json({ kind: "same" }) },
       ] as const;
       yield* t.assertBatch(
         facts.flatMap(({ entityId, value }) => [
@@ -400,28 +407,28 @@ export const triplesConformanceCases: readonly ConformanceCase[] = [
     run: Effect.gen(function* () {
       const t = yield* Triples;
       yield* t.assertBatch([
-        { entityId: "conf:join:left:number", attribute: ":conf/left", value: number(7) },
-        { entityId: "conf:join:right:number", attribute: ":conf/right", value: number(7) },
-        { entityId: "conf:join:left:string", attribute: ":conf/left", value: string("7") },
-        { entityId: "conf:join:right:string", attribute: ":conf/right", value: string("7") },
-        { entityId: "conf:join:right:other", attribute: ":conf/right", value: number(8) },
+        { entityId: eid("conf:join:left:number"), attribute: ":conf/left", value: number(7) },
+        { entityId: eid("conf:join:right:number"), attribute: ":conf/right", value: number(7) },
+        { entityId: eid("conf:join:left:string"), attribute: ":conf/left", value: string("7") },
+        { entityId: eid("conf:join:right:string"), attribute: ":conf/right", value: string("7") },
+        { entityId: eid("conf:join:right:other"), attribute: ":conf/right", value: number(8) },
         {
-          entityId: "conf:join:left:json",
+          entityId: eid("conf:join:left:json"),
           attribute: ":conf/left",
           value: json({ stable: true }),
         },
         {
-          entityId: "conf:join:right:json",
+          entityId: eid("conf:join:right:json"),
           attribute: ":conf/right",
           value: json({ stable: true }),
         },
         {
-          entityId: "conf:join:left:blob",
+          entityId: eid("conf:join:left:blob"),
           attribute: ":conf/left",
           value: blob("sha256:shared", "application/octet-stream", 32),
         },
         {
-          entityId: "conf:join:right:blob",
+          entityId: eid("conf:join:right:blob"),
           attribute: ":conf/right",
           value: blob("sha256:shared", "application/pdf", 32),
         },
@@ -452,10 +459,10 @@ export const triplesConformanceCases: readonly ConformanceCase[] = [
     run: Effect.gen(function* () {
       const t = yield* Triples;
       yield* t.assertBatch([
-        { entityId: "conf:eq:number", attribute: ":conf/equality", value: number(7) },
-        { entityId: "conf:eq:datetime", attribute: ":conf/equality", value: datetime(7) },
-        { entityId: "conf:eq:string", attribute: ":conf/equality", value: string("7") },
-        { entityId: "conf:eq:other", attribute: ":conf/equality", value: number(8) },
+        { entityId: eid("conf:eq:number"), attribute: ":conf/equality", value: number(7) },
+        { entityId: eid("conf:eq:datetime"), attribute: ":conf/equality", value: datetime(7) },
+        { entityId: eid("conf:eq:string"), attribute: ":conf/equality", value: string("7") },
+        { entityId: eid("conf:eq:other"), attribute: ":conf/equality", value: number(8) },
       ]);
 
       const equal = yield* t.query({
@@ -488,7 +495,7 @@ export const triplesConformanceCases: readonly ConformanceCase[] = [
     name: "datalog equality keeps identity bindings string-typed",
     run: Effect.gen(function* () {
       const t = yield* Triples;
-      const entityId = "conf:identity:7";
+      const entityId = eid("conf:identity:7");
       yield* t.assert({
         entityId,
         attribute: ":conf/identity",
@@ -543,15 +550,23 @@ export const triplesConformanceCases: readonly ConformanceCase[] = [
     run: Effect.gen(function* () {
       const t = yield* Triples;
       yield* t.assertBatch([
-        { entityId: "conf:ordered:number-2", attribute: ":conf/ordered", value: number(2) },
-        { entityId: "conf:ordered:datetime-3", attribute: ":conf/ordered", value: datetime(3) },
+        { entityId: eid("conf:ordered:number-2"), attribute: ":conf/ordered", value: number(2) },
         {
-          entityId: "conf:ordered:number-10",
+          entityId: eid("conf:ordered:datetime-3"),
+          attribute: ":conf/ordered",
+          value: datetime(3),
+        },
+        {
+          entityId: eid("conf:ordered:number-10"),
           attribute: ":conf/ordered",
           value: number(10),
         },
-        { entityId: "conf:ordered:string-20", attribute: ":conf/ordered", value: string("20") },
-        { entityId: "conf:ordered:boolean", attribute: ":conf/ordered", value: boolean(true) },
+        {
+          entityId: eid("conf:ordered:string-20"),
+          attribute: ":conf/ordered",
+          value: string("20"),
+        },
+        { entityId: eid("conf:ordered:boolean"), attribute: ":conf/ordered", value: boolean(true) },
       ]);
 
       const { results } = yield* t.query({
@@ -575,12 +590,12 @@ export const triplesConformanceCases: readonly ConformanceCase[] = [
       const t = yield* Triples;
       yield* t.assertBatch([
         {
-          entityId: "conf:refs:typed:mid",
+          entityId: eid("conf:refs:typed:mid"),
           attribute: ":conf/typed-child",
           value: ref("conf:refs:typed:leaf"),
         },
         {
-          entityId: "conf:refs:typed:other",
+          entityId: eid("conf:refs:typed:other"),
           attribute: ":conf/typed-child",
           value: ref("conf:refs:typed:leaf"),
         },
@@ -604,12 +619,12 @@ export const triplesConformanceCases: readonly ConformanceCase[] = [
       const t = yield* Triples;
       yield* t.assertBatch([
         {
-          entityId: "conf:refs:join:mid",
+          entityId: eid("conf:refs:join:mid"),
           attribute: ":conf/join-child",
           value: ref("conf:refs:join:leaf"),
         },
         {
-          entityId: "conf:refs:join:other",
+          entityId: eid("conf:refs:join:other"),
           attribute: ":conf/join-child",
           value: ref("conf:refs:join:leaf"),
         },
@@ -635,17 +650,17 @@ export const triplesConformanceCases: readonly ConformanceCase[] = [
       const t = yield* Triples;
       yield* t.assertBatch([
         {
-          entityId: "conf:refs:hops:grand",
+          entityId: eid("conf:refs:hops:grand"),
           attribute: ":conf/hops-child",
           value: ref("conf:refs:hops:parent"),
         },
         {
-          entityId: "conf:refs:hops:parent",
+          entityId: eid("conf:refs:hops:parent"),
           attribute: ":conf/hops-child",
           value: ref("conf:refs:hops:leaf"),
         },
         {
-          entityId: "conf:refs:hops:sibling",
+          entityId: eid("conf:refs:hops:sibling"),
           attribute: ":conf/hops-child",
           value: ref("conf:refs:hops:leaf"),
         },
@@ -678,37 +693,37 @@ export const triplesConformanceCases: readonly ConformanceCase[] = [
       const t = yield* Triples;
       yield* t.assertBatch([
         {
-          entityId: "conf:rules:a",
+          entityId: eid("conf:rules:a"),
           attribute: ":conf/rules-parent",
           value: ref("conf:rules:b"),
         },
         {
-          entityId: "conf:rules:b",
+          entityId: eid("conf:rules:b"),
           attribute: ":conf/rules-parent",
           value: ref("conf:rules:c"),
         },
         {
-          entityId: "conf:rules:c",
+          entityId: eid("conf:rules:c"),
           attribute: ":conf/rules-parent",
           value: ref("conf:rules:d"),
         },
         {
-          entityId: "conf:rules:unrelated",
+          entityId: eid("conf:rules:unrelated"),
           attribute: ":conf/rules-parent",
           value: ref("conf:rules:other"),
         },
         {
-          entityId: "conf:rules:text-source",
+          entityId: eid("conf:rules:text-source"),
           attribute: ":conf/rules-parent",
           value: string("conf:rules:text-target"),
         },
         {
-          entityId: "conf:rules:number-source",
+          entityId: eid("conf:rules:number-source"),
           attribute: ":conf/rules-parent",
           value: number(7),
         },
         {
-          entityId: "conf:rules:boolean-source",
+          entityId: eid("conf:rules:boolean-source"),
           attribute: ":conf/rules-parent",
           value: boolean(false),
         },
@@ -796,12 +811,12 @@ export const triplesConformanceCases: readonly ConformanceCase[] = [
       const t = yield* Triples;
       yield* t.assertBatch([
         {
-          entityId: "conf:rules:self",
+          entityId: eid("conf:rules:self"),
           attribute: ":conf/rules-same",
           value: ref("conf:rules:self"),
         },
         {
-          entityId: "conf:rules:not-self",
+          entityId: eid("conf:rules:not-self"),
           attribute: ":conf/rules-same",
           value: ref("conf:rules:other"),
         },
@@ -829,12 +844,12 @@ export const triplesConformanceCases: readonly ConformanceCase[] = [
     run: Effect.gen(function* () {
       const t = yield* Triples;
       yield* t.assertBatch([
-        { entityId: "conf:aggregate:alice", attribute: ":conf/team", value: ref("east") },
-        { entityId: "conf:aggregate:alice", attribute: ":conf/score", value: number(10) },
-        { entityId: "conf:aggregate:bob", attribute: ":conf/team", value: ref("east") },
-        { entityId: "conf:aggregate:bob", attribute: ":conf/score", value: number(10) },
-        { entityId: "conf:aggregate:carol", attribute: ":conf/team", value: ref("west") },
-        { entityId: "conf:aggregate:carol", attribute: ":conf/score", value: number(5) },
+        { entityId: eid("conf:aggregate:alice"), attribute: ":conf/team", value: ref("east") },
+        { entityId: eid("conf:aggregate:alice"), attribute: ":conf/score", value: number(10) },
+        { entityId: eid("conf:aggregate:bob"), attribute: ":conf/team", value: ref("east") },
+        { entityId: eid("conf:aggregate:bob"), attribute: ":conf/score", value: number(10) },
+        { entityId: eid("conf:aggregate:carol"), attribute: ":conf/team", value: ref("west") },
+        { entityId: eid("conf:aggregate:carol"), attribute: ":conf/score", value: number(5) },
       ]);
 
       const { results } = yield* t.query({
@@ -869,17 +884,17 @@ export const triplesConformanceCases: readonly ConformanceCase[] = [
       const t = yield* Triples;
       yield* t.assertBatch([
         {
-          entityId: "conf:having:number",
+          entityId: eid("conf:having:number"),
           attribute: ":conf/having-bucket",
           value: number(7),
         },
         {
-          entityId: "conf:having:datetime",
+          entityId: eid("conf:having:datetime"),
           attribute: ":conf/having-bucket",
           value: datetime(7),
         },
         {
-          entityId: "conf:having:text",
+          entityId: eid("conf:having:text"),
           attribute: ":conf/having-bucket",
           value: string("7"),
         },
@@ -941,8 +956,16 @@ export const triplesConformanceCases: readonly ConformanceCase[] = [
     run: Effect.gen(function* () {
       const t = yield* Triples;
       yield* t.assertBatch([
-        { entityId: "conf:aggregate:duplicate:a", attribute: ":conf/amount", value: number(10) },
-        { entityId: "conf:aggregate:duplicate:b", attribute: ":conf/amount", value: number(10) },
+        {
+          entityId: eid("conf:aggregate:duplicate:a"),
+          attribute: ":conf/amount",
+          value: number(10),
+        },
+        {
+          entityId: eid("conf:aggregate:duplicate:b"),
+          attribute: ":conf/amount",
+          value: number(10),
+        },
       ]);
 
       const summed = yield* t.query({
@@ -987,22 +1010,22 @@ export const triplesConformanceCases: readonly ConformanceCase[] = [
       const t = yield* Triples;
       yield* t.assertBatch([
         {
-          entityId: "conf:clause-order:blocked",
+          entityId: eid("conf:clause-order:blocked"),
           attribute: ":conf/order-score",
           value: number(12),
         },
         {
-          entityId: "conf:clause-order:blocked",
+          entityId: eid("conf:clause-order:blocked"),
           attribute: ":conf/blocked-at",
           value: number(20),
         },
         {
-          entityId: "conf:clause-order:eligible",
+          entityId: eid("conf:clause-order:eligible"),
           attribute: ":conf/order-score",
           value: number(15),
         },
         {
-          entityId: "conf:clause-order:low",
+          entityId: eid("conf:clause-order:low"),
           attribute: ":conf/order-score",
           value: number(5),
         },
@@ -1152,67 +1175,67 @@ export const triplesConformanceCases: readonly ConformanceCase[] = [
       const t = yield* Triples;
       yield* t.assertBatch([
         {
-          entityId: "conf:filter:alice",
+          entityId: eid("conf:filter:alice"),
           attribute: ":_schema/type",
           value: string("FilterFixture"),
         },
         {
-          entityId: "conf:filter:alice",
+          entityId: eid("conf:filter:alice"),
           attribute: ":conf/filter-value",
           value: string("Alice"),
         },
         {
-          entityId: "conf:filter:bob",
+          entityId: eid("conf:filter:bob"),
           attribute: ":_schema/type",
           value: string("FilterFixture"),
         },
         {
-          entityId: "conf:filter:bob",
+          entityId: eid("conf:filter:bob"),
           attribute: ":conf/filter-value",
           value: string("Bob"),
         },
         {
-          entityId: "conf:filter:number",
+          entityId: eid("conf:filter:number"),
           attribute: ":_schema/type",
           value: string("FilterFixture"),
         },
         {
-          entityId: "conf:filter:number",
+          entityId: eid("conf:filter:number"),
           attribute: ":conf/filter-value",
           value: number(2),
         },
         {
-          entityId: "conf:filter:number-ten",
+          entityId: eid("conf:filter:number-ten"),
           attribute: ":_schema/type",
           value: string("FilterFixture"),
         },
         {
-          entityId: "conf:filter:number-ten",
+          entityId: eid("conf:filter:number-ten"),
           attribute: ":conf/filter-value",
           value: number(10),
         },
         {
-          entityId: "conf:filter:ref",
+          entityId: eid("conf:filter:ref"),
           attribute: ":_schema/type",
           value: string("FilterFixture"),
         },
         {
-          entityId: "conf:filter:ref",
+          entityId: eid("conf:filter:ref"),
           attribute: ":conf/filter-value",
           value: ref("scope:one"),
         },
         {
-          entityId: "conf:filter:boolean",
+          entityId: eid("conf:filter:boolean"),
           attribute: ":_schema/type",
           value: string("FilterFixture"),
         },
         {
-          entityId: "conf:filter:boolean",
+          entityId: eid("conf:filter:boolean"),
           attribute: ":conf/filter-value",
           value: boolean(true),
         },
         {
-          entityId: "conf:filter:missing",
+          entityId: eid("conf:filter:missing"),
           attribute: ":_schema/type",
           value: string("FilterFixture"),
         },
@@ -1305,15 +1328,15 @@ export const triplesConformanceCases: readonly ConformanceCase[] = [
       yield* t.assertBatch(
         fixtures.flatMap(([entityId, value]) => [
           {
-            entityId,
+            entityId: eid(entityId),
             attribute: ":_schema/type",
             value: string("OrderFixture"),
           },
-          { entityId, attribute: ":conf/order-value", value },
+          { entityId: eid(entityId), attribute: ":conf/order-value", value },
         ]),
       );
       yield* t.assert({
-        entityId: "conf:order:missing",
+        entityId: eid("conf:order:missing"),
         attribute: ":_schema/type",
         value: string("OrderFixture"),
       });
@@ -1405,12 +1428,12 @@ export const triplesConformanceCases: readonly ConformanceCase[] = [
       const t = yield* Triples;
       yield* t.assertBatch([
         {
-          entityId: "conf:refs:mixed:ref",
+          entityId: eid("conf:refs:mixed:ref"),
           attribute: ":conf/mixed-value",
           value: ref("conf:refs:mixed:target"),
         },
         {
-          entityId: "conf:refs:mixed:string",
+          entityId: eid("conf:refs:mixed:string"),
           attribute: ":conf/mixed-value",
           value: string("conf:refs:mixed:target"),
         },
@@ -1446,7 +1469,7 @@ export const triplesConformanceCases: readonly ConformanceCase[] = [
         [
           {
             op: "assert",
-            entityId: "conf:person:3",
+            entityId: eid("conf:person:3"),
             attribute: ":age",
             value: { type: "number", value: 30 },
             entityType: "Person",
@@ -1455,7 +1478,7 @@ export const triplesConformanceCases: readonly ConformanceCase[] = [
         { actor: "conformance-tester" },
       );
 
-      const txTriples = yield* t.match({ entityId: result.txId });
+      const txTriples = yield* t.match({ entityId: eid(result.txId) });
       const attributes = new Set(txTriples.map((tr) => tr.attribute as string));
       yield* check(
         attributes.has(":_tx/instant"),
@@ -1472,7 +1495,7 @@ export const triplesConformanceCases: readonly ConformanceCase[] = [
     run: Effect.gen(function* () {
       const t = yield* Triples;
       const current = yield* t.assert({
-        entityId: "conf:conditional:1",
+        entityId: eid("conf:conditional:1"),
         attribute: ":status",
         value: string("open"),
       });
@@ -1481,7 +1504,7 @@ export const triplesConformanceCases: readonly ConformanceCase[] = [
           { op: "retract", id: current.id },
           {
             op: "assert",
-            entityId: "conf:conditional:1",
+            entityId: eid("conf:conditional:1"),
             attribute: ":status",
             value: string("claimed"),
           },
@@ -1498,7 +1521,7 @@ export const triplesConformanceCases: readonly ConformanceCase[] = [
             { op: "retract", id: current.id },
             {
               op: "assert",
-              entityId: "conf:conditional:1",
+              entityId: eid("conf:conditional:1"),
               attribute: ":status",
               value: string("cancelled"),
             },
@@ -1511,7 +1534,7 @@ export const triplesConformanceCases: readonly ConformanceCase[] = [
         "a stale compare-and-retract should report TransactionConflictError",
       );
       const statuses = yield* t.match({
-        entityId: "conf:conditional:1",
+        entityId: eid("conf:conditional:1"),
         attribute: ":status",
       });
       yield* check(
@@ -1549,7 +1572,7 @@ export const triplesConformanceCases: readonly ConformanceCase[] = [
           [
             {
               op: "assert",
-              entityId: "conf:conditional:receipt",
+              entityId: eid("conf:conditional:receipt"),
               attribute: ":status",
               value: string("observed"),
             },
@@ -1567,7 +1590,7 @@ export const triplesConformanceCases: readonly ConformanceCase[] = [
         receipt?.txId === committed.txId,
         "command lookup must return the unique durable receipt",
       );
-      const duplicateWrites = yield* t.match({ entityId: "conf:conditional:receipt" });
+      const duplicateWrites = yield* t.match({ entityId: eid("conf:conditional:receipt") });
       yield* check(duplicateWrites.length === 0, "a duplicate command must commit no writes");
 
       const races = yield* Effect.all(
@@ -1577,7 +1600,7 @@ export const triplesConformanceCases: readonly ConformanceCase[] = [
               [
                 {
                   op: "assert" as const,
-                  entityId: `conf:command-race:${side}`,
+                  entityId: eid(`conf:command-race:${side}`),
                   attribute: ":status",
                   value: string("won"),
                 },
@@ -1633,7 +1656,7 @@ export const triplesConformanceCases: readonly ConformanceCase[] = [
           [
             {
               op: "assert",
-              entityId: "conf:constraint:missing-name",
+              entityId: eid("conf:constraint:missing-name"),
               entityType: "ConfConstraintPerson",
               attribute: ":conf/constraint-email",
               value: string("missing@example.com"),
@@ -1649,7 +1672,7 @@ export const triplesConformanceCases: readonly ConformanceCase[] = [
       );
       yield* check(
         (yield* t.currentPosition()) === position &&
-          (yield* t.match({ entityId: "conf:constraint:missing-name" })).length === 0,
+          (yield* t.match({ entityId: eid("conf:constraint:missing-name") })).length === 0,
         "constraint rejection must roll back facts, journal, and commit position",
       );
 
@@ -1657,7 +1680,7 @@ export const triplesConformanceCases: readonly ConformanceCase[] = [
         [
           {
             op: "assert",
-            entityId: "conf:constraint:employer",
+            entityId: eid("conf:constraint:employer"),
             entityType: "ConfConstraintEmployer",
             attribute: ":conf/constraint-name",
             value: string("Acme"),
@@ -1667,7 +1690,7 @@ export const triplesConformanceCases: readonly ConformanceCase[] = [
           ...["one", "two"].flatMap((suffix) => [
             {
               op: "assert" as const,
-              entityId: `conf:constraint:${suffix}`,
+              entityId: eid(`conf:constraint:${suffix}`),
               entityType: "ConfConstraintPerson",
               attribute: ":conf/constraint-name",
               value: string(suffix),
@@ -1676,7 +1699,7 @@ export const triplesConformanceCases: readonly ConformanceCase[] = [
             },
             {
               op: "assert" as const,
-              entityId: `conf:constraint:${suffix}`,
+              entityId: eid(`conf:constraint:${suffix}`),
               entityType: "ConfConstraintPerson",
               attribute: ":conf/constraint-email",
               value: string("shared@example.com"),
@@ -1685,7 +1708,7 @@ export const triplesConformanceCases: readonly ConformanceCase[] = [
             },
             {
               op: "assert" as const,
-              entityId: `conf:constraint:${suffix}`,
+              entityId: eid(`conf:constraint:${suffix}`),
               entityType: "ConfConstraintPerson",
               attribute: ":conf/constraint-employer",
               value: ref("conf:constraint:employer"),
@@ -1707,7 +1730,7 @@ export const triplesConformanceCases: readonly ConformanceCase[] = [
           [
             {
               op: "assert",
-              entityId: "conf:constraint:three",
+              entityId: eid("conf:constraint:three"),
               entityType: "ConfConstraintPerson",
               attribute: ":conf/constraint-name",
               value: string("three"),
@@ -1716,7 +1739,7 @@ export const triplesConformanceCases: readonly ConformanceCase[] = [
             },
             {
               op: "assert",
-              entityId: "conf:constraint:three",
+              entityId: eid("conf:constraint:three"),
               entityType: "ConfConstraintPerson",
               attribute: ":conf/constraint-email",
               value: string("shared@example.com"),
@@ -1742,14 +1765,14 @@ export const triplesConformanceCases: readonly ConformanceCase[] = [
               [
                 {
                   op: "assert" as const,
-                  entityId: `conf:constraint:race:${side}`,
+                  entityId: eid(`conf:constraint:race:${side}`),
                   entityType: "ConfConstraintPerson",
                   attribute: ":conf/constraint-name",
                   value: string(side),
                 },
                 {
                   op: "assert" as const,
-                  entityId: `conf:constraint:race:${side}`,
+                  entityId: eid(`conf:constraint:race:${side}`),
                   entityType: "ConfConstraintPerson",
                   attribute: ":conf/constraint-email",
                   value: string("race@example.com"),
@@ -1784,7 +1807,7 @@ export const triplesConformanceCases: readonly ConformanceCase[] = [
       const future = yield* t.transact([
         {
           op: "assert",
-          entityId: "conf:dependency:future",
+          entityId: eid("conf:dependency:future"),
           attribute,
           value: string("scheduled"),
           validFrom: 500,
@@ -1794,7 +1817,7 @@ export const triplesConformanceCases: readonly ConformanceCase[] = [
       const expiring = yield* t.transact([
         {
           op: "assert",
-          entityId: "conf:dependency:expiring",
+          entityId: eid("conf:dependency:expiring"),
           attribute,
           value: string("active"),
           validFrom: 50,
@@ -1804,7 +1827,7 @@ export const triplesConformanceCases: readonly ConformanceCase[] = [
       yield* t.transact([
         {
           op: "assert",
-          entityId: "conf:dependency:unrelated",
+          entityId: eid("conf:dependency:unrelated"),
           attribute: ":conf-dependency/unrelated",
           value: string("ignored"),
         },
@@ -1858,7 +1881,7 @@ export const triplesConformanceCases: readonly ConformanceCase[] = [
       );
 
       yield* t.assert({
-        entityId: "conf:projection:current",
+        entityId: eid("conf:projection:current"),
         attribute: ":conf-projection/status",
         value: string("ready"),
         validFrom: 50,
@@ -1872,7 +1895,7 @@ export const triplesConformanceCases: readonly ConformanceCase[] = [
       );
 
       yield* t.assert({
-        entityId: "conf:projection:unrelated",
+        entityId: eid("conf:projection:unrelated"),
         attribute: ":conf-projection/note",
         value: string("ignored"),
       });
@@ -1883,7 +1906,7 @@ export const triplesConformanceCases: readonly ConformanceCase[] = [
       );
 
       yield* t.assert({
-        entityId: "conf:projection:future",
+        entityId: eid("conf:projection:future"),
         attribute: ":conf-projection/status",
         value: string("scheduled"),
         validFrom: 500,
@@ -1908,44 +1931,44 @@ export const triplesConformanceCases: readonly ConformanceCase[] = [
       const t = yield* Triples;
       yield* t.assertBatch([
         {
-          entityId: "conf:user:alice",
+          entityId: eid("conf:user:alice"),
           entityType: "ConfUser",
           attribute: ":conf-user/email",
           value: string("shared@example.test"),
         },
         {
-          entityId: "conf:user:bob",
+          entityId: eid("conf:user:bob"),
           entityType: "ConfUser",
           attribute: ":conf-user/email",
           value: string("shared@example.test"),
         },
         {
-          entityId: "conf:user:future",
+          entityId: eid("conf:user:future"),
           entityType: "ConfUser",
           attribute: ":conf-user/email",
           value: string("shared@example.test"),
           validFrom: 9_000_000_000_000,
         },
         {
-          entityId: "conf:group:valid",
+          entityId: eid("conf:group:valid"),
           entityType: "ConfGroup",
           attribute: ":conf-group/name",
           value: string("Valid group"),
         },
         {
-          entityId: "conf:membership:missing",
+          entityId: eid("conf:membership:missing"),
           entityType: "ConfMembership",
           attribute: ":conf-membership/note",
           value: string("missing group"),
         },
         {
-          entityId: "conf:membership:multi",
+          entityId: eid("conf:membership:multi"),
           entityType: "ConfMembership",
           attribute: ":conf-membership/group",
           value: ref("conf:group:valid"),
         },
         {
-          entityId: "conf:membership:multi",
+          entityId: eid("conf:membership:multi"),
           entityType: "ConfMembership",
           attribute: ":conf-membership/group",
           value: ref("conf:group:missing"),
@@ -1997,7 +2020,7 @@ export const triplesConformanceCases: readonly ConformanceCase[] = [
         [
           {
             op: "assert",
-            entityId: "conf:checkpoint:source",
+            entityId: eid("conf:checkpoint:source"),
             attribute: ":status",
             value: string("ready"),
           },
@@ -2022,7 +2045,7 @@ export const triplesConformanceCases: readonly ConformanceCase[] = [
             [
               {
                 op: "assert" as const,
-                entityId: `conf:checkpoint:${side}`,
+                entityId: eid(`conf:checkpoint:${side}`),
                 attribute: ":status",
                 value: string("ready"),
               },
@@ -2082,13 +2105,13 @@ export const triplesConformanceCases: readonly ConformanceCase[] = [
       const t = yield* Triples;
       yield* t.assertBatch([
         {
-          entityId: "conf:typed-retract:person",
+          entityId: eid("conf:typed-retract:person"),
           attribute: ":name",
           value: string("Person"),
           entityType: "Person",
         },
         {
-          entityId: "conf:typed-retract:robot",
+          entityId: eid("conf:typed-retract:robot"),
           attribute: ":name",
           value: string("Robot"),
           entityType: "Robot",
@@ -2096,21 +2119,21 @@ export const triplesConformanceCases: readonly ConformanceCase[] = [
       ]);
 
       const retracted = yield* t.retractByPattern({ entityType: "Person" });
-      const person = yield* t.match({ entityId: "conf:typed-retract:person" });
-      const robot = yield* t.match({ entityId: "conf:typed-retract:robot" });
+      const person = yield* t.match({ entityId: eid("conf:typed-retract:person") });
+      const robot = yield* t.match({ entityId: eid("conf:typed-retract:robot") });
       yield* check(retracted >= 1, "entityType retraction should retract matching facts");
       yield* check(person.length === 0, "entityType retraction should remove matching facts");
       yield* check(robot.length === 1, "entityType retraction must preserve other entity types");
 
       yield* t.assertBatch([
         {
-          entityId: "conf:typed-retract:transaction-person",
+          entityId: eid("conf:typed-retract:transaction-person"),
           attribute: ":name",
           value: string("Person"),
           entityType: "TransactionPerson",
         },
         {
-          entityId: "conf:typed-retract:transaction-robot",
+          entityId: eid("conf:typed-retract:transaction-robot"),
           attribute: ":name",
           value: string("Robot"),
           entityType: "TransactionRobot",
@@ -2118,7 +2141,7 @@ export const triplesConformanceCases: readonly ConformanceCase[] = [
       ]);
       yield* t.transact([{ op: "retract-pattern", pattern: { entityType: "TransactionPerson" } }]);
       const transactionRobot = yield* t.match({
-        entityId: "conf:typed-retract:transaction-robot",
+        entityId: eid("conf:typed-retract:transaction-robot"),
       });
       yield* check(
         transactionRobot.length === 1,
@@ -2132,17 +2155,17 @@ export const triplesConformanceCases: readonly ConformanceCase[] = [
       const t = yield* Triples;
       const reservedInputs = [
         {
-          entityId: "_triplex/application/forbidden",
+          entityId: eid("_triplex/application/forbidden"),
           attribute: ":name",
           value: string("reserved entity"),
         },
         {
-          entityId: "conf:reserved:attribute",
+          entityId: eid("conf:reserved:attribute"),
           attribute: ":triplex/config-data",
           value: string("reserved attribute"),
         },
         {
-          entityId: "conf:reserved:type",
+          entityId: eid("conf:reserved:type"),
           attribute: ":name",
           value: string("reserved type"),
           entityType: "triplex.config-object",
@@ -2160,7 +2183,7 @@ export const triplesConformanceCases: readonly ConformanceCase[] = [
       const batchFailure = yield* t
         .assertBatch([
           {
-            entityId: "conf:reserved:batch-application",
+            entityId: eid("conf:reserved:batch-application"),
             attribute: ":name",
             value: string("must roll back"),
           },
@@ -2172,7 +2195,7 @@ export const triplesConformanceCases: readonly ConformanceCase[] = [
         "a mixed batch should reject its reserved member",
       );
       yield* check(
-        (yield* t.match({ entityId: "conf:reserved:batch-application" })).length === 0,
+        (yield* t.match({ entityId: eid("conf:reserved:batch-application") })).length === 0,
         "a rejected mixed batch must not write its application facts",
       );
 
@@ -2180,13 +2203,13 @@ export const triplesConformanceCases: readonly ConformanceCase[] = [
         .transact([
           {
             op: "assert",
-            entityId: "conf:reserved:transaction-application",
+            entityId: eid("conf:reserved:transaction-application"),
             attribute: ":name",
             value: string("must roll back"),
           },
           {
             op: "assert",
-            entityId: "_triplex/application/transaction-forbidden",
+            entityId: eid("_triplex/application/transaction-forbidden"),
             attribute: ":name",
             value: string("reserved"),
           },
@@ -2197,7 +2220,7 @@ export const triplesConformanceCases: readonly ConformanceCase[] = [
         "a mixed transaction should reject its reserved member",
       );
       yield* check(
-        (yield* t.match({ entityId: "conf:reserved:transaction-application" })).length === 0,
+        (yield* t.match({ entityId: eid("conf:reserved:transaction-application") })).length === 0,
         "a rejected mixed transaction must not write its application facts",
       );
     }),
@@ -2209,12 +2232,12 @@ export const triplesConformanceCases: readonly ConformanceCase[] = [
       const committed = yield* t.transact([
         {
           op: "assert",
-          entityId: "conf:reserved:journal-subject",
+          entityId: eid("conf:reserved:journal-subject"),
           attribute: ":name",
           value: string("journalled"),
         },
       ]);
-      const journalFacts = yield* t.match({ entityId: committed.txId });
+      const journalFacts = yield* t.match({ entityId: eid(committed.txId) });
       const instant = journalFacts.find((triple) => triple.attribute === ":_tx/instant");
       yield* check(instant !== undefined, "a committed transaction should have a journal instant");
 
@@ -2231,7 +2254,7 @@ export const triplesConformanceCases: readonly ConformanceCase[] = [
         "pattern retraction must not mutate transaction journals",
       );
       yield* check(
-        (yield* t.match({ entityId: committed.txId })).length === journalFacts.length,
+        (yield* t.match({ entityId: eid(committed.txId) })).length === journalFacts.length,
         "rejected journal mutations must preserve every journal fact",
       );
     }),
@@ -2241,21 +2264,21 @@ export const triplesConformanceCases: readonly ConformanceCase[] = [
     run: Effect.gen(function* () {
       const t = yield* Triples;
       const old = yield* t.assert({
-        entityId: "conf:temporal:policy",
+        entityId: eid("conf:temporal:policy"),
         attribute: ":conf/status",
         value: string("draft"),
         validFrom: 1_000,
         validTo: 2_000,
       });
       yield* t.assert({
-        entityId: "conf:temporal:policy",
+        entityId: eid("conf:temporal:policy"),
         attribute: ":conf/status",
         value: string("active"),
         validFrom: 2_000,
       });
 
       const atDraft = yield* t.match(
-        { entityId: "conf:temporal:policy", attribute: ":conf/status" },
+        { entityId: eid("conf:temporal:policy"), attribute: ":conf/status" },
         { validAt: 1_500 },
       );
       const atActive = yield* t.query(
@@ -2280,7 +2303,7 @@ export const triplesConformanceCases: readonly ConformanceCase[] = [
     run: Effect.gen(function* () {
       const t = yield* Triples;
       const original = yield* t.assert({
-        entityId: "conf:temporal:correction",
+        entityId: eid("conf:temporal:correction"),
         attribute: ":conf/name",
         value: string("Orignal"),
         validFrom: 1_000,
@@ -2290,7 +2313,7 @@ export const triplesConformanceCases: readonly ConformanceCase[] = [
         { op: "retract", id: original.id },
         {
           op: "assert",
-          entityId: "conf:temporal:correction",
+          entityId: eid("conf:temporal:correction"),
           attribute: ":conf/name",
           value: string("Original"),
           validFrom: 1_000,
@@ -2298,11 +2321,11 @@ export const triplesConformanceCases: readonly ConformanceCase[] = [
       ]);
 
       const beforeCorrection = yield* t.match(
-        { entityId: "conf:temporal:correction", attribute: ":conf/name" },
+        { entityId: eid("conf:temporal:correction"), attribute: ":conf/name" },
         { recordedAt: original.recordedAt, validAt: 1_500 },
       );
       const currentKnowledge = yield* t.match(
-        { entityId: "conf:temporal:correction", attribute: ":conf/name" },
+        { entityId: eid("conf:temporal:correction"), attribute: ":conf/name" },
         { validAt: 1_500 },
       );
       yield* check(
@@ -2323,13 +2346,13 @@ export const triplesConformanceCases: readonly ConformanceCase[] = [
       const t = yield* Triples;
       yield* t.assertBatch([
         {
-          entityId: "conf:batch:first",
+          entityId: eid("conf:batch:first"),
           attribute: ":conf/name",
           value: string("First"),
           validFrom: 1_000,
         },
         {
-          entityId: "conf:batch:future",
+          entityId: eid("conf:batch:future"),
           attribute: ":conf/name",
           value: string("Future"),
           validFrom: 3_000,
@@ -2350,7 +2373,7 @@ export const triplesConformanceCases: readonly ConformanceCase[] = [
     run: Effect.gen(function* () {
       const t = yield* Triples;
       const triple = yield* t.assert({
-        entityId: "conf:coherence:1",
+        entityId: eid("conf:coherence:1"),
         attribute: ":flag",
         value: { type: "boolean", value: true },
         entityType: "Widget",
@@ -2370,7 +2393,7 @@ export const triplesConformanceCases: readonly ConformanceCase[] = [
         "datalog query must not see a fact retracted via the write path",
       );
 
-      const matched = yield* t.match({ entityId: "conf:coherence:1", attribute: ":flag" });
+      const matched = yield* t.match({ entityId: eid("conf:coherence:1"), attribute: ":flag" });
       yield* check(matched.length === 0, "match must not see the retracted fact either");
     }),
   },
@@ -2380,22 +2403,22 @@ export const triplesConformanceCases: readonly ConformanceCase[] = [
       const t = yield* Triples;
       const seeded = yield* t.assertBatch([
         {
-          entityId: "conf:page:1",
+          entityId: eid("conf:page:1"),
           attribute: ":conf/page-rank",
           value: number(1),
         },
         {
-          entityId: "conf:page:2",
+          entityId: eid("conf:page:2"),
           attribute: ":conf/page-rank",
           value: number(1),
         },
         {
-          entityId: "conf:page:3",
+          entityId: eid("conf:page:3"),
           attribute: ":conf/page-rank",
           value: number(1),
         },
         {
-          entityId: "conf:page:4",
+          entityId: eid("conf:page:4"),
           attribute: ":conf/page-rank",
           value: number(2),
         },
@@ -2421,7 +2444,7 @@ export const triplesConformanceCases: readonly ConformanceCase[] = [
       // Deliberately mutate immediately: recorded milliseconds may be equal,
       // so snapshot stability must come from the atomic commit position.
       yield* t.assert({
-        entityId: "conf:page:later",
+        entityId: eid("conf:page:later"),
         attribute: ":conf/page-rank",
         value: number(0),
       });

@@ -1,38 +1,40 @@
 import { Effect } from "effect";
-import { KvTriples, Triples, number, ref, string } from "@bjacobso/triplex";
+import { EntityId, KvTriples, Triples, number, ref, string } from "@bjacobso/triplex";
 
 const program = Effect.gen(function* () {
   const triples = yield* Triples;
+  const alice = EntityId.make("person:alice");
+  const bob = EntityId.make("person:bob");
 
   yield* triples.assertBatch([
     {
-      entityId: "person:alice",
+      entityId: alice,
       attribute: ":person/name",
       value: string("Alice"),
     },
     {
-      entityId: "person:alice",
+      entityId: alice,
       attribute: ":person/age",
       value: number(34),
     },
     {
-      entityId: "person:alice",
+      entityId: alice,
       attribute: ":person/friend",
-      value: ref("person:bob"),
+      value: ref(bob),
     },
     {
-      entityId: "person:bob",
+      entityId: bob,
       attribute: ":person/name",
       value: string("Bob"),
     },
     {
-      entityId: "person:bob",
+      entityId: bob,
       attribute: ":person/age",
       value: number(28),
     },
   ]);
 
-  const aliceFacts = yield* triples.match({ entityId: "person:alice" });
+  const aliceFacts = yield* triples.match({ entityId: alice });
 
   const { results: adults } = yield* triples.query({
     find: ["?name", "?age"],

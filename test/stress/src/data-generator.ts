@@ -1,5 +1,5 @@
 import type { TripleInput, TransactOp } from "@bjacobso/triplex";
-import { string, number, boolean, datetime, ref } from "@bjacobso/triplex";
+import { EntityId, string, number, boolean, datetime, ref } from "@bjacobso/triplex";
 
 /**
  * Generate employee triples for stress testing.
@@ -31,7 +31,7 @@ export function generateEmployeeTriples(count: number): TripleInput[] {
   const locations = ["NYC", "SF", "Austin", "Remote", "London"];
 
   for (let i = 0; i < count; i++) {
-    const empId = `emp:${i}`;
+    const empId = EntityId.make(`emp:${i}`);
 
     // Distribute across departments evenly
     const deptIdx = i % departments.length;
@@ -112,7 +112,7 @@ export function generateEmployeeTriples(count: number): TripleInput[] {
       triples.push({
         entityId: empId,
         attribute: ":manager",
-        value: ref(`emp:${managerId}`),
+        value: ref(EntityId.make(`emp:${managerId}`)),
       });
     }
   }
@@ -159,7 +159,7 @@ export function generateUpdateBatch(
   const result: TransactOp[][] = [];
 
   for (let i = startIdx; i < endIdx; i++) {
-    const empId = `emp:${i}`;
+    const empId = EntityId.make(`emp:${i}`);
     const ops: TransactOp[] = [];
 
     // :salary — increment by 5000 per round
@@ -243,7 +243,7 @@ export function generateUpdateTriples(
   const triples: TripleInput[] = [];
 
   for (let i = startIdx; i < endIdx; i++) {
-    const empId = `emp:${i}`;
+    const empId = EntityId.make(`emp:${i}`);
 
     // :salary
     const baseTitleIdx = Math.min(Math.floor(i / 20000), TITLES.length - 1);

@@ -2,8 +2,7 @@ import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { Effect, Layer, Schedule } from "effect";
 import { SqlClient } from "effect/unstable/sql";
 import { generateId } from "@bjacobso/triplex/internal";
-import { string, boolean, ref } from "@bjacobso/triplex";
-import type { EntityId } from "@bjacobso/triplex";
+import { EntityId, string, boolean, ref } from "@bjacobso/triplex";
 import { writeFileSync } from "node:fs";
 import { arch, cpus, platform, totalmem } from "node:os";
 import {
@@ -492,7 +491,7 @@ describe(`Triple Store Stress Test [${BACKEND}] - ${(EMPLOYEE_COUNT * TRIPLES_PE
     it("Q5: Follow reference", async () => {
       // Use a manager ID that exists at any scale: emp:0 is referenced by emp:10's manager
       // (managerId = max(0, 10 - 10 - 0) = 0 for i=10)
-      const mgrId = EMPLOYEE_COUNT > 10 ? "emp:0" : "emp:0";
+      const mgrId = EntityId.make(EMPLOYEE_COUNT > 10 ? "emp:0" : "emp:0");
       const start = Date.now();
       const result = await Effect.runPromise(
         Effect.gen(function* () {

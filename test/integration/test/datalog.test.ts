@@ -5,13 +5,16 @@ import {
   Triples,
   string,
   number,
-  ref,
+  ref as makeRef,
   compileWithRules,
   type DatalogQuery,
 } from "@bjacobso/triplex/internal";
+import { EntityId } from "@bjacobso/triplex";
 import { SqliteTestLayer } from "./fixtures/SqliteTestLayer.js";
 
 const TestLayer = SqliteTestLayer;
+const eid = EntityId.make;
+const ref = (value: string) => makeRef(eid(value));
 
 /**
  * Test data setup:
@@ -34,39 +37,54 @@ const setupTestData = Effect.gen(function* () {
 
   // People
   yield* store.assertBatch([
-    { entityId: "p1", attribute: ":name", value: string("Alice"), entityType: "Person" },
-    { entityId: "p1", attribute: ":age", value: number(30), entityType: "Person" },
-    { entityId: "p1", attribute: ":status", value: string("active"), entityType: "Person" },
+    { entityId: eid("p1"), attribute: ":name", value: string("Alice"), entityType: "Person" },
+    { entityId: eid("p1"), attribute: ":age", value: number(30), entityType: "Person" },
+    { entityId: eid("p1"), attribute: ":status", value: string("active"), entityType: "Person" },
 
-    { entityId: "p2", attribute: ":name", value: string("Bob"), entityType: "Person" },
-    { entityId: "p2", attribute: ":age", value: number(25), entityType: "Person" },
-    { entityId: "p2", attribute: ":status", value: string("inactive"), entityType: "Person" },
+    { entityId: eid("p2"), attribute: ":name", value: string("Bob"), entityType: "Person" },
+    { entityId: eid("p2"), attribute: ":age", value: number(25), entityType: "Person" },
+    { entityId: eid("p2"), attribute: ":status", value: string("inactive"), entityType: "Person" },
 
-    { entityId: "p3", attribute: ":name", value: string("Charlie"), entityType: "Person" },
-    { entityId: "p3", attribute: ":age", value: number(35), entityType: "Person" },
+    { entityId: eid("p3"), attribute: ":name", value: string("Charlie"), entityType: "Person" },
+    { entityId: eid("p3"), attribute: ":age", value: number(35), entityType: "Person" },
     // p3 has no status
 
-    { entityId: "p4", attribute: ":name", value: string("James Cameron"), entityType: "Person" },
     {
-      entityId: "p5",
+      entityId: eid("p4"),
+      attribute: ":name",
+      value: string("James Cameron"),
+      entityType: "Person",
+    },
+    {
+      entityId: eid("p5"),
       attribute: ":name",
       value: string("Arnold Schwarzenegger"),
       entityType: "Person",
     },
-    { entityId: "p6", attribute: ":name", value: string("John McTiernan"), entityType: "Person" },
+    {
+      entityId: eid("p6"),
+      attribute: ":name",
+      value: string("John McTiernan"),
+      entityType: "Person",
+    },
   ]);
 
   // Movies
   yield* store.assertBatch([
-    { entityId: "m1", attribute: ":title", value: string("The Terminator"), entityType: "Movie" },
-    { entityId: "m1", attribute: ":year", value: number(1984), entityType: "Movie" },
-    { entityId: "m1", attribute: ":director", value: ref("p4"), entityType: "Movie" },
-    { entityId: "m1", attribute: ":cast", value: ref("p5"), entityType: "Movie" },
+    {
+      entityId: eid("m1"),
+      attribute: ":title",
+      value: string("The Terminator"),
+      entityType: "Movie",
+    },
+    { entityId: eid("m1"), attribute: ":year", value: number(1984), entityType: "Movie" },
+    { entityId: eid("m1"), attribute: ":director", value: ref("p4"), entityType: "Movie" },
+    { entityId: eid("m1"), attribute: ":cast", value: ref("p5"), entityType: "Movie" },
 
-    { entityId: "m2", attribute: ":title", value: string("Predator"), entityType: "Movie" },
-    { entityId: "m2", attribute: ":year", value: number(1987), entityType: "Movie" },
-    { entityId: "m2", attribute: ":director", value: ref("p6"), entityType: "Movie" },
-    { entityId: "m2", attribute: ":cast", value: ref("p5"), entityType: "Movie" },
+    { entityId: eid("m2"), attribute: ":title", value: string("Predator"), entityType: "Movie" },
+    { entityId: eid("m2"), attribute: ":year", value: number(1987), entityType: "Movie" },
+    { entityId: eid("m2"), attribute: ":director", value: ref("p6"), entityType: "Movie" },
+    { entityId: eid("m2"), attribute: ":cast", value: ref("p5"), entityType: "Movie" },
   ]);
 });
 
@@ -816,28 +834,43 @@ describe("Recursive Datalog Queries", () => {
     yield* store.assertBatch([
       // Grandpa
       {
-        entityId: "grandpa1",
+        entityId: eid("grandpa1"),
         attribute: ":name",
         value: string("Grandpa Joe"),
         entityType: "Person",
       },
 
       // Parent (child of grandpa)
-      { entityId: "parent1", attribute: ":name", value: string("Dad"), entityType: "Person" },
+      { entityId: eid("parent1"), attribute: ":name", value: string("Dad"), entityType: "Person" },
       {
-        entityId: "parent1",
+        entityId: eid("parent1"),
         attribute: ":parent",
         value: string("grandpa1"),
         entityType: "Person",
       },
 
       // Person (child of parent)
-      { entityId: "person1", attribute: ":name", value: string("Alice"), entityType: "Person" },
-      { entityId: "person1", attribute: ":parent", value: string("parent1"), entityType: "Person" },
+      {
+        entityId: eid("person1"),
+        attribute: ":name",
+        value: string("Alice"),
+        entityType: "Person",
+      },
+      {
+        entityId: eid("person1"),
+        attribute: ":parent",
+        value: string("parent1"),
+        entityType: "Person",
+      },
 
       // Child (child of person)
-      { entityId: "child1", attribute: ":name", value: string("Baby"), entityType: "Person" },
-      { entityId: "child1", attribute: ":parent", value: string("person1"), entityType: "Person" },
+      { entityId: eid("child1"), attribute: ":name", value: string("Baby"), entityType: "Person" },
+      {
+        entityId: eid("child1"),
+        attribute: ":parent",
+        value: string("person1"),
+        entityType: "Person",
+      },
     ]);
   });
 
@@ -1005,8 +1038,8 @@ describe("Recursive Datalog Queries", () => {
           // Use transact to create triples with shared tx_id
           const { txId, triples } = yield* store.transact(
             [
-              { op: "assert", entityId: "t1", attribute: ":name", value: string("Test User") },
-              { op: "assert", entityId: "t1", attribute: ":age", value: number(25) },
+              { op: "assert", entityId: eid("t1"), attribute: ":name", value: string("Test User") },
+              { op: "assert", entityId: eid("t1"), attribute: ":age", value: number(25) },
             ],
             { actor: "admin" },
           );
@@ -1036,7 +1069,14 @@ describe("Recursive Datalog Queries", () => {
 
           // Use transact to create triples with metadata
           const { txId } = yield* store.transact(
-            [{ op: "assert", entityId: "t2", attribute: ":name", value: string("Another User") }],
+            [
+              {
+                op: "assert",
+                entityId: eid("t2"),
+                attribute: ":name",
+                value: string("Another User"),
+              },
+            ],
             { actor: "testuser" },
           );
 
@@ -1073,12 +1113,26 @@ describe("Recursive Datalog Queries", () => {
 
           // Create some data with transactions
           yield* store.transact(
-            [{ op: "assert", entityId: "tx-test-1", attribute: ":name", value: string("First") }],
+            [
+              {
+                op: "assert",
+                entityId: eid("tx-test-1"),
+                attribute: ":name",
+                value: string("First"),
+              },
+            ],
             { actor: "user1" },
           );
 
           yield* store.transact(
-            [{ op: "assert", entityId: "tx-test-2", attribute: ":name", value: string("Second") }],
+            [
+              {
+                op: "assert",
+                entityId: eid("tx-test-2"),
+                attribute: ":name",
+                value: string("Second"),
+              },
+            ],
             { actor: "user2" },
           );
 
@@ -1117,7 +1171,7 @@ describe("Recursive Datalog Queries", () => {
             [
               {
                 op: "assert",
-                entityId: "meta-test",
+                entityId: eid("meta-test"),
                 attribute: ":name",
                 value: string("MetaTest"),
               },
@@ -1156,11 +1210,11 @@ describe("Recursive Datalog Queries", () => {
 
           // Create two transactions
           const { txId: tx1 } = yield* store.transact([
-            { op: "assert", entityId: "filter-1", attribute: ":name", value: string("InTx1") },
+            { op: "assert", entityId: eid("filter-1"), attribute: ":name", value: string("InTx1") },
           ]);
 
           const { txId: tx2 } = yield* store.transact([
-            { op: "assert", entityId: "filter-2", attribute: ":name", value: string("InTx2") },
+            { op: "assert", entityId: eid("filter-2"), attribute: ":name", value: string("InTx2") },
           ]);
 
           // Query for triples in first transaction only

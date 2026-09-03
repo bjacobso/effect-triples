@@ -14,6 +14,7 @@ import type { KvTripleStore } from "../hexastore/KvTripleStore.js";
 import type { ScanPattern } from "../hexastore/scan.js";
 import { isVariable, type Context, type Term, type Constant, type PatternClause } from "./types.js";
 import type { ResolvedTemporalBasis } from "../../Temporal.js";
+import { unsafe } from "../../Branded.js";
 
 // ─── TripleValue → Constant ────────────────────────────────────────────────
 
@@ -57,7 +58,7 @@ export const constantToTripleValue = (c: Constant): TripleValue => {
   if (typeof c === "boolean") return { type: "boolean", value: c };
   // TypedConstant (ref)
   if (typeof c === "object" && c !== null && "type" in c && c.type === "ref") {
-    return { type: "ref", value: (c as { type: "ref"; value: string }).value };
+    return { type: "ref", value: unsafe.entityId((c as { type: "ref"; value: string }).value) };
   }
   return { type: "string", value: String(c) };
 };
@@ -74,7 +75,7 @@ const constantToScanValues = (c: Constant): readonly TripleValue[] => {
   if (typeof c === "string") {
     const values: TripleValue[] = [
       { type: "string", value: c },
-      { type: "ref", value: c },
+      { type: "ref", value: unsafe.entityId(c) },
       { type: "blob", value: c, mimeType: "", size: 0 },
     ];
     try {

@@ -1,10 +1,10 @@
 import { describe, it, expect } from "vitest";
 import { Effect } from "effect";
-import { Triples, blob } from "@bjacobso/triplex";
-import type { EntityId } from "@bjacobso/triplex";
+import { EntityId, Triples, blob } from "@bjacobso/triplex";
 import { SqliteTestLayer } from "./fixtures/SqliteTestLayer.js";
 
 const TestLayer = SqliteTestLayer;
+const eid = EntityId.make;
 
 describe("BlobValue in Triples", () => {
   it("should store and retrieve a blob value", async () => {
@@ -13,7 +13,7 @@ describe("BlobValue in Triples", () => {
         const store = yield* Triples;
 
         const triple = yield* store.assert({
-          entityId: "doc-1",
+          entityId: eid("doc-1"),
           attribute: ":document/attachment",
           value: blob("abc123def456".padEnd(64, "0"), "application/pdf", 102400, "report.pdf"),
         });
@@ -46,7 +46,7 @@ describe("BlobValue in Triples", () => {
         const store = yield* Triples;
 
         const triple = yield* store.assert({
-          entityId: "img-1",
+          entityId: eid("img-1"),
           attribute: ":image/data",
           value: blob("f".repeat(64), "image/png", 2048),
         });

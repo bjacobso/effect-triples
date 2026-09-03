@@ -2,6 +2,7 @@ import type { Triple, TripleInput } from "../Triple.js";
 import { TxAttributes } from "../utils/id.js";
 import type { TransactionChange, TransactionMeta, TransactionRecord } from "./Triples.js";
 import { Option } from "effect";
+import { unsafe } from "../Branded.js";
 
 const text = (value: string) => ({ type: "string" as const, value });
 
@@ -33,7 +34,7 @@ export const metadataInputs = (
   changes: readonly TransactionChange[],
 ): readonly TripleInput[] => {
   const input = (attribute: string, value: TripleInput["value"]): TripleInput => ({
-    entityId: txId,
+    entityId: unsafe.entityId(txId),
     attribute,
     value,
     entityType: "_Transaction",

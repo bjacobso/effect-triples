@@ -6,14 +6,18 @@ import {
   json,
   KvTriples,
   number,
-  ref,
+  ref as makeRef,
   string,
   Triples,
   type DatalogQuery,
   type QueryContext,
 } from "@bjacobso/triplex/internal";
+import { EntityId } from "@bjacobso/triplex";
 import { SqliteTriples } from "@bjacobso/triplex-sqlite";
 import { ConfigStore, EntityValidation, TypeExpr } from "@bjacobso/triplex/config";
+
+const eid = EntityId.make;
+const ref = (value: string) => makeRef(eid(value));
 
 const corpus: readonly DatalogQuery[] = [
   {
@@ -100,31 +104,31 @@ const normalizeRows = (rows: readonly QueryContext[]): readonly string[] =>
 const runCorpus = Effect.gen(function* () {
   const triples = yield* Triples;
   yield* triples.assertBatch([
-    { entityId: "42", attribute: ":diff/code", value: string("007") },
-    { entityId: "42", attribute: ":diff/count", value: number(7) },
-    { entityId: "42", attribute: ":diff/enabled", value: boolean(true) },
-    { entityId: "42", attribute: ":diff/instant", value: datetime(1_700_000_000_000) },
-    { entityId: "42", attribute: ":diff/data", value: json({ ok: true }) },
-    { entityId: "42", attribute: ":diff/owner", value: ref("7") },
-    { entityId: "diff:left:number", attribute: ":diff/left", value: number(7) },
-    { entityId: "diff:right:number", attribute: ":diff/right", value: number(7) },
-    { entityId: "diff:left:string", attribute: ":diff/left", value: string("7") },
-    { entityId: "diff:right:string", attribute: ":diff/right", value: string("7") },
-    { entityId: "diff:right:other", attribute: ":diff/right", value: number(8) },
-    { entityId: "diff:eq:number", attribute: ":diff/equality", value: number(7) },
-    { entityId: "diff:eq:datetime", attribute: ":diff/equality", value: datetime(7) },
-    { entityId: "diff:eq:string", attribute: ":diff/equality", value: string("7") },
-    { entityId: "diff:eq:other", attribute: ":diff/equality", value: number(8) },
-    { entityId: "diff:excluded", attribute: ":diff/excluded", value: number(7) },
-    { entityId: "diff:root", attribute: ":diff/child", value: ref("diff:leaf") },
-    { entityId: "diff:sibling", attribute: ":diff/child", value: ref("diff:leaf") },
+    { entityId: eid("42"), attribute: ":diff/code", value: string("007") },
+    { entityId: eid("42"), attribute: ":diff/count", value: number(7) },
+    { entityId: eid("42"), attribute: ":diff/enabled", value: boolean(true) },
+    { entityId: eid("42"), attribute: ":diff/instant", value: datetime(1_700_000_000_000) },
+    { entityId: eid("42"), attribute: ":diff/data", value: json({ ok: true }) },
+    { entityId: eid("42"), attribute: ":diff/owner", value: ref("7") },
+    { entityId: eid("diff:left:number"), attribute: ":diff/left", value: number(7) },
+    { entityId: eid("diff:right:number"), attribute: ":diff/right", value: number(7) },
+    { entityId: eid("diff:left:string"), attribute: ":diff/left", value: string("7") },
+    { entityId: eid("diff:right:string"), attribute: ":diff/right", value: string("7") },
+    { entityId: eid("diff:right:other"), attribute: ":diff/right", value: number(8) },
+    { entityId: eid("diff:eq:number"), attribute: ":diff/equality", value: number(7) },
+    { entityId: eid("diff:eq:datetime"), attribute: ":diff/equality", value: datetime(7) },
+    { entityId: eid("diff:eq:string"), attribute: ":diff/equality", value: string("7") },
+    { entityId: eid("diff:eq:other"), attribute: ":diff/equality", value: number(8) },
+    { entityId: eid("diff:excluded"), attribute: ":diff/excluded", value: number(7) },
+    { entityId: eid("diff:root"), attribute: ":diff/child", value: ref("diff:leaf") },
+    { entityId: eid("diff:sibling"), attribute: ":diff/child", value: ref("diff:leaf") },
     {
-      entityId: "diff:optional",
+      entityId: eid("diff:optional"),
       attribute: ":_schema/type",
       value: string("DifferentialThing"),
     },
-    { entityId: "diff:optional", attribute: ":diff/optional-code", value: string("007") },
-    { entityId: "diff:optional", attribute: ":diff/optional-count", value: number(7) },
+    { entityId: eid("diff:optional"), attribute: ":diff/optional-code", value: string("007") },
+    { entityId: eid("diff:optional"), attribute: ":diff/optional-count", value: number(7) },
   ]);
 
   return yield* Effect.forEach(corpus, (query) =>
@@ -149,11 +153,11 @@ describe("Datalog backend differential corpus", () => {
     const program = Effect.gen(function* () {
       const triples = yield* Triples;
       const initial = yield* triples.assertBatch([
-        { entityId: "person:alice", attribute: ":person/name", value: string("Alice") },
-        { entityId: "person:alice", attribute: ":person/team", value: ref("team:eng") },
-        { entityId: "team:eng", attribute: ":team/name", value: string("Engineering") },
-        { entityId: "person:alice", attribute: ":person/parent", value: ref("person:bob") },
-        { entityId: "person:bob", attribute: ":person/parent", value: ref("person:charlie") },
+        { entityId: eid("person:alice"), attribute: ":person/name", value: string("Alice") },
+        { entityId: eid("person:alice"), attribute: ":person/team", value: ref("team:eng") },
+        { entityId: eid("team:eng"), attribute: ":team/name", value: string("Engineering") },
+        { entityId: eid("person:alice"), attribute: ":person/parent", value: ref("person:bob") },
+        { entityId: eid("person:bob"), attribute: ":person/parent", value: ref("person:charlie") },
       ]);
       const asOf = initial[0]!.recordedAt;
       yield* Effect.sleep("5 millis");
@@ -162,13 +166,13 @@ describe("Datalog backend differential corpus", () => {
         { op: "retract", id: initial[4]!.id },
         {
           op: "assert",
-          entityId: "person:alice",
+          entityId: eid("person:alice"),
           attribute: ":person/name",
           value: string("Alicia"),
         },
         {
           op: "assert",
-          entityId: "person:bob",
+          entityId: eid("person:bob"),
           attribute: ":person/parent",
           value: ref("person:dana"),
         },
@@ -256,14 +260,14 @@ describe("Datalog backend differential corpus", () => {
       yield* triples.transact([
         {
           op: "assert",
-          entityId: "employee:alice",
+          entityId: eid("employee:alice"),
           entityType: "Employee",
           attribute: ":employee/name",
           value: string("Alice"),
         },
         {
           op: "assert",
-          entityId: "employee:alice",
+          entityId: eid("employee:alice"),
           entityType: "Employee",
           attribute: ":employee/age",
           value: string("unknown"),
@@ -274,14 +278,14 @@ describe("Datalog backend differential corpus", () => {
       const first = yield* validation.revalidate({ ref: "live" });
       const current = yield* validation.currentInvalid("live");
       const age = (yield* triples.match({
-        entityId: "employee:alice",
+        entityId: eid("employee:alice"),
         attribute: ":employee/age",
       }))[0]!;
       yield* triples.transact([
         { op: "retract", id: age.id },
         {
           op: "assert",
-          entityId: "employee:alice",
+          entityId: eid("employee:alice"),
           entityType: "Employee",
           attribute: ":employee/age",
           value: number(30),

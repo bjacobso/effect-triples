@@ -30,6 +30,7 @@ import * as ConfigStore from "./ConfigStore.js";
 import * as GraphConstraint from "./GraphConstraint.js";
 import * as TypeExpr from "./TypeExpr.js";
 import * as TypeSchema from "./TypeSchema.js";
+import { unsafe, type EntityId, type TripleId } from "../Branded.js";
 
 export const ENTITY_SCHEMA_KIND = "entity-schema";
 
@@ -66,12 +67,16 @@ export const System = {
 const encodePart = (value: string): string => encodeURIComponent(value);
 
 export const entityId = {
-  result: (cid: ContentId.ContentId) => `${System.prefix}result/${cid}`,
-  violation: (cid: ContentId.ContentId) => `${System.prefix}violation/${cid}`,
-  run: (cid: ContentId.ContentId) => `${System.prefix}run/${cid}`,
-  checkpoint: (ref: string) => `${System.prefix}checkpoint/${encodePart(ref)}`,
+  result: (cid: ContentId.ContentId): EntityId => unsafe.entityId(`${System.prefix}result/${cid}`),
+  violation: (cid: ContentId.ContentId): EntityId =>
+    unsafe.entityId(`${System.prefix}violation/${cid}`),
+  run: (cid: ContentId.ContentId): EntityId => unsafe.entityId(`${System.prefix}run/${cid}`),
+  checkpoint: (ref: string): EntityId =>
+    unsafe.entityId(`${System.prefix}checkpoint/${encodePart(ref)}`),
   head: (ref: string, entityType: string, subject: string) =>
-    `${System.prefix}head/${encodePart(ref)}/${encodePart(entityType)}/${encodePart(subject)}`,
+    unsafe.entityId(
+      `${System.prefix}head/${encodePart(ref)}/${encodePart(entityType)}/${encodePart(subject)}`,
+    ),
 };
 
 export interface EntitySchemaDefinition {
@@ -233,8 +238,14 @@ const assertOp = (
   id: string,
   entityType: string,
   attribute: string,
-  value: TripleValue,
-): TransactOp => ({ op: "assert", entityId: id, entityType, attribute, value });
+  value: TripleValue | { readonly type: "ref"; readonly value: string },
+): TransactOp => ({
+  op: "assert",
+  entityId: unsafe.entityId(id),
+  entityType,
+  attribute,
+  value: value.type === "ref" ? { ...value, value: unsafe.entityId(value.value) } : value,
+});
 
 const nativeValue = (value: TripleValue): CanonicalJson.CanonicalValue => {
   if (value.type === "blob") {
@@ -500,7 +511,7 @@ const makeService = Effect.gen(function* () {
       );
 
       const operations: TransactOp[] = [];
-      const preconditions: Array<{ readonly _tag: "TripleLive"; readonly id: string }> = [];
+      const preconditions: Array<{ readonly _tag: "TripleLive"; readonly id: TripleId }> = [];
       const results: ValidationResult[] = [];
       const activeHeads = new Set<string>();
       const snapshotEntity = ConfigStore.entityId.snapshot(snapshot.id);
@@ -684,7 +695,7 @@ const makeService = Effect.gen(function* () {
           const oldTargets = rowsAt(refHeads.get(head) ?? [], System.attribute.result);
           if (!oldTargets.some((row) => stringValue(row) === resultEntity)) {
             preconditions.push(
-              ...oldTargets.map((row) => ({ _tag: "TripleLive" as const, id: row.id as string })),
+              ...oldTargets.map((row) => ({ _tag: "TripleLive" as const, id: row.id })),
             );
             operations.push(...oldTargets.map((row) => ({ op: "retract", id: row.id }) as const));
             if (!refHeads.has(head)) {
@@ -718,7 +729,7 @@ const makeService = Effect.gen(function* () {
         preconditions.push(
           ...rowsAt(rows, System.attribute.result).map((row) => ({
             _tag: "TripleLive" as const,
-            id: row.id as string,
+            id: row.id,
           })),
         );
         operations.push(
@@ -783,7 +794,7 @@ const makeService = Effect.gen(function* () {
         preconditions.push(
           ...movingCheckpointFacts.map((row) => ({
             _tag: "TripleLive" as const,
-            id: row.id as string,
+            id: row.id,
           })),
         );
         operations.push(

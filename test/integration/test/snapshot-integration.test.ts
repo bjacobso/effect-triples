@@ -23,11 +23,12 @@ import {
   TripleStoreRuntime,
   TripleStoreRuntimeLayer,
 } from "@bjacobso/triplex/internal";
-import type { EntityId, TripleId } from "@bjacobso/triplex";
+import { EntityId, type TripleId } from "@bjacobso/triplex";
 import { SqliteAdapterLive } from "@bjacobso/triplex-sqlite";
 import { SqlQueryExecutorLive } from "@bjacobso/triplex-sql";
 
 const sqliteDialectLayer = Layer.succeed(CurrentDialect, SqliteDialect);
+const eid = EntityId.make;
 
 // ---------------------------------------------------------------------------
 // Test layer: Triples wrapped with automatic snapshot materialization
@@ -88,13 +89,13 @@ describe("Snapshot Integration (auto-materialization)", () => {
           yield* store.transact([
             {
               op: "assert",
-              entityId: "p:alice",
+              entityId: eid("p:alice"),
               attribute: ":person/name",
               value: string("Alice"),
             },
             {
               op: "assert",
-              entityId: "p:alice",
+              entityId: eid("p:alice"),
               attribute: ":person/age",
               value: number(30),
             },
@@ -121,7 +122,7 @@ describe("Snapshot Integration (auto-materialization)", () => {
           const store = yield* Triples;
           const snapService = yield* SnapshotService;
 
-          const entityId = "p:alice-modify";
+          const entityId = eid("p:alice-modify");
 
           // Create entity
           yield* store.transact([
@@ -173,19 +174,19 @@ describe("Snapshot Integration (auto-materialization)", () => {
           yield* store.transact([
             {
               op: "assert",
-              entityId: "p:alice",
+              entityId: eid("p:alice"),
               attribute: ":person/name",
               value: string("Alice"),
             },
             {
               op: "assert",
-              entityId: "p:bob",
+              entityId: eid("p:bob"),
               attribute: ":person/name",
               value: string("Bob"),
             },
             {
               op: "assert",
-              entityId: "p:charlie",
+              entityId: eid("p:charlie"),
               attribute: ":person/name",
               value: string("Charlie"),
             },
@@ -208,7 +209,7 @@ describe("Snapshot Integration (auto-materialization)", () => {
           const snapService = yield* SnapshotService;
 
           yield* store.assert({
-            entityId: "p:alice",
+            entityId: eid("p:alice"),
             attribute: ":person/name",
             value: string("Alice"),
           });
@@ -234,8 +235,8 @@ describe("Snapshot Integration (auto-materialization)", () => {
           const snapService = yield* SnapshotService;
 
           yield* store.assertBatch([
-            { entityId: "p:alice", attribute: ":person/name", value: string("Alice") },
-            { entityId: "p:bob", attribute: ":person/name", value: string("Bob") },
+            { entityId: eid("p:alice"), attribute: ":person/name", value: string("Alice") },
+            { entityId: eid("p:bob"), attribute: ":person/name", value: string("Bob") },
           ]);
 
           const alice = yield* snapService.current("p:alice");
@@ -260,13 +261,13 @@ describe("Snapshot Integration (auto-materialization)", () => {
           const result = yield* store.transact([
             {
               op: "assert",
-              entityId: "p:alice",
+              entityId: eid("p:alice"),
               attribute: ":person/name",
               value: string("Alice"),
             },
             {
               op: "assert",
-              entityId: "p:alice",
+              entityId: eid("p:alice"),
               attribute: ":person/age",
               value: number(30),
             },
@@ -306,7 +307,7 @@ describe("Snapshot Integration (auto-materialization)", () => {
           yield* store.transact([
             {
               op: "assert",
-              entityId: "p:temp",
+              entityId: eid("p:temp"),
               attribute: ":person/name",
               value: string("Temp"),
             },
@@ -315,7 +316,7 @@ describe("Snapshot Integration (auto-materialization)", () => {
           expect(yield* snapService.current("p:temp")).not.toBeNull();
 
           // Retract all triples for this entity
-          yield* store.retractByPattern({ entityId: "p:temp" });
+          yield* store.retractByPattern({ entityId: eid("p:temp") });
 
           // Snapshot should show tombstone (empty hash)
           const snap = yield* snapService.current("p:temp");
@@ -338,13 +339,13 @@ describe("Snapshot Integration (auto-materialization)", () => {
           yield* store.transact([
             {
               op: "assert",
-              entityId: "p:alice",
+              entityId: eid("p:alice"),
               attribute: ":person/name",
               value: string("Alice"),
             },
             {
               op: "assert",
-              entityId: "p:alice",
+              entityId: eid("p:alice"),
               attribute: ":person/age",
               value: number(30),
             },
@@ -374,7 +375,7 @@ describe("Snapshot Integration (auto-materialization)", () => {
           yield* store.transact([
             {
               op: "assert",
-              entityId: "p:alice",
+              entityId: eid("p:alice"),
               attribute: ":person/name",
               value: string("Alice"),
             },
@@ -405,7 +406,7 @@ describe("Snapshot Integration (auto-materialization)", () => {
           yield* store.transact([
             {
               op: "assert",
-              entityId: "p:alice",
+              entityId: eid("p:alice"),
               attribute: ":person/name",
               value: string("Alice"),
             },
@@ -415,7 +416,7 @@ describe("Snapshot Integration (auto-materialization)", () => {
           yield* store.transact([
             {
               op: "assert",
-              entityId: "p:alice",
+              entityId: eid("p:alice"),
               attribute: ":person/age",
               value: number(30),
             },
@@ -425,7 +426,7 @@ describe("Snapshot Integration (auto-materialization)", () => {
           yield* store.transact([
             {
               op: "assert",
-              entityId: "p:alice",
+              entityId: eid("p:alice"),
               attribute: ":person/email",
               value: string("alice@example.com"),
             },
@@ -454,7 +455,7 @@ describe("Snapshot Integration (auto-materialization)", () => {
           yield* store.transact([
             {
               op: "assert",
-              entityId: "p:alice",
+              entityId: eid("p:alice"),
               attribute: ":person/role",
               value: string("engineer"),
             },
@@ -462,7 +463,7 @@ describe("Snapshot Integration (auto-materialization)", () => {
           yield* store.transact([
             {
               op: "assert",
-              entityId: "p:bob",
+              entityId: eid("p:bob"),
               attribute: ":person/role",
               value: string("engineer"),
             },
@@ -589,11 +590,11 @@ describe("StoreCapability composition", () => {
           yield* store.transact([
             {
               op: "assert",
-              entityId: "p:alice",
+              entityId: eid("p:alice"),
               attribute: ":person/name",
               value: string("Alice"),
             },
-            { op: "assert", entityId: "p:alice", attribute: ":person/age", value: number(30) },
+            { op: "assert", entityId: eid("p:alice"), attribute: ":person/age", value: number(30) },
           ]);
 
           const snap = yield* snapService.current("p:alice");
@@ -646,7 +647,12 @@ describe("StoreCapability composition", () => {
           const snapService = yield* SnapshotService;
 
           yield* store.transact([
-            { op: "assert", entityId: "p:bob", attribute: ":person/name", value: string("Bob") },
+            {
+              op: "assert",
+              entityId: eid("p:bob"),
+              attribute: ":person/name",
+              value: string("Bob"),
+            },
           ]);
 
           const snap = yield* snapService.current("p:bob");
@@ -666,11 +672,11 @@ describe("StoreCapability composition", () => {
           yield* store.transact([
             {
               op: "assert",
-              entityId: "p:alice",
+              entityId: eid("p:alice"),
               attribute: ":person/name",
               value: string("Alice"),
             },
-            { op: "assert", entityId: "p:alice", attribute: ":person/age", value: number(25) },
+            { op: "assert", entityId: eid("p:alice"), attribute: ":person/age", value: number(25) },
           ]);
 
           const triples = yield* store.entity("p:alice" as EntityId);
@@ -691,7 +697,7 @@ describe("StoreCapability composition", () => {
           yield* store.transact([
             {
               op: "assert",
-              entityId: "p:alice",
+              entityId: eid("p:alice"),
               attribute: ":person/name",
               value: string("Alice"),
             },
@@ -719,11 +725,11 @@ describe("StoreCapability composition", () => {
           const result = yield* store.transact([
             {
               op: "assert",
-              entityId: "p:alice",
+              entityId: eid("p:alice"),
               attribute: ":person/name",
               value: string("Alice"),
             },
-            { op: "assert", entityId: "p:alice", attribute: ":person/age", value: number(30) },
+            { op: "assert", entityId: eid("p:alice"), attribute: ":person/age", value: number(30) },
           ]);
 
           const snap1 = yield* snapService.current("p:alice");
@@ -797,11 +803,11 @@ describe("StoreCapability composition", () => {
           const result = yield* store.transact([
             {
               op: "assert",
-              entityId: "p:alice",
+              entityId: eid("p:alice"),
               attribute: ":person/name",
               value: string("Alice"),
             },
-            { op: "assert", entityId: "p:alice", attribute: ":person/age", value: number(30) },
+            { op: "assert", entityId: eid("p:alice"), attribute: ":person/age", value: number(30) },
           ]);
 
           const ageTriple = result.triples.find((triple) => triple.attribute === ":person/age");

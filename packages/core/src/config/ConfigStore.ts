@@ -26,6 +26,7 @@ import * as CanonicalJson from "../content/CanonicalJson.js";
 import type * as ConfigNode from "./ConfigNode.js";
 import * as InMemoryConfigStore from "./InMemoryConfigStore.js";
 import type * as TypeExpr from "./TypeExpr.js";
+import { unsafe, type EntityId } from "../Branded.js";
 
 export type {
   ConfigSnapshot,
@@ -60,13 +61,13 @@ export const System = {
 const encodePart = (value: string): string => encodeURIComponent(value);
 
 export const entityId = {
-  object: (cid: string) => `${System.prefix}object/${cid}`,
-  type: (cid: string) => `${System.prefix}type/${cid}`,
+  object: (cid: string): EntityId => unsafe.entityId(`${System.prefix}object/${cid}`),
+  type: (cid: string): EntityId => unsafe.entityId(`${System.prefix}type/${cid}`),
   logicalObject: (object: InMemoryConfigStore.ObjectKey) =>
-    `${System.prefix}logical/${encodePart(object.kind)}/${encodePart(object.key)}`,
-  revision: (id: string) => `${System.prefix}revision/${encodePart(id)}`,
-  snapshot: (id: string) => `${System.prefix}snapshot/${encodePart(id)}`,
-  ref: (name: string) => `${System.prefix}ref/${encodePart(name)}`,
+    unsafe.entityId(`${System.prefix}logical/${encodePart(object.kind)}/${encodePart(object.key)}`),
+  revision: (id: string): EntityId => unsafe.entityId(`${System.prefix}revision/${encodePart(id)}`),
+  snapshot: (id: string): EntityId => unsafe.entityId(`${System.prefix}snapshot/${encodePart(id)}`),
+  ref: (name: string): EntityId => unsafe.entityId(`${System.prefix}ref/${encodePart(name)}`),
 };
 
 export class CorruptConfigStoreError extends Data.TaggedError("CorruptConfigStoreError")<{
@@ -177,8 +178,14 @@ const assertOp = (
   id: string,
   entityType: string,
   attribute: string,
-  value: TripleValue,
-): TransactOp => ({ op: "assert", entityId: id, entityType, attribute, value });
+  value: TripleValue | { readonly type: "ref"; readonly value: string },
+): TransactOp => ({
+  op: "assert",
+  entityId: unsafe.entityId(id),
+  entityType,
+  attribute,
+  value: value.type === "ref" ? { ...value, value: unsafe.entityId(value.value) } : value,
+});
 
 const makeService = Effect.gen(function* () {
   const triples = yield* Triples;

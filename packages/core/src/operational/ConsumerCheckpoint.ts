@@ -20,6 +20,7 @@ import type {
 import type { TransactionMeta, TriplesService } from "../store/Triples.js";
 import { transactSystemUnjournaled } from "../store/systemNamespace.js";
 import type { TransactOp } from "../Triple.js";
+import { unsafe, type EntityId, type TripleId } from "../Branded.js";
 
 export const System = {
   prefix: "_triplex/consumer-checkpoint/",
@@ -77,7 +78,7 @@ export type ConsumerCheckpointError =
   | ConstraintViolationError;
 
 interface LoadedCheckpoint extends ConsumerCheckpoint {
-  readonly positionTripleId: string;
+  readonly positionTripleId: TripleId;
 }
 
 const validateConsumer = (consumer: string): InvalidConsumerCheckpointError | undefined => {
@@ -99,8 +100,10 @@ const validatePosition = (
         message: `${label} must be a non-negative safe integer`,
       });
 
-export const entityId = (consumer: string): string =>
-  `${System.prefix}${ContentIds.hash(ContentIds.Domain.consumerCheckpoint, consumer)}`;
+export const entityId = (consumer: string): EntityId =>
+  unsafe.entityId(
+    `${System.prefix}${ContentIds.hash(ContentIds.Domain.consumerCheckpoint, consumer)}`,
+  );
 
 const readLoaded = (
   triples: TriplesService,

@@ -17,6 +17,7 @@ import { Effect, Stream } from "effect";
 import type { TripleValue } from "../../Value.js";
 import type { KvBackendService } from "../kv/KvBackend.js";
 import type { ResolvedTemporalBasis } from "../../Temporal.js";
+import { unsafe } from "../../Branded.js";
 import {
   eavtKey,
   aevtKey,
@@ -371,7 +372,7 @@ const deserializeDatom = (bytes: Uint8Array): Datom => {
     case VT_REF: {
       let rv: string;
       [rv, offset] = readStr(bytes, offset);
-      value = { type: "ref", value: rv };
+      value = { type: "ref", value: unsafe.entityId(rv) };
       break;
     }
     case VT_JSON: {

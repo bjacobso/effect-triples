@@ -44,6 +44,7 @@ import {
   ConstraintViolationError,
   PaginationCursorError,
 } from "../errors/index.js";
+import { unsafe } from "../Branded.js";
 import * as Constraint from "../Constraint.js";
 import { TripleStoreRuntime } from "./TripleStoreRuntime.js";
 import {
@@ -85,7 +86,7 @@ const rowToTriple = (row: TripleRow): Triple => {
       value = { type: "datetime", value: row.value_datetime ?? 0 };
       break;
     case "ref":
-      value = { type: "ref", value: row.value_string ?? "" };
+      value = { type: "ref", value: unsafe.entityId(row.value_string ?? "") };
       break;
     case "json":
       value = { type: "json", value: row.value_json ? JSON.parse(row.value_json) : null };
@@ -520,7 +521,7 @@ export const TriplesLive = Layer.effect(
 
     const transaction: TriplesService["transaction"] = (txId) =>
       adapter
-        .query({ entityId: txId, entityType: "_Transaction" })
+        .query({ entityId: unsafe.entityId(txId), entityType: "_Transaction" })
         .pipe(Effect.map((rows) => transactionRecordFromTriples(txId, rows.map(rowToTriple))));
 
     const transactionByCommand: TriplesService["transactionByCommand"] = (commandId) =>

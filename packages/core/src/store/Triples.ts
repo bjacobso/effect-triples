@@ -4,8 +4,9 @@
  * Writes, triple-pattern reads, and Datalog queries share one coherent service:
  *
  * ```ts
- * yield* triples.assert({ entityId: "p1", attribute: ":name", value: { type: "string", value: "Alice" } })
- * const facts = yield* triples.match({ entityId: "p1" })              // triple pattern read
+ * const person = EntityId.make("p1")
+ * yield* triples.assert({ entityId: person, attribute: ":name", value: { type: "string", value: "Alice" } })
+ * const facts = yield* triples.match({ entityId: person })             // triple pattern read
  * const { results } = yield* triples.query({ find: ["?n"], where: [["?p", ":name", "?n"]] }) // datalog read
  * ```
  *
@@ -86,8 +87,8 @@ export interface TransactionMeta {
 
 export interface TransactionChange {
   readonly op: "assert" | "retract";
-  readonly tripleId: string;
-  readonly entityId: string;
+  readonly tripleId: TripleId;
+  readonly entityId: EntityId;
   readonly attribute: string;
   /** Present on journals written by the bitemporal journal format. */
   readonly entityType?: string;

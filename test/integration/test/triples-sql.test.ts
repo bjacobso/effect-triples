@@ -12,14 +12,16 @@ import {
   string,
   number,
   boolean,
-  ref,
+  ref as makeRef,
 } from "@bjacobso/triplex/internal";
 import { SqlQueryExecutorLive } from "@bjacobso/triplex-sql";
 import { SqliteAdapterLive } from "@bjacobso/triplex-sqlite";
-import type { EntityId, TripleId } from "@bjacobso/triplex";
+import { EntityId, type TripleId } from "@bjacobso/triplex";
 import { SqliteTestLayer } from "./fixtures/SqliteTestLayer.js";
 
 const TestLayer = SqliteTestLayer;
+const eid = EntityId.make;
+const ref = (value: string) => makeRef(eid(value));
 const makeRuntimeTestLayer = (runtimeLayer: Layer.Layer<TripleStoreRuntime>) =>
   TriplesLive.pipe(
     Layer.provideMerge(SqlQueryExecutorLive),
@@ -37,7 +39,7 @@ describe("Triples", () => {
           const store = yield* Triples;
 
           const triple = yield* store.assert({
-            entityId: "person-1",
+            entityId: eid("person-1"),
             attribute: ":name",
             value: string("Alice"),
             entityType: "Person",
@@ -63,7 +65,7 @@ describe("Triples", () => {
           const store = yield* Triples;
 
           const triple = yield* store.assert({
-            entityId: "person-1",
+            entityId: eid("person-1"),
             attribute: ":age",
             value: number(30),
           });
@@ -82,7 +84,7 @@ describe("Triples", () => {
           const store = yield* Triples;
 
           const triple = yield* store.assert({
-            entityId: "person-1",
+            entityId: eid("person-1"),
             attribute: ":active",
             value: boolean(true),
           });
@@ -101,7 +103,7 @@ describe("Triples", () => {
           const store = yield* Triples;
 
           const triple = yield* store.assert({
-            entityId: "person-1",
+            entityId: eid("person-1"),
             attribute: ":works-at",
             value: ref("company-1"),
           });
@@ -122,9 +124,9 @@ describe("Triples", () => {
           const store = yield* Triples;
 
           const triples = yield* store.assertBatch([
-            { entityId: "person-1", attribute: ":name", value: string("Alice") },
-            { entityId: "person-1", attribute: ":age", value: number(30) },
-            { entityId: "person-1", attribute: ":active", value: boolean(true) },
+            { entityId: eid("person-1"), attribute: ":name", value: string("Alice") },
+            { entityId: eid("person-1"), attribute: ":age", value: number(30) },
+            { entityId: eid("person-1"), attribute: ":active", value: boolean(true) },
           ]);
 
           expect(triples).toHaveLength(3);
@@ -143,7 +145,7 @@ describe("Triples", () => {
           const store = yield* Triples;
 
           const created = yield* store.assert({
-            entityId: "person-1",
+            entityId: eid("person-1"),
             attribute: ":name",
             value: string("Alice"),
           });
@@ -180,9 +182,9 @@ describe("Triples", () => {
           const store = yield* Triples;
 
           yield* store.assertBatch([
-            { entityId: "person-1", attribute: ":name", value: string("Alice") },
-            { entityId: "person-1", attribute: ":age", value: number(30) },
-            { entityId: "person-2", attribute: ":name", value: string("Bob") },
+            { entityId: eid("person-1"), attribute: ":name", value: string("Alice") },
+            { entityId: eid("person-1"), attribute: ":age", value: number(30) },
+            { entityId: eid("person-2"), attribute: ":name", value: string("Bob") },
           ]);
 
           const triples = yield* store.entity("person-1" as EntityId);
@@ -203,7 +205,7 @@ describe("Triples", () => {
           const store = yield* Triples;
 
           const created = yield* store.assert({
-            entityId: "person-1",
+            entityId: eid("person-1"),
             attribute: ":name",
             value: string("Alice"),
           });
@@ -247,8 +249,8 @@ describe("Triples", () => {
           const store = yield* Triples;
 
           const batch = yield* store.assertBatch([
-            { entityId: "person-1", attribute: ":name", value: string("Alice") },
-            { entityId: "person-1", attribute: ":age", value: number(30) },
+            { entityId: eid("person-1"), attribute: ":name", value: string("Alice") },
+            { entityId: eid("person-1"), attribute: ":age", value: number(30) },
           ]);
 
           expect(batch).toHaveLength(2);
@@ -261,7 +263,7 @@ describe("Triples", () => {
           const tx = yield* store.transact([
             {
               op: "assert",
-              entityId: "person-2",
+              entityId: eid("person-2"),
               attribute: ":name",
               value: string("Bob"),
             },
@@ -271,14 +273,17 @@ describe("Triples", () => {
           expect(tx.position).toBe(2);
 
           const txPosition = yield* store.match({
-            entityId: tx.txId,
+            entityId: eid(tx.txId),
             attribute: TxAttributes.POSITION,
           });
           expect(txPosition).toHaveLength(1);
           expect(txPosition[0]!.id).toBe("triple:det-8");
           expect(txPosition[0]!.value).toEqual({ type: "number", value: 2 });
 
-          const txMeta = yield* store.match({ entityId: tx.txId, attribute: TxAttributes.INSTANT });
+          const txMeta = yield* store.match({
+            entityId: eid(tx.txId),
+            attribute: TxAttributes.INSTANT,
+          });
           expect(txMeta).toHaveLength(1);
           expect(txMeta[0]!.id).toBe("triple:det-9");
           expect(txMeta[0]!.value).toEqual({ type: "datetime", value: 1020 });
@@ -308,7 +313,7 @@ describe("Triples", () => {
           const store = yield* Triples;
 
           const triple = yield* store.assert({
-            entityId: "person-1",
+            entityId: eid("person-1"),
             attribute: ":name",
             value: string("Alice"),
           });
@@ -318,7 +323,7 @@ describe("Triples", () => {
           expect(Option.getOrNull(triple.txId)).toBe("_tx/unit-000001");
 
           const tx = yield* store.transact([
-            { op: "assert", entityId: "person-2", attribute: ":name", value: string("Bob") },
+            { op: "assert", entityId: eid("person-2"), attribute: ":name", value: string("Bob") },
           ]);
 
           expect(tx.txId).toBe("_tx/unit-000002");
@@ -342,7 +347,7 @@ describe("Triples", () => {
           const store = yield* Triples;
           const seeded = yield* store.assertBatch(
             ["a", "b", "c", "d"].map((suffix, index) => ({
-              entityId: `same-time:${suffix}`,
+              entityId: eid(`same-time:${suffix}`),
               attribute: ":page/rank",
               value: number(index === 3 ? 2 : 1),
             })),
@@ -358,7 +363,7 @@ describe("Triples", () => {
 
           const first = yield* store.queryPage(query);
           yield* store.assert({
-            entityId: "same-time:later",
+            entityId: eid("same-time:later"),
             attribute: ":page/rank",
             value: number(0),
           });
@@ -388,14 +393,14 @@ describe("Triples", () => {
             [
               {
                 op: "assert",
-                entityId: "person:audit",
+                entityId: eid("person:audit"),
                 entityType: "Person",
                 attribute: ":person/name",
                 value: string("Alice"),
               },
               {
                 op: "assert",
-                entityId: "person:audit",
+                entityId: eid("person:audit"),
                 entityType: "Person",
                 attribute: ":person/age",
                 value: number(42),
@@ -415,7 +420,7 @@ describe("Triples", () => {
               { op: "retract", id: age.id },
               {
                 op: "assert",
-                entityId: "person:audit",
+                entityId: eid("person:audit"),
                 entityType: "Person",
                 attribute: ":person/age",
                 value: number(43),
@@ -445,7 +450,7 @@ describe("Triples", () => {
           changes: expect.arrayContaining([
             expect.objectContaining({
               op: "assert",
-              entityId: "person:audit",
+              entityId: eid("person:audit"),
               attribute: ":person/age",
               value: number(42),
               validFrom: 1_700_000_000_000,
@@ -481,19 +486,19 @@ describe("Triples", () => {
 
           yield* store.assertBatch([
             {
-              entityId: "person-1",
+              entityId: eid("person-1"),
               attribute: ":name",
               value: string("Alice"),
               entityType: "Person",
             },
             {
-              entityId: "person-2",
+              entityId: eid("person-2"),
               attribute: ":name",
               value: string("Bob"),
               entityType: "Person",
             },
             {
-              entityId: "company-1",
+              entityId: eid("company-1"),
               attribute: ":name",
               value: string("Acme"),
               entityType: "Company",
@@ -516,9 +521,9 @@ describe("Triples", () => {
           const store = yield* Triples;
 
           yield* store.assertBatch([
-            { entityId: "person-1", attribute: ":name", value: string("Alice") },
-            { entityId: "person-1", attribute: ":age", value: number(30) },
-            { entityId: "person-2", attribute: ":name", value: string("Bob") },
+            { entityId: eid("person-1"), attribute: ":name", value: string("Alice") },
+            { entityId: eid("person-1"), attribute: ":age", value: number(30) },
+            { entityId: eid("person-2"), attribute: ":name", value: string("Bob") },
           ]);
 
           const names = yield* store.match({ attribute: ":name" });
@@ -537,9 +542,9 @@ describe("Triples", () => {
           const store = yield* Triples;
 
           yield* store.assertBatch([
-            { entityId: "person-1", attribute: ":name", value: string("Alice") },
-            { entityId: "person-2", attribute: ":name", value: string("Alice") },
-            { entityId: "person-3", attribute: ":name", value: string("Bob") },
+            { entityId: eid("person-1"), attribute: ":name", value: string("Alice") },
+            { entityId: eid("person-2"), attribute: ":name", value: string("Alice") },
+            { entityId: eid("person-3"), attribute: ":name", value: string("Bob") },
           ]);
 
           const alices = yield* store.match({ value: string("Alice") });
@@ -561,7 +566,7 @@ describe("Triples", () => {
 
           // Create initial state
           const first = yield* store.assert({
-            entityId: "person-1",
+            entityId: eid("person-1"),
             attribute: ":name",
             value: string("Alice"),
           });
@@ -574,14 +579,14 @@ describe("Triples", () => {
           // Retract and add new value
           yield* store.retract(first.id);
           yield* store.assert({
-            entityId: "person-1",
+            entityId: eid("person-1"),
             attribute: ":name",
             value: string("Alice Smith"),
           });
 
           // Query as of before the change
           const pastState = yield* store.match(
-            { entityId: "person-1" },
+            { entityId: eid("person-1") },
             { recordedAt: timeAfterFirst, validAt: timeAfterFirst },
           );
 
@@ -607,7 +612,7 @@ describe("Triples", () => {
           const store = yield* Triples;
 
           const first = yield* store.assert({
-            entityId: "person-1",
+            entityId: eid("person-1"),
             attribute: ":name",
             value: string("Alice"),
           });
@@ -617,7 +622,7 @@ describe("Triples", () => {
 
           yield* Effect.sleep("5 millis");
           yield* store.assert({
-            entityId: "person-1",
+            entityId: eid("person-1"),
             attribute: ":name",
             value: string("Alice Smith"),
           });

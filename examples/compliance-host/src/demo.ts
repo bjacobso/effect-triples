@@ -1,6 +1,7 @@
 import { Effect, Layer } from "effect";
 
 import {
+  EntityId,
   KvTriples,
   Triples,
   datetime,
@@ -49,7 +50,7 @@ const RequirementSchema = EntityType.make(Requirement.entityType, {
 });
 
 interface RequirementOccurrence {
-  readonly entityId: string;
+  readonly entityId: EntityId;
   readonly candidate: string;
   readonly occurrence: number;
   readonly status: string;
@@ -80,8 +81,8 @@ const latestAt = (rows: readonly Triple[], attribute: string): Triple | undefine
       (left, right) => right.recordedAt - left.recordedAt || right.id.localeCompare(left.id),
     )[0];
 
-const groupByEntity = (rows: readonly Triple[]): ReadonlyMap<string, readonly Triple[]> => {
-  const grouped = new Map<string, Triple[]>();
+const groupByEntity = (rows: readonly Triple[]): ReadonlyMap<EntityId, readonly Triple[]> => {
+  const grouped = new Map<EntityId, Triple[]>();
   for (const row of rows) {
     const entity = grouped.get(row.entityId) ?? [];
     entity.push(row);
@@ -93,6 +94,9 @@ const groupByEntity = (rows: readonly Triple[]): ReadonlyMap<string, readonly Tr
 const program = Effect.gen(function* () {
   const triples = yield* Triples;
   const config = yield* ConfigStore.ConfigStore;
+  const placementId = EntityId.make("placement:one");
+  const workerId = EntityId.make("worker:maria");
+  const siteId = EntityId.make("site:harbor");
 
   // The application compiler emits independently identified, typed config
   // nodes. References express deploy impact without merging config and facts.
@@ -231,7 +235,7 @@ const program = Effect.gen(function* () {
         const prior = yield* loadOccurrences(candidate.id);
         if (prior.some((occurrence) => occurrence.status === "open")) continue;
         const occurrence = Math.max(0, ...prior.map((item) => item.occurrence)) + 1;
-        const entityId = `requirement:${candidate.id}:${occurrence}`;
+        const entityId = EntityId.make(`requirement:${candidate.id}:${occurrence}`);
         const operations: readonly TransactOp[] = [
           {
             op: "assert",
@@ -438,18 +442,18 @@ const program = Effect.gen(function* () {
     [
       {
         op: "assert",
-        entityId: "placement:one",
+        entityId: placementId,
         entityType: "Placement",
         attribute: PLACEMENT_WORKER,
-        value: ref("worker:maria"),
+        value: ref(workerId),
         validFrom: 100,
       },
       {
         op: "assert",
-        entityId: "placement:one",
+        entityId: placementId,
         entityType: "Placement",
         attribute: PLACEMENT_SITE,
-        value: ref("site:harbor"),
+        value: ref(siteId),
         validFrom: 100,
       },
     ],
@@ -471,10 +475,10 @@ const program = Effect.gen(function* () {
     overlay: {
       assertions: [
         {
-          entityId: "worker:maria",
+          entityId: workerId,
           entityType: "Worker",
           attribute: TRAINING_EVIDENCE,
-          value: ref("site:harbor"),
+          value: ref(siteId),
           validFrom: 120,
           validTo: 200,
         },
@@ -491,10 +495,10 @@ const program = Effect.gen(function* () {
     [
       {
         op: "assert",
-        entityId: "worker:maria",
+        entityId: workerId,
         entityType: "Worker",
         attribute: TRAINING_EVIDENCE,
-        value: ref("site:harbor"),
+        value: ref(siteId),
         validFrom: 120,
         validTo: 200,
       },

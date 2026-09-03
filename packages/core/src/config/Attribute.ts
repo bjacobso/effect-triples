@@ -3,6 +3,7 @@
 import { Effect, type Schema } from "effect";
 
 import type { TripleValue } from "../Value.js";
+import type { EntityId } from "../Branded.js";
 import * as Values from "../Value.js";
 import * as ConfigNode from "./ConfigNode.js";
 import * as TypeExpr from "./TypeExpr.js";
@@ -116,7 +117,7 @@ export const enumOf = <const K extends string, const V extends string>(
 export const ref = <const K extends string, const Target extends { readonly entityType: string }>(
   key: K,
   target: Target,
-): Definition<K, string> =>
+): Definition<K, EntityId> =>
   make(key, TypeExpr.ref(target.entityType), Values.ref, [
     {
       rel: "references-entity-type",

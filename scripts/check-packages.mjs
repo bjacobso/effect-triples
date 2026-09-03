@@ -116,7 +116,7 @@ try {
 
   writeFileSync(
     join(consumerDir, "consumer.ts"),
-    `import { DatalogValidationError, type TripleInput } from "@bjacobso/triplex";
+    `import { DatalogValidationError, EntityId, type TripleInput } from "@bjacobso/triplex";
 import { validateDatalogQuery, type DatalogQuery } from "@bjacobso/triplex/datalog";
 import { Attribute, ConfigRuntime, ConfigStore, EntityType, EntityValidation, Evaluate, GraphConstraint, TypeExpr } from "@bjacobso/triplex/config";
 import * as Derivation from "@bjacobso/triplex/derivation";
@@ -128,7 +128,7 @@ import { makeSqliteLayer } from "@bjacobso/triplex-sqlite";
 import * as Testkit from "@bjacobso/triplex-testkit";
 
 const triple: TripleInput = {
-  entityId: "person:alice",
+  entityId: EntityId.make("person:alice"),
   attribute: ":person/name",
   value: { type: "string", value: "Alice" },
 };
@@ -142,7 +142,7 @@ const Employer = EntityType.make("Employer", {
     name: Attribute.use(EmployerName, { required: true }),
   },
 });
-const nameAssertion = Employer.name.assertion("Acme");
+const nameAssertion = Employer.attributes.name.assertion("Acme");
 void triple;
 void query;
 void validateDatalogQuery;
@@ -188,15 +188,17 @@ void Testkit;
   writeFileSync(
     join(consumerDir, "smoke.mjs"),
     `import { Effect } from "effect";
-import { Triples, string } from "@bjacobso/triplex";
+import { EntityId, Triples, string } from "@bjacobso/triplex";
 import * as Derivation from "@bjacobso/triplex/derivation";
 import { SqliteTriples } from "@bjacobso/triplex-sqlite";
 
 const result = await Effect.runPromise(
   Effect.gen(function* () {
     const triples = yield* Triples;
+    const alice = EntityId.make("person:alice");
+    const bob = EntityId.make("person:bob");
     yield* triples.assert({
-      entityId: "person:alice",
+      entityId: alice,
       attribute: ":person/name",
       value: string("Alice"),
       validFrom: 0,
@@ -219,7 +221,7 @@ const result = await Effect.runPromise(
       basis: { validAt: 1 },
       overlay: {
         assertions: [{
-          entityId: "person:bob",
+          entityId: bob,
           attribute: ":person/name",
           value: string("Bob"),
         }],

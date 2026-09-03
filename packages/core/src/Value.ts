@@ -1,4 +1,5 @@
 import { Schema } from "effect";
+import { EntityId } from "./Branded.js";
 
 export const ValueType = Schema.Literals([
   "string",
@@ -29,7 +30,7 @@ export const DateTimeValue = Schema.Struct({
 });
 export type DateTimeValue = typeof DateTimeValue.Type;
 
-export const RefValue = Schema.Struct({ type: Schema.Literal("ref"), value: Schema.String });
+export const RefValue = Schema.Struct({ type: Schema.Literal("ref"), value: EntityId });
 export type RefValue = typeof RefValue.Type;
 
 export const JsonValue = Schema.Struct({ type: Schema.Literal("json"), value: Schema.Unknown });
@@ -62,7 +63,7 @@ export const datetime = (value: number | Date): DateTimeValue => ({
   type: "datetime",
   value: typeof value === "number" ? value : value.getTime(),
 });
-export const ref = (entityId: string): RefValue => ({ type: "ref", value: entityId });
+export const ref = (entityId: EntityId): RefValue => ({ type: "ref", value: entityId });
 export const json = (value: unknown): JsonValue => ({ type: "json", value });
 export const blob = (
   hash: string,

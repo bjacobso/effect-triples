@@ -13,6 +13,7 @@ import type { DatalogQueryError, ReadError } from "../errors/index.js";
 import { extractDependencies } from "../subscriptions/extract-dependencies.js";
 import * as TypeExpr from "../config/TypeExpr.js";
 import * as TypeSchema from "../config/TypeSchema.js";
+import { unsafe } from "../Branded.js";
 
 export class DefinitionError extends Data.TaggedError("DerivationDefinitionError")<{
   readonly message: string;
@@ -297,7 +298,7 @@ const sourcesForRow = (
       const attribute = normalizedConstant(termValue(clause[1], row));
       const matches = yield* triples.match(
         {
-          ...(typeof entity === "string" ? { entityId: entity } : {}),
+          ...(typeof entity === "string" ? { entityId: unsafe.entityId(entity) } : {}),
           ...(typeof attribute === "string" ? { attribute } : {}),
         },
         basis,

@@ -1,5 +1,6 @@
 import { Schema } from "effect";
 import type { TripleValue } from "../Value.js";
+import type { EntityId } from "../Branded.js";
 
 // Variable for pattern matching
 export const Variable = Schema.Struct({
@@ -17,7 +18,7 @@ export const isVariable = (x: unknown): x is Variable =>
 
 // Pattern for querying triples
 export interface Pattern {
-  readonly entityId?: string | Variable;
+  readonly entityId?: EntityId | Variable;
   readonly attribute?: string | Variable;
   readonly value?: TripleValue | Variable;
   readonly entityType?: string;

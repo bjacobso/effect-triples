@@ -9,7 +9,11 @@ pnpm pack:check
 ```
 
 `pnpm check` runs formatting, linting, typechecking, unit tests, SQLite integration tests,
-and package builds. The stress suite is intentionally opt-in:
+checked Markdown examples, and package builds. Self-contained TypeScript documentation examples
+should use a `ts check` fence; `pnpm docs:check` compiles every marked block against the built
+public package exports. Leave partial or illustrative fragments as ordinary `ts` fences.
+
+The stress suite is intentionally opt-in:
 
 ```bash
 pnpm --filter triplex-stress stress-test

@@ -6,7 +6,7 @@
  */
 
 import { Clock, Effect, Layer, Option } from "effect";
-import type { EntityId } from "../Branded.js";
+import { unsafe, type EntityId } from "../Branded.js";
 import { StorageAdapter } from "../storage/StorageAdapter.js";
 import { Triples } from "../store/Triples.js";
 import {
@@ -136,7 +136,7 @@ const makeSnapshotWriter = Effect.gen(function* () {
                 return result;
               })
             : store.match(
-                { entityId },
+                { entityId: unsafe.entityId(entityId) },
                 {
                   recordedAt: txTime,
                   validAt: txTime,

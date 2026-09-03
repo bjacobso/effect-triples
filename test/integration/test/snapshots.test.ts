@@ -14,8 +14,10 @@ import {
   diffAttributes,
   EMPTY_ENTITY_HASH,
 } from "@bjacobso/triplex/internal";
-import type { EntityId } from "@bjacobso/triplex";
+import { EntityId } from "@bjacobso/triplex";
 import { SqliteTestLayer } from "./fixtures/SqliteTestLayer.js";
+
+const eid = EntityId.make;
 
 // ---------------------------------------------------------------------------
 // Test layer: Triples + SnapshotService + SnapshotWriter, all in-memory
@@ -106,12 +108,12 @@ describe("canonical", () => {
         Effect.gen(function* () {
           const store = yield* Triples;
           yield* store.assert({
-            entityId: "p:alice",
+            entityId: eid("p:alice"),
             attribute: ":person/name",
             value: string("Alice"),
           });
           yield* store.assert({
-            entityId: "p:alice",
+            entityId: eid("p:alice"),
             attribute: ":person/age",
             value: number(30),
           });
@@ -129,12 +131,12 @@ describe("canonical", () => {
         Effect.gen(function* () {
           const store = yield* Triples;
           yield* store.assert({
-            entityId: "p:alice",
+            entityId: eid("p:alice"),
             attribute: ":person/tag",
             value: string("senior"),
           });
           yield* store.assert({
-            entityId: "p:alice",
+            entityId: eid("p:alice"),
             attribute: ":person/tag",
             value: string("backend"),
           });
@@ -203,8 +205,13 @@ describe("SnapshotWriter", () => {
 
         // Create an entity
         const result = yield* store.transact([
-          { op: "assert", entityId: "p:alice", attribute: ":person/name", value: string("Alice") },
-          { op: "assert", entityId: "p:alice", attribute: ":person/age", value: number(30) },
+          {
+            op: "assert",
+            entityId: eid("p:alice"),
+            attribute: ":person/name",
+            value: string("Alice"),
+          },
+          { op: "assert", entityId: eid("p:alice"), attribute: ":person/age", value: number(30) },
         ]);
 
         // Materialize snapshot
@@ -238,10 +245,20 @@ describe("SnapshotWriter", () => {
 
         // Create two entities with identical attributes
         const r1 = yield* store.transact([
-          { op: "assert", entityId: "p:alice", attribute: ":person/name", value: string("Alice") },
+          {
+            op: "assert",
+            entityId: eid("p:alice"),
+            attribute: ":person/name",
+            value: string("Alice"),
+          },
         ]);
         const r2 = yield* store.transact([
-          { op: "assert", entityId: "p:bob", attribute: ":person/name", value: string("Alice") },
+          {
+            op: "assert",
+            entityId: eid("p:bob"),
+            attribute: ":person/name",
+            value: string("Alice"),
+          },
         ]);
 
         const s1 = yield* writer.materialize(r1.txId, Date.now(), ["p:alice"]);
@@ -260,10 +277,15 @@ describe("SnapshotWriter", () => {
         const writer = yield* SnapshotWriter;
 
         const r1 = yield* store.transact([
-          { op: "assert", entityId: "p:alice", attribute: ":person/name", value: string("Alice") },
+          {
+            op: "assert",
+            entityId: eid("p:alice"),
+            attribute: ":person/name",
+            value: string("Alice"),
+          },
         ]);
         const r2 = yield* store.transact([
-          { op: "assert", entityId: "p:bob", attribute: ":person/name", value: string("Bob") },
+          { op: "assert", entityId: eid("p:bob"), attribute: ":person/name", value: string("Bob") },
         ]);
 
         const s1 = yield* writer.materialize(r1.txId, Date.now(), ["p:alice"]);
@@ -283,13 +305,13 @@ describe("SnapshotWriter", () => {
 
         // Create then retract
         const r1 = yield* store.transact([
-          { op: "assert", entityId: "p:temp", attribute: ":name", value: string("Temp") },
+          { op: "assert", entityId: eid("p:temp"), attribute: ":name", value: string("Temp") },
         ]);
         yield* writer.materialize(r1.txId, Date.now(), ["p:temp"]);
 
         // Retract (via transact retract-pattern)
         const r2 = yield* store.transact([
-          { op: "retract-pattern", pattern: { entityId: "p:temp" } },
+          { op: "retract-pattern", pattern: { entityId: eid("p:temp") } },
         ]);
         yield* writer.materialize(r2.txId, Date.now() + 1, ["p:temp"]);
 
@@ -329,7 +351,7 @@ describe("SnapshotService", () => {
           const r1 = yield* store.transact([
             {
               op: "assert",
-              entityId: "p:alice",
+              entityId: eid("p:alice"),
               attribute: ":person/name",
               value: string("Alice"),
             },
@@ -353,7 +375,7 @@ describe("SnapshotService", () => {
           const r1 = yield* store.transact([
             {
               op: "assert",
-              entityId: "p:alice",
+              entityId: eid("p:alice"),
               attribute: ":person/name",
               value: string("Alice"),
             },
@@ -379,7 +401,7 @@ describe("SnapshotService", () => {
           const r1 = yield* store.transact([
             {
               op: "assert",
-              entityId: "p:alice",
+              entityId: eid("p:alice"),
               attribute: ":person/name",
               value: string("Alice"),
             },
@@ -390,7 +412,7 @@ describe("SnapshotService", () => {
           const r2 = yield* store.transact([
             {
               op: "assert",
-              entityId: "p:alice",
+              entityId: eid("p:alice"),
               attribute: ":person/age",
               value: number(30),
             },
@@ -422,13 +444,13 @@ describe("SnapshotService", () => {
           const r1 = yield* store.transact([
             {
               op: "assert",
-              entityId: "p:alice",
+              entityId: eid("p:alice"),
               attribute: ":person/name",
               value: string("Alice"),
             },
             {
               op: "assert",
-              entityId: "p:bob",
+              entityId: eid("p:bob"),
               attribute: ":person/name",
               value: string("Bob"),
             },
@@ -467,7 +489,7 @@ describe("SnapshotService", () => {
           const r1 = yield* store.transact([
             {
               op: "assert",
-              entityId: "p:alice",
+              entityId: eid("p:alice"),
               attribute: ":person/name",
               value: string("Alice"),
             },
@@ -478,7 +500,7 @@ describe("SnapshotService", () => {
           const r2 = yield* store.transact([
             {
               op: "assert",
-              entityId: "p:alice",
+              entityId: eid("p:alice"),
               attribute: ":person/age",
               value: number(30),
             },
@@ -506,13 +528,13 @@ describe("SnapshotService", () => {
           const r1 = yield* store.transact([
             {
               op: "assert",
-              entityId: "p:alice",
+              entityId: eid("p:alice"),
               attribute: ":person/name",
               value: string("Alice"),
             },
             {
               op: "assert",
-              entityId: "p:alice",
+              entityId: eid("p:alice"),
               attribute: ":person/age",
               value: number(30),
             },
@@ -523,7 +545,7 @@ describe("SnapshotService", () => {
           const r2 = yield* store.transact([
             {
               op: "assert",
-              entityId: "p:alice",
+              entityId: eid("p:alice"),
               attribute: ":person/email",
               value: string("alice@example.com"),
             },
@@ -552,7 +574,7 @@ describe("SnapshotService", () => {
           const r1 = yield* store.transact([
             {
               op: "assert",
-              entityId: "p:alice",
+              entityId: eid("p:alice"),
               attribute: ":person/salary",
               value: number(100000),
             },
@@ -562,7 +584,7 @@ describe("SnapshotService", () => {
           const r2 = yield* store.transact([
             {
               op: "assert",
-              entityId: "p:alice",
+              entityId: eid("p:alice"),
               attribute: ":person/salary",
               value: number(110000),
             },
@@ -587,7 +609,7 @@ describe("SnapshotService", () => {
           const r1 = yield* store.transact([
             {
               op: "assert",
-              entityId: "p:alice",
+              entityId: eid("p:alice"),
               attribute: ":person/name",
               value: string("Alice"),
             },
@@ -599,7 +621,7 @@ describe("SnapshotService", () => {
           const r2 = yield* store.transact([
             {
               op: "assert",
-              entityId: "p:alice",
+              entityId: eid("p:alice"),
               attribute: ":person/age",
               value: number(30),
             },
@@ -636,13 +658,13 @@ describe("SnapshotService", () => {
           const r1 = yield* store.transact([
             {
               op: "assert",
-              entityId: "p:alice",
+              entityId: eid("p:alice"),
               attribute: ":person/name",
               value: string("Same"),
             },
             {
               op: "assert",
-              entityId: "p:bob",
+              entityId: eid("p:bob"),
               attribute: ":person/name",
               value: string("Same"),
             },
@@ -669,7 +691,7 @@ describe("SnapshotService", () => {
           const r1 = yield* store.transact([
             {
               op: "assert",
-              entityId: "p:alice",
+              entityId: eid("p:alice"),
               attribute: ":person/name",
               value: string("Alice"),
             },
@@ -679,7 +701,7 @@ describe("SnapshotService", () => {
           const r2 = yield* store.transact([
             {
               op: "assert",
-              entityId: "p:bob",
+              entityId: eid("p:bob"),
               attribute: ":person/name",
               value: string("Bob"),
             },
@@ -721,13 +743,13 @@ describe("SnapshotService", () => {
           const r1 = yield* store.transact([
             {
               op: "assert",
-              entityId: "p:alice",
+              entityId: eid("p:alice"),
               attribute: ":person/name",
               value: string("Alice"),
             },
             {
               op: "assert",
-              entityId: "p:bob",
+              entityId: eid("p:bob"),
               attribute: ":person/name",
               value: string("Bob"),
             },
@@ -752,7 +774,7 @@ describe("SnapshotService", () => {
           const r1 = yield* store.transact([
             {
               op: "assert",
-              entityId: "p:alice",
+              entityId: eid("p:alice"),
               attribute: ":person/name",
               value: string("Alice"),
             },
@@ -762,7 +784,7 @@ describe("SnapshotService", () => {
           const r2 = yield* store.transact([
             {
               op: "assert",
-              entityId: "p:bob",
+              entityId: eid("p:bob"),
               attribute: ":person/name",
               value: string("Bob"),
             },
@@ -791,13 +813,13 @@ describe("SnapshotService", () => {
           yield* store.transact([
             {
               op: "assert",
-              entityId: "p:alice",
+              entityId: eid("p:alice"),
               attribute: ":person/name",
               value: string("Alice"),
             },
             {
               op: "assert",
-              entityId: "p:bob",
+              entityId: eid("p:bob"),
               attribute: ":person/name",
               value: string("Bob"),
             },

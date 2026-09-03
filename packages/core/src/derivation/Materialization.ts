@@ -11,7 +11,7 @@ import { Data, Effect, Option, Schema } from "effect";
 
 import * as CanonicalJson from "../content/CanonicalJson.js";
 import * as ContentIds from "../content/ContentId.js";
-import { unsafe } from "../Branded.js";
+import { unsafe, type EntityId } from "../Branded.js";
 import { Constant as ConstantSchema } from "../datalog/schema.js";
 import type { Constant, DatalogQuery } from "../datalog/types.js";
 import type {
@@ -62,8 +62,9 @@ export const System = {
 } as const;
 
 export const entityId = {
-  candidate: (revision: ContentIds.ContentId) => `${System.prefix}candidate/${revision}`,
-  run: (id: ContentIds.ContentId) => `${System.prefix}run/${id}`,
+  candidate: (revision: ContentIds.ContentId): EntityId =>
+    unsafe.entityId(`${System.prefix}candidate/${revision}`),
+  run: (id: ContentIds.ContentId): EntityId => unsafe.entityId(`${System.prefix}run/${id}`),
 };
 
 const SourceFactSchema = Schema.Struct({
@@ -164,8 +165,14 @@ const assertOp = (
   id: string,
   entityType: string,
   attribute: string,
-  value: TripleValue,
-): TransactOp => ({ op: "assert", entityId: id, entityType, attribute, value });
+  value: TripleValue | { readonly type: "ref"; readonly value: string },
+): TransactOp => ({
+  op: "assert",
+  entityId: unsafe.entityId(id),
+  entityType,
+  attribute,
+  value: value.type === "ref" ? { ...value, value: unsafe.entityId(value.value) } : value,
+});
 
 const rowsAt = (rows: readonly Triple[], attribute: string): readonly Triple[] =>
   rows.filter((row) => row.attribute === attribute);

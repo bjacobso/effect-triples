@@ -6,7 +6,7 @@ import { RuleSchema as ConstraintRule } from "./Constraint.js";
 export { TripleId, EntityId, Attribute };
 
 export const TripleInput = Schema.Struct({
-  entityId: Schema.String,
+  entityId: EntityId,
   attribute: Schema.String,
   value: TripleValue,
   entityType: Schema.optional(Schema.String),
@@ -17,7 +17,7 @@ export const TripleInput = Schema.Struct({
 export type TripleInput = typeof TripleInput.Type;
 
 export const QueryRequest = Schema.Struct({
-  entityId: Schema.optional(Schema.String),
+  entityId: Schema.optional(EntityId),
   attribute: Schema.optional(Schema.String),
   entityType: Schema.optional(Schema.String),
   value: Schema.optional(TripleValue),
@@ -25,7 +25,7 @@ export const QueryRequest = Schema.Struct({
 export type QueryRequest = typeof QueryRequest.Type;
 
 export const QueryAsOfRequest = Schema.Struct({
-  entityId: Schema.optional(Schema.String),
+  entityId: Schema.optional(EntityId),
   attribute: Schema.optional(Schema.String),
   entityType: Schema.optional(Schema.String),
   value: Schema.optional(TripleValue),
@@ -40,8 +40,8 @@ export const RetractResponse = Schema.Struct({ retracted: Schema.Number });
 export type RetractResponse = typeof RetractResponse.Type;
 
 export const TripleResponse = Schema.Struct({
-  id: Schema.String,
-  entityId: Schema.String,
+  id: TripleId,
+  entityId: EntityId,
   attribute: Schema.String,
   value: TripleValue,
   recordedAt: Schema.Number,
@@ -99,7 +99,7 @@ export type TripleRow = typeof TripleRow.Type;
 
 export const TransactAssertOp = Schema.Struct({
   op: Schema.Literal("assert"),
-  entityId: Schema.String,
+  entityId: EntityId,
   attribute: Schema.String,
   value: TripleValue,
   entityType: Schema.optional(Schema.String),
@@ -111,7 +111,7 @@ export type TransactAssertOp = typeof TransactAssertOp.Type;
 
 export const TransactRetractOp = Schema.Struct({
   op: Schema.Literal("retract"),
-  id: Schema.String,
+  id: TripleId,
 });
 export type TransactRetractOp = typeof TransactRetractOp.Type;
 
@@ -130,7 +130,7 @@ export type TransactOp = typeof TransactOp.Type;
 
 export const TransactionPrecondition = Schema.Struct({
   _tag: Schema.Literal("TripleLive"),
-  id: Schema.String,
+  id: TripleId,
 });
 export type TransactionPrecondition = typeof TransactionPrecondition.Type;
 

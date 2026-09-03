@@ -23,6 +23,7 @@ import * as ConfigNode from "./ConfigNode.js";
 import * as ConfigStore from "./ConfigStore.js";
 import * as Evaluate from "./Evaluate.js";
 import * as World from "./World.js";
+import { unsafe } from "../Branded.js";
 
 export class UnknownConfigRefError extends Data.TaggedError("UnknownConfigRefError")<{
   readonly ref: string;
@@ -150,7 +151,7 @@ const worldFromReads = (
     const facts = new Map<string, World.Value>();
 
     for (const read of reads) {
-      const pattern = { entityId: read.entity, attribute: read.attribute };
+      const pattern = { entityId: unsafe.entityId(read.entity), attribute: read.attribute };
       const matches = yield* triples.match(pattern, basis);
 
       if (matches.length > 1) {
