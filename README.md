@@ -676,6 +676,10 @@ where: [
 The aggregate source is an input and must not also appear in `find`; project its target and any
 grouping variables instead. Aggregate and optional-projection targets must be projected, while
 `having` and `orderBy` may reference only result bindings.
+Group-key equality in `having` preserves the same numeric, boolean, and text scalar families as
+ordinary Datalog equality. Aggregate targets are numeric, so comparing one to a nonnumeric literal
+or identity binding fails typed preflight; optional projections are hydrated after aggregation and
+cannot be used in `having`.
 `count` counts distinct flattened source values. `sum`, `avg`, `min`, and `max` preserve duplicate
 input rows. An ungrouped aggregate over no matches returns one row with `count` equal to zero and
 the numeric aggregates equal to `null`; an empty grouped aggregate returns no rows.

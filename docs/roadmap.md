@@ -32,7 +32,9 @@ unique and durable consumer checkpoints are available through the `operational` 
   deterministic ties. Raw ordered predicates now accept only numeric-capable value bindings and
   numeric constants, rejecting backend-dependent text and identity coercions during typed
   preflight. Equality keeps entity, attribute, transaction, and rule identities string-typed rather
-  than leaking SQL coercion. Pattern constants now use the same scalar-family identity through
+  than leaking SQL coercion. Group-key equality in `having` uses those same scalar families, while
+  aggregate equality is numeric-only and optional projections are rejected before SQL compilation.
+  Pattern constants now use the same scalar-family identity through
   positive patterns, negation, and disjunction, while typed refs remain exact. Continue expanding
   hostile schema-valid input.
 - SQL projection now carries hidden canonical scalar-family columns through execution, so strings

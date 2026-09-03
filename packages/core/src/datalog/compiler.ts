@@ -921,24 +921,26 @@ const optionalProjectionExpressions = (
 };
 
 /**
- * Resolve a term in HAVING/ORDER BY context
- * Checks aggregate expressions first, then falls back to regular bindings
+ * HAVING equality involving an aggregate is numeric: aggregate targets are
+ * numbers (or null for an empty input), and a grouped fact value must belong
+ * to the same numeric scalar family. Equality between group keys keeps the
+ * ordinary typed Datalog equality contract.
  */
-const resolveTermExpression = (term: Term, ctx: CompilerContext, clauseName: string): string => {
-  if (isVariable(term)) {
-    // Check if it's an aggregate target variable
-    const aggExpr = ctx.aggregateExpressions.get(term);
-    if (aggExpr) {
-      return aggExpr;
-    }
-    // Otherwise resolve as regular binding
-    const binding = ctx.bindings.get(term);
-    if (!binding) {
-      throw new Error(`Unbound variable in ${clauseName}: ${term}`);
-    }
-    return getColumnExpression(binding);
-  }
-  return formatValue(term, ctx);
+const compileHavingEqualityCondition = (left: Term, right: Term, ctx: CompilerContext): string => {
+  const hasAggregate =
+    (isVariable(left) && ctx.aggregateExpressions.has(left)) ||
+    (isVariable(right) && ctx.aggregateExpressions.has(right));
+  if (!hasAggregate) return compileEqualityCondition(left, right, ctx);
+
+  const leftTerm = orderedTermExpression(left, ctx);
+  const rightTerm = orderedTermExpression(right, ctx);
+  if (leftTerm === null || rightTerm === null) return "1 = 0";
+
+  const conditions = [leftTerm.typeCondition, rightTerm.typeCondition].filter(
+    (condition): condition is string => condition !== undefined,
+  );
+  conditions.push(`${leftTerm.expression} = ${rightTerm.expression}`);
+  return `(${conditions.join(" AND ")})`;
 };
 
 /**
@@ -956,10 +958,8 @@ const buildHavingClause = (
     if (op === ">" || op === ">=" || op === "<" || op === "<=") {
       return compileOrderedPredicateCondition(op, left, right, ctx);
     }
-    const leftExpr = resolveTermExpression(left, ctx, "HAVING");
-    const rightExpr = resolveTermExpression(right, ctx, "HAVING");
-    const sqlOp = op === "!=" ? "<>" : op;
-    return `${leftExpr} ${sqlOp} ${rightExpr}`;
+    const equality = compileHavingEqualityCondition(left, right, ctx);
+    return op === "=" ? equality : `NOT (${equality})`;
   });
 
   return `HAVING ${conditions.join(" AND ")}`;

@@ -102,6 +102,51 @@ describe("Datalog query validation", () => {
     ).toThrow(UnboundVariableError);
   });
 
+  it("keeps aggregate equality numeric and rejects post-query optional targets", () => {
+    expect(
+      assertDatalogQuery({
+        find: ["?bucket", "?count"],
+        where: [["?entity", ":bucket", "?bucket"]],
+        aggregate: [["count", "?entity", "?count"]],
+        having: [
+          ["=", "?bucket", "seven"],
+          ["=", "?count", 2],
+        ],
+      }).find,
+    ).toEqual(["?bucket", "?count"]);
+
+    expect(() =>
+      assertDatalogQuery({
+        find: ["?count"],
+        where: [["?entity", ":bucket", "?bucket"]],
+        aggregate: [["count", "?entity", "?count"]],
+        having: [["=", "?count", "2"]],
+      }),
+    ).toThrow("aggregate equality constants must be numeric");
+
+    expect(() =>
+      assertDatalogQuery({
+        find: ["?entity", "?count"],
+        where: [["?entity", ":bucket", "?bucket"]],
+        aggregate: [["count", "?bucket", "?count"]],
+        having: [["=", "?count", "?entity"]],
+      }),
+    ).toThrow("aggregate equality operand ?entity must be numeric");
+
+    expect(() =>
+      assertDatalogQuery({
+        find: ["?bucket", "?label", "?count"],
+        where: [["?entity", ":bucket", "?bucket"]],
+        aggregate: [["count", "?entity", "?count"]],
+        optionalProjection: {
+          rowBinding: "?entity",
+          fields: [{ attribute: ":label", variable: "?label" }],
+        },
+        having: [["=", "?label", "featured"]],
+      }),
+    ).toThrow("having cannot reference optional projection target ?label");
+  });
+
   it("restricts ordered predicates to numeric-capable value bindings and constants", () => {
     expect(() =>
       assertDatalogQuery({

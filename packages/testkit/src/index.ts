@@ -751,6 +751,68 @@ export const triplesConformanceCases: readonly ConformanceCase[] = [
     }),
   },
   {
+    name: "datalog having preserves typed group and aggregate equality",
+    run: Effect.gen(function* () {
+      const t = yield* Triples;
+      yield* t.assertBatch([
+        {
+          entityId: "conf:having:number",
+          attribute: ":conf/having-bucket",
+          value: number(7),
+        },
+        {
+          entityId: "conf:having:datetime",
+          attribute: ":conf/having-bucket",
+          value: datetime(7),
+        },
+        {
+          entityId: "conf:having:text",
+          attribute: ":conf/having-bucket",
+          value: string("7"),
+        },
+      ]);
+
+      const numeric = yield* t.query({
+        find: ["?bucket", "?count"],
+        where: [["?entity", ":conf/having-bucket", "?bucket"]],
+        aggregate: [["count", "?entity", "?count"]],
+        having: [
+          ["=", "?bucket", 7],
+          ["=", "?count", 2],
+        ],
+      });
+      yield* check(numeric.results.length === 1, "numeric HAVING equality should retain one group");
+      yield* check(numeric.results[0]?.["?bucket"] === 7, "numeric group identity should be kept");
+      yield* check(
+        numeric.results[0]?.["?count"] === 2,
+        "number and datetime values should share one numeric group",
+      );
+
+      const textOnly = yield* t.query({
+        find: ["?bucket", "?count"],
+        where: [["?entity", ":conf/having-bucket", "?bucket"]],
+        aggregate: [["count", "?entity", "?count"]],
+        having: [["!=", "?bucket", 7]],
+      });
+      yield* check(textOnly.results.length === 1, "typed inequality should retain only text");
+      yield* check(textOnly.results[0]?.["?bucket"] === "7", "text 7 must remain distinct from 7");
+      yield* check(textOnly.results[0]?.["?count"] === 1, "text group should contain one row");
+
+      const invalid = yield* t
+        .query({
+          find: ["?count"],
+          where: [["?entity", ":conf/having-bucket", "?bucket"]],
+          aggregate: [["count", "?entity", "?count"]],
+          having: [["=", "?count", "2"]],
+        })
+        .pipe(Effect.flip);
+      yield* check(
+        invalid instanceof DatalogValidationError,
+        "aggregate equality with a text operand must fail typed preflight",
+      );
+    }),
+  },
+  {
     name: "datalog aggregates preserve duplicate rows and define empty and distinct results",
     run: Effect.gen(function* () {
       const t = yield* Triples;

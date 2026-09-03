@@ -80,6 +80,36 @@ const validatePredicate = (
   }
 };
 
+const validateAggregateEquality = (
+  clause: PredicateClause,
+  aggregateTargets: ReadonlySet<string>,
+  numericBindings: ReadonlySet<string>,
+  query: unknown,
+): void => {
+  if (orderedPredicateOps.has(clause[0])) return;
+
+  const [, left, right] = clause;
+  const leftIsAggregate = isVariable(left) && aggregateTargets.has(left);
+  const rightIsAggregate = isVariable(right) && aggregateTargets.has(right);
+  if (!leftIsAggregate && !rightIsAggregate) return;
+
+  const requireNumeric = (term: PredicateClause[1]): void => {
+    if (isVariable(term)) {
+      if (!numericBindings.has(term)) {
+        invalid(query, `Datalog aggregate equality operand ${term} must be numeric`);
+      }
+      return;
+    }
+    const value = isTypedConstant(term) ? term.value : term;
+    if (typeof value !== "number") {
+      invalid(query, "Datalog aggregate equality constants must be numeric");
+    }
+  };
+
+  if (leftIsAggregate) requireNumeric(right);
+  if (rightIsAggregate) requireNumeric(left);
+};
+
 const validateNot = (
   clause: NotClause,
   outerBindings: ReadonlySet<string>,
@@ -285,7 +315,13 @@ const validateSemantics = (query: DatalogQuery): void => {
     ),
   );
   for (const clause of query.having ?? []) {
+    for (const term of clause.slice(1)) {
+      if (isVariable(term) && optionalTargets.has(term)) {
+        invalid(query, `Datalog having cannot reference optional projection target ${term}`);
+      }
+    }
     validatePredicate(clause, resultBindings, numericResults, query);
+    validateAggregateEquality(clause, aggregateTargets, numericResults, query);
   }
 
   for (const order of query.orderBy ?? []) {

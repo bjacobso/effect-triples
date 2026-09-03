@@ -45,3 +45,5 @@ Canonicalize projected Datalog values before SQL distinctness, grouping, countin
 Apply the same flattened scalar identity to Datalog pattern constants across positive patterns, negation, disjunction, and recursive rule bodies. Numeric constants now match numbers and datetimes, text constants include serialized JSON, and explicitly typed refs remain exact on every supported backend.
 
 Keep entity, attribute, transaction, and rule identity bindings string-typed in equality predicates. Numeric and boolean literals now produce deterministic incompatible equality instead of SQLite coercion or PostgreSQL operator failures.
+
+Preserve typed scalar-family equality in grouped `having` filters and require numeric operands whenever an aggregate target participates. Optional projections now fail preflight when referenced from `having` because they are hydrated only after aggregation.
