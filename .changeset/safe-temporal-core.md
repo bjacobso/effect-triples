@@ -41,3 +41,5 @@ Use one typed total-order key for direct Datalog ordering and cursor pagination 
 Make raw ordered Datalog predicates explicitly numeric across every engine. Number and datetime value bindings compare without coercing text, boolean, entity, attribute, transaction, or rule bindings, and invalid literal or binding shapes fail in typed preflight rather than leaking SQLite/PostgreSQL behavior.
 
 Canonicalize projected Datalog values before SQL distinctness, grouping, counting, and pagination. Stored number/datetime and string/ref/blob/JSON aliases that flatten to the same public scalar now produce one result on KV, SQLite, and PostgreSQL.
+
+Apply the same flattened scalar identity to Datalog pattern constants across positive patterns, negation, disjunction, and recursive rule bodies. Numeric constants now match numbers and datetimes, text constants include serialized JSON, and explicitly typed refs remain exact on every supported backend.

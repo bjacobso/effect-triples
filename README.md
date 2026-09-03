@@ -424,11 +424,11 @@ first-class:
 `datetime` is stored as epoch milliseconds.
 
 Datalog constants use scalar equality unless their type is explicit. A bare string such as
-`"person:bob"` matches stored `string`, `ref`, or `blob` values with that scalar; a bare number
-matches both `number` and `datetime` values with that scalar. This also applies when a variable is
-bound from one clause and reused in another. Use a typed constant such as `ref("person:bob")` when
-the query must match only a stored `ref`. Query bindings and projected results remain unwrapped
-JavaScript scalars.
+`"person:bob"` matches stored `string`, `ref`, `blob`, or serialized `json` values with that scalar;
+a bare number matches both `number` and `datetime` values with that scalar. Positive patterns,
+negation, disjunction, joins, and predicates all use this same identity. Use a typed constant such
+as `ref("person:bob")` when the pattern must match only a stored `ref`. Query bindings and projected
+results remain unwrapped JavaScript scalars.
 
 Assert one fact, a batch, or an atomic transaction, and read facts back by entity or
 by pattern:

@@ -260,6 +260,103 @@ export const triplesConformanceCases: readonly ConformanceCase[] = [
     }),
   },
   {
+    name: "datalog pattern constants use flattened scalar identity in filters",
+    run: Effect.gen(function* () {
+      const t = yield* Triples;
+      const jsonText = '{"kind":"same"}';
+      const facts = [
+        { entityId: "conf:constant:number", value: number(7) },
+        { entityId: "conf:constant:datetime", value: datetime(7) },
+        { entityId: "conf:constant:string", value: string(jsonText) },
+        { entityId: "conf:constant:ref", value: ref(jsonText) },
+        {
+          entityId: "conf:constant:blob",
+          value: blob(jsonText, "application/octet-stream", 7),
+        },
+        { entityId: "conf:constant:json", value: json({ kind: "same" }) },
+      ] as const;
+      yield* t.assertBatch(
+        facts.flatMap(({ entityId, value }) => [
+          { entityId, attribute: ":conf/constant", value },
+          { entityId, attribute: ":conf/candidate", value: boolean(true) },
+        ]),
+      );
+
+      const numeric = yield* t.query({
+        find: ["?entity"],
+        where: [["?entity", ":conf/constant", 7]],
+        orderBy: [{ variable: "?entity" }],
+      });
+      yield* check(
+        JSON.stringify(numeric.results) ===
+          JSON.stringify([
+            { "?entity": "conf:constant:datetime" },
+            { "?entity": "conf:constant:number" },
+          ]),
+        "a numeric pattern constant must match stored numbers and datetimes",
+      );
+
+      const textual = yield* t.query({
+        find: ["?entity"],
+        where: [["?entity", ":conf/constant", jsonText]],
+        orderBy: [{ variable: "?entity" }],
+      });
+      yield* check(
+        JSON.stringify(textual.results.map((row) => row["?entity"])) ===
+          JSON.stringify([
+            "conf:constant:blob",
+            "conf:constant:json",
+            "conf:constant:ref",
+            "conf:constant:string",
+          ]),
+        "a text pattern constant must match equal string, ref, blob, and serialized JSON values",
+      );
+
+      const explicitRef = yield* t.query({
+        find: ["?entity"],
+        where: [["?entity", ":conf/constant", { type: "ref", value: jsonText }]],
+      });
+      yield* check(
+        explicitRef.results.length === 1 &&
+          explicitRef.results[0]?.["?entity"] === "conf:constant:ref",
+        "an explicitly typed ref pattern must retain exact storage-type semantics",
+      );
+
+      const negated = yield* t.query({
+        find: ["?entity"],
+        where: [
+          ["?entity", ":conf/candidate", true],
+          ["not", ["?entity", ":conf/constant", 7]],
+        ],
+        orderBy: [{ variable: "?entity" }],
+      });
+      yield* check(
+        negated.results.length === 4 &&
+          negated.results.every((row) => !String(row["?entity"]).match(/number|datetime/)),
+        "negated pattern constants must use the same scalar-family identity",
+      );
+
+      const disjoined = yield* t.query({
+        find: ["?entity"],
+        where: [
+          ["?entity", ":conf/candidate", true],
+          [
+            "or",
+            [
+              ["?entity", ":conf/constant", 7],
+              ["?entity", ":conf/constant", jsonText],
+            ],
+          ],
+        ],
+        orderBy: [{ variable: "?entity" }],
+      });
+      yield* check(
+        disjoined.results.length === facts.length,
+        "or-pattern constants must use the same scalar-family identity",
+      );
+    }),
+  },
+  {
     name: "datalog value joins compare every scalar family",
     run: Effect.gen(function* () {
       const t = yield* Triples;

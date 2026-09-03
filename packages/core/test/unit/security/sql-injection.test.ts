@@ -32,7 +32,7 @@ describe("SQL Injection Prevention", () => {
         expect(result.sql).not.toContain(payload);
 
         // The SQL should contain placeholders
-        expect(result.sql).toContain("value_string = ?");
+        expect(result.sql).toContain("COALESCE(t0.value_string, t0.value_json) = ?");
 
         // The payload should be safely passed as a parameter
         expect(result.params).toContain(payload);
@@ -78,7 +78,7 @@ describe("SQL Injection Prevention", () => {
       const result = compile(query);
 
       // Should be passed as a parameter, not embedded in SQL
-      expect(result.sql).toContain("value_string = ?");
+      expect(result.sql).toContain("COALESCE(t0.value_string, t0.value_json) = ?");
       expect(result.params).toContain("C:\\Windows\\System32");
     });
 
@@ -229,7 +229,6 @@ describe("SQL Injection Prevention", () => {
       expect(result.params).toContain(":name");
       expect(result.params).toContain(":status");
       expect(result.params).toContain("active");
-      expect(result.params).toContain("string"); // value_type
     });
 
     it("should have params for all constant values in complex queries", () => {

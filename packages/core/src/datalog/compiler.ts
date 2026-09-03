@@ -200,16 +200,6 @@ const ruleIdentifier = (name: string): string => {
 };
 
 /**
- * Get the SQL column name for a value based on its type
- */
-const getValueColumn = (value: Constant): string => {
-  if (isTypedConstant(value)) return "value_string";
-  if (typeof value === "number") return "value_number";
-  if (typeof value === "boolean") return "value_boolean";
-  return "value_string";
-};
-
-/**
  * Format a constant value for SQL using parameterized queries.
  * Uses the ParamCollector to add the value and return a placeholder.
  */
@@ -289,6 +279,24 @@ const textScalarTypeCondition = (alias: string): string =>
 
 const numberScalarTypeCondition = (alias: string): string =>
   `${alias}.value_type IN ('number', 'datetime')`;
+
+/** Match a pattern constant using the flattened scalar identity exposed by Datalog. */
+const compilePatternValueCondition = (
+  alias: string,
+  value: Constant,
+  ctx: CompilerContext,
+): string => {
+  if (isTypedConstant(value)) {
+    return `(${alias}.value_type = ${ctx.collector.add(value.type)} AND ${alias}.value_string = ${ctx.collector.add(value.value)})`;
+  }
+  if (typeof value === "number") {
+    return `((${numberScalarTypeCondition(alias)}) AND ${numberScalarExpression(alias)} = ${formatValue(value, ctx)})`;
+  }
+  if (typeof value === "boolean") {
+    return `(${alias}.value_type = 'boolean' AND ${alias}.value_boolean = ${formatStoredValue(value, ctx)})`;
+  }
+  return `((${textScalarTypeCondition(alias)}) AND ${textScalarExpression(alias)} = ${formatValue(value, ctx)})`;
+};
 
 /** Compare bindings using the flattened scalar semantics exposed by the KV executor. */
 const compileBindingEquality = (left: VariableBinding, right: VariableBinding): string => {
@@ -481,36 +489,6 @@ const classifyClauses = (
 };
 
 /**
- * Infer value type from a constant
- */
-const inferValueType = (value: Constant): string => {
-  if (isTypedConstant(value)) return value.type;
-  if (typeof value === "number") return "number";
-  if (typeof value === "boolean") return "boolean";
-  return "string";
-};
-
-/** Stored value tags compatible with a Datalog constant. */
-const compatibleValueTypes = (value: Constant): readonly string[] => {
-  if (isTypedConstant(value)) return [value.type];
-  if (typeof value === "string") return ["string", "ref", "blob"];
-  if (typeof value === "number") return ["number", "datetime"];
-  return [inferValueType(value)];
-};
-
-const compileValueTypeCondition = (
-  alias: string,
-  value: Constant,
-  ctx: CompilerContext,
-): string => {
-  const types = compatibleValueTypes(value);
-  if (types.length === 1) {
-    return `${alias}.value_type = ${formatValue(types[0]!, ctx)}`;
-  }
-  return `${alias}.value_type IN (${types.map((type) => formatValue(type, ctx)).join(", ")})`;
-};
-
-/**
  * Create a new compiler context
  */
 const createContext = (dialect: SqlDialect): CompilerContext => ({
@@ -608,9 +586,7 @@ const compilePattern = (
       ctx.conditions.push(compileBindingEquality(tripleBinding(alias, "value"), binding));
     }
   } else {
-    const valueCol = getValueColumn(value);
-    ctx.conditions.push(`${alias}.${valueCol} = ${formatStoredValue(value, ctx)}`);
-    ctx.conditions.push(compileValueTypeCondition(alias, value, ctx));
+    ctx.conditions.push(compilePatternValueCondition(alias, value, ctx));
   }
 
   // Process tx term (optional 4th element)
@@ -717,9 +693,7 @@ const compileNotPattern = (
     }
     localBindings.set(value, tripleBinding(alias, "value"));
   } else {
-    const valueCol = getValueColumn(value);
-    conditions.push(`${alias}.${valueCol} = ${formatStoredValue(value, ctx)}`);
-    conditions.push(compileValueTypeCondition(alias, value, ctx));
+    conditions.push(compilePatternValueCondition(alias, value, ctx));
   }
 
   if (tx !== undefined) {
@@ -1459,9 +1433,7 @@ const compileRuleDefinition = (rule: Rule, ctx: CompilerContext): string => {
         if (isVariable(value)) {
           paramMap.set(value, `${alias}.value_string`);
         } else {
-          const valueCol = getValueColumn(value);
-          allConditions.push(`${alias}.${valueCol} = ${formatStoredValue(value, ctx)}`);
-          allConditions.push(compileValueTypeCondition(alias, value, ctx));
+          allConditions.push(compilePatternValueCondition(alias, value, ctx));
         }
       } else {
         // JOIN to the triples table
@@ -1497,9 +1469,7 @@ const compileRuleDefinition = (rule: Rule, ctx: CompilerContext): string => {
           }
           paramMap.set(value, `${alias}.value_string`);
         } else {
-          const valueCol = getValueColumn(value);
-          joinConditions.push(`${alias}.${valueCol} = ${formatStoredValue(value, ctx)}`);
-          joinConditions.push(compileValueTypeCondition(alias, value, ctx));
+          joinConditions.push(compilePatternValueCondition(alias, value, ctx));
         }
 
         allJoins.push(`JOIN triples ${alias} ON ${joinConditions.join(" AND ")}`);

@@ -41,14 +41,11 @@ describe("Datalog SQL Compiler", () => {
       const result = compile(query);
 
       expect(result.sql).toContain(`t0.attribute = ?`);
-      expect(result.sql).toContain(`t0.value_string = ?`);
-      expect(result.sql).toContain(`t0.value_type IN (?3, ?4, ?5)`);
+      expect(result.sql).toContain(`COALESCE(t0.value_string, t0.value_json) = ?`);
+      expect(result.sql).toContain(`t0.value_type IN ('string', 'ref', 'blob', 'json')`);
       // Verify params contain the values
       expect(result.params).toContain(":name");
       expect(result.params).toContain("Alice");
-      expect(result.params).toContain("string");
-      expect(result.params).toContain("ref");
-      expect(result.params).toContain("blob");
     });
 
     it("should compile query with numeric constant", () => {
@@ -59,12 +56,10 @@ describe("Datalog SQL Compiler", () => {
 
       const result = compile(query);
 
-      expect(result.sql).toContain(`t0.value_number = ?`);
-      expect(result.sql).toContain(`t0.value_type IN (?3, ?4)`);
+      expect(result.sql).toContain(`COALESCE(t0.value_number, t0.value_datetime) = ?`);
+      expect(result.sql).toContain(`t0.value_type IN ('number', 'datetime')`);
       // Verify params contain the values
       expect(result.params).toContain(30);
-      expect(result.params).toContain("number");
-      expect(result.params).toContain("datetime");
     });
 
     it("should compile query with boolean constant", () => {
@@ -76,10 +71,9 @@ describe("Datalog SQL Compiler", () => {
       const result = compile(query);
 
       expect(result.sql).toContain(`t0.value_boolean = ?`);
-      expect(result.sql).toContain(`t0.value_type = ?`);
+      expect(result.sql).toContain(`t0.value_type = 'boolean'`);
       // Verify params - booleans are stored as 0/1
       expect(result.params).toContain(1);
-      expect(result.params).toContain("boolean");
     });
 
     it("should compile query with ref typed constant", () => {
@@ -284,7 +278,7 @@ describe("Datalog SQL Compiler", () => {
       const result = compile(query);
 
       expect(result.sql).toContain("NOT EXISTS");
-      expect(result.sql).toContain("value_string = ?");
+      expect(result.sql).toContain("t1.value_string = ?");
       expect(result.params).toContain("emp:root");
     });
   });
@@ -308,7 +302,7 @@ describe("Datalog SQL Compiler", () => {
       const result = compile(query);
 
       expect(result.sql).toContain("OR");
-      expect(result.sql).toContain("t1.value_string = ?");
+      expect(result.sql).toContain("COALESCE(t1.value_string, t1.value_json) = ?");
       expect(result.params).toContain("Alice");
       expect(result.params).toContain("Bob");
     });
@@ -553,7 +547,7 @@ describe("Datalog SQL Compiler", () => {
 
       // With parameterized queries, values are passed as params, not embedded in SQL
       expect(result.sql).not.toContain("O'Brien");
-      expect(result.sql).toContain("value_string = ?");
+      expect(result.sql).toContain("COALESCE(t0.value_string, t0.value_json) = ?");
       // The raw value with special characters is safely passed as a parameter
       expect(result.params).toContain("O'Brien");
     });
