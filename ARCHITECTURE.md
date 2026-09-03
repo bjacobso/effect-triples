@@ -17,9 +17,10 @@ hosts typed configuration as a modular layer over the same core.
   binary-rule invariants before either engine runs; invalid input remains a typed Effect failure.
   Aggregate duplicate, distinct-count, and empty-input behavior is also backend-independent. Raw
   ordered predicates are numeric-only and guard number/datetime storage types explicitly, avoiding
-  SQLite text coercion and PostgreSQL cast failures. Pattern constants use the same flattened
-  scalar-family identity in positive patterns, negation, and disjunction; explicitly typed refs
-  retain exact storage-type matching.
+  SQLite text coercion and PostgreSQL cast failures. Identity bindings remain string-typed during
+  equality predicates, so incompatible literals become backend-independent false conditions rather
+  than SQL casts. Pattern constants use the same flattened scalar-family identity in positive
+  patterns, negation, and disjunction; explicitly typed refs retain exact storage-type matching.
   Wrapped filters use hidden typed projection columns rather than flattened SQL text, preserving
   numeric, text-family, boolean, and null semantics through pagination. Direct ordering and
   keyset pagination share the same hidden typed total-order key, including deterministic null and

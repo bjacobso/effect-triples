@@ -683,7 +683,9 @@ the numeric aggregates equal to `null`; an empty grouped aggregate returns no ro
 Raw Datalog `>`, `>=`, `<`, and `<=` predicates are numeric-only. Their variables must be bound
 from fact values, numbers and datetimes share the numeric family, and literal operands must be
 numbers. Text and identity comparisons use `=` or `!=`; invalid ordered predicates fail during
-typed preflight instead of relying on backend coercion.
+typed preflight instead of relying on backend coercion. Entity, attribute, transaction, and rule
+identities are strings: equality with a numeric or boolean literal is always false, and inequality
+is always true, consistently across backends.
 
 ```ts
 triples.query({

@@ -321,7 +321,10 @@ const compileBindingConstantEquality = (
   ctx: CompilerContext,
 ): string => {
   if (!isTripleValueBinding(binding)) {
-    return `${resolveBinding(binding)} = ${formatValue(value, ctx)}`;
+    const scalar = constantScalar(value);
+    return typeof scalar === "string"
+      ? `${resolveBinding(binding)} = ${formatValue(scalar, ctx)}`
+      : "1 = 0";
   }
 
   if (typeof value === "number") {

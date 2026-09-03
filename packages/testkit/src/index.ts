@@ -446,6 +446,60 @@ export const triplesConformanceCases: readonly ConformanceCase[] = [
     }),
   },
   {
+    name: "datalog equality keeps identity bindings string-typed",
+    run: Effect.gen(function* () {
+      const t = yield* Triples;
+      const entityId = "conf:identity:7";
+      yield* t.assert({
+        entityId,
+        attribute: ":conf/identity",
+        value: string("present"),
+      });
+
+      const equalString = yield* t.query({
+        find: ["?entity"],
+        where: [
+          ["?entity", ":conf/identity", "present"],
+          ["=", "?entity", entityId],
+        ],
+      });
+      const equalNumber = yield* t.query({
+        find: ["?entity"],
+        where: [
+          ["?entity", ":conf/identity", "present"],
+          ["=", "?entity", 7],
+        ],
+      });
+      const inverseEqualBoolean = yield* t.query({
+        find: ["?entity"],
+        where: [
+          ["?entity", ":conf/identity", "present"],
+          ["=", true, "?entity"],
+        ],
+      });
+      const unequalNumber = yield* t.query({
+        find: ["?entity"],
+        where: [
+          ["?entity", ":conf/identity", "present"],
+          ["!=", "?entity", 7],
+        ],
+      });
+
+      yield* check(
+        equalString.results.length === 1 && equalString.results[0]?.["?entity"] === entityId,
+        "identity bindings must compare with string constants",
+      );
+      yield* check(
+        equalNumber.results.length === 0 && inverseEqualBoolean.results.length === 0,
+        "identity equality with numeric or boolean constants must be false without backend casts",
+      );
+      yield* check(
+        unequalNumber.results.length === 1 && unequalNumber.results[0]?.["?entity"] === entityId,
+        "identity inequality with an incompatible constant must be true",
+      );
+    }),
+  },
+  {
     name: "ordered Datalog predicates accept only numeric scalar families",
     run: Effect.gen(function* () {
       const t = yield* Triples;

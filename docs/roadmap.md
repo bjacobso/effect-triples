@@ -31,9 +31,10 @@ unique and durable consumer checkpoints are available through the `operational` 
   pagination now share a typed total order for mixed scalar families, including null placement and
   deterministic ties. Raw ordered predicates now accept only numeric-capable value bindings and
   numeric constants, rejecting backend-dependent text and identity coercions during typed
-  preflight. Pattern constants now use the same scalar-family identity through positive patterns,
-  negation, and disjunction, while typed refs remain exact. Continue expanding hostile schema-valid
-  input.
+  preflight. Equality keeps entity, attribute, transaction, and rule identities string-typed rather
+  than leaking SQL coercion. Pattern constants now use the same scalar-family identity through
+  positive patterns, negation, and disjunction, while typed refs remain exact. Continue expanding
+  hostile schema-valid input.
 - SQL projection now carries hidden canonical scalar-family columns through execution, so strings
   such as `"007"`, numeric-looking entity IDs and refs, datetimes, booleans, and JSON are decoded
   without guessing. Distinctness, grouping, counts, and page boundaries use that same flattened

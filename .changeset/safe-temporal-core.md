@@ -43,3 +43,5 @@ Make raw ordered Datalog predicates explicitly numeric across every engine. Numb
 Canonicalize projected Datalog values before SQL distinctness, grouping, counting, and pagination. Stored number/datetime and string/ref/blob/JSON aliases that flatten to the same public scalar now produce one result on KV, SQLite, and PostgreSQL.
 
 Apply the same flattened scalar identity to Datalog pattern constants across positive patterns, negation, disjunction, and recursive rule bodies. Numeric constants now match numbers and datetimes, text constants include serialized JSON, and explicitly typed refs remain exact on every supported backend.
+
+Keep entity, attribute, transaction, and rule identity bindings string-typed in equality predicates. Numeric and boolean literals now produce deterministic incompatible equality instead of SQLite coercion or PostgreSQL operator failures.
