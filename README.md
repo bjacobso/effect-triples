@@ -358,6 +358,25 @@ a queryable `_Transaction` envelope. It can retain:
 `ConsumerCheckpoint` persists a compare-and-retract-protected cursor. Best-effort change emitters
 are wakeup hints, never a substitute for journal catch-up.
 
+For one entity's audit timeline, use the indexed journal view rather than filtering the global
+feed:
+
+```ts
+const first = yield * triples.transactionsForEntity(workerId, { limit: 50 });
+const next =
+  first.nextBeforePosition === undefined
+    ? undefined
+    : yield *
+      triples.transactionsForEntity(workerId, {
+        limit: 50,
+        snapshotPosition: first.snapshotPosition,
+        beforePosition: first.nextBeforePosition,
+      });
+```
+
+Each page contains complete `TransactionRecord` values, newest first. The first page's commit
+position pins later pages while concurrent commands continue to commit.
+
 `queryPage` cursors are versioned, schema-decoded, and bound to the canonical query, ordering,
 temporal basis, and database scope. The first page pins an exact commit-position snapshot, so later
 writes cannot move rows between pages.
@@ -387,6 +406,69 @@ import { SqliteTriples } from "@bjacobso/triplex-sqlite";
 
 const SqliteLive = SqliteTriples.layer({ filename: "app.db" });
 ```
+
+### PostgreSQL composition
+
+The standalone layer owns its pool and applies Triplex migrations as a convenience:
+
+```ts
+import { PgTriples } from "@bjacobso/triplex-postgres";
+
+const TriplexLive = PgTriples.layerFromUrl(process.env.DATABASE_URL!);
+```
+
+Production hosts that already own an Effect SQL client can provide that exact client to Triplex.
+This path creates no pool and runs no migration:
+
+```ts
+import { Effect, Layer } from "effect";
+import { SqlClient } from "effect/unstable/sql";
+import { EntityId, Triples, string } from "@bjacobso/triplex";
+import { PgTriples, makePostgresqlLayerUnmigratedFromUrl } from "@bjacobso/triplex-postgres";
+
+const HostSql = makePostgresqlLayerUnmigratedFromUrl(process.env.DATABASE_URL!);
+const AppDatabase = PgTriples.layerFromSqlClient({ scope: "app/main" }).pipe(
+  Layer.provideMerge(HostSql),
+);
+
+const command = Effect.gen(function* () {
+  const sql = yield* SqlClient.SqlClient;
+  const triples = yield* Triples;
+
+  yield* sql.withTransaction(
+    Effect.gen(function* () {
+      yield* sql`INSERT INTO host_records (id) VALUES ('record:1')`;
+      yield* triples.transact(
+        [
+          {
+            op: "assert",
+            entityId: EntityId.make("record:1"),
+            attribute: ":record/status",
+            value: string("accepted"),
+          },
+        ],
+        { commandId: "command:1", actor: "user:1" },
+      );
+      yield* sql`INSERT INTO host_outbox (id) VALUES ('delivery:1')`;
+    }),
+  );
+}).pipe(Effect.provide(AppDatabase));
+```
+
+Effect SQL's fiber-local transaction connection is shared by the host statements and nested
+`Triples.transact`, so facts, journal, command claim, commit position, host rows, and outbox commit
+or roll back together. Nested transactions use Effect SQL savepoints.
+
+For a server-owned logical database mapping, validate the stored ID and create a schema-bound
+runtime with `PgTriples.layerForDatabase(config, DatabaseId.make("customer-a"))`. Every connection
+in that pool starts in the deterministic Triplex schema, and its scope is embedded in pagination
+cursors. The schema and v1 migration must already exist; `layerForDatabaseMigrated` is the explicit
+provisioning convenience for setup tools and tests.
+
+Triplex exports the ordered `migrations` and `runMigrations` from `@bjacobso/triplex-sql`.
+Production hosts should run them from their own deployment process against the same database or
+schema before constructing an unmigrated runtime. Triplex uses `triplex_schema_migrations`, not the
+host application's migration table.
 
 ## Package entrypoints
 

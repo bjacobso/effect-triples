@@ -25,8 +25,9 @@ implementation.
   entity identity/type, assertion transaction, and retraction transaction.
 - Actor, command, correlation, causation, and config-snapshot metadata, plus ordered catch-up with
   `transactions({ after })` and indexed command-ID lookup.
-- Database-per-organization isolation. PostgreSQL `DatabaseManager` validates logical database
-  IDs and binds every pooled connection to a deterministic, safely quoted physical schema.
+- Database-per-organization isolation. PostgreSQL validates logical database IDs and binds every
+  pooled connection to a deterministic, safely quoted physical schema. `PgTriples.layerForDatabase`
+  exposes both that scoped SQL client and `Triples` for atomic host composition.
 - Typed opaque page cursors. The envelope is versioned and bound to the canonical query, complete
   deterministic ordering, bitemporal basis, and database scope; malformed or reused cursors fail
   with `PaginationCursorError`.
@@ -40,19 +41,19 @@ domain code.
 
 ## Package and API mapping
 
-| Vendored package or API              | Triplex replacement                                                                    |
-| ------------------------------------ | -------------------------------------------------------------------------------------- |
-| `effect-triples`                     | `@bjacobso/triplex`                                                                    |
-| `MemoryTriplesLive`                  | `KvTriples.layerWithScope(databaseId)`                                                 |
-| `Triples`                            | `Triples`                                                                              |
-| `TripleStorage`                      | Internal `StorageAdapter`; application code should depend on `Triples`                 |
-| `effect-triples-sql`                 | `@bjacobso/triplex-sql` for host-owned migrations and SQL execution                    |
-| `effect-triples-sqlite`              | `@bjacobso/triplex-sqlite`; use `SqliteTriples.layer(...)`                             |
-| `effect-triples-postgres`            | `@bjacobso/triplex-postgres`; use `DatabaseManager` for organization schemas           |
-| vendored conjunctive `Triples.query` | Triplex raw Datalog `Triples.query`                                                    |
-| per-tenant matching                  | Select one organization `Triples` service, then call `match`/`entity`/`entities`       |
-| `transactionsForEntity`              | Read the ordered journal and filter its typed `changes`, or maintain a host projection |
-| in-process `changes` stream          | Best-effort wakeup plus durable `transactions({ after })` catch-up                     |
+| Vendored package or API              | Triplex replacement                                                                     |
+| ------------------------------------ | --------------------------------------------------------------------------------------- |
+| `effect-triples`                     | `@bjacobso/triplex`                                                                     |
+| `MemoryTriplesLive`                  | `KvTriples.layerWithScope(databaseId)`                                                  |
+| `Triples`                            | `Triples`                                                                               |
+| `TripleStorage`                      | Internal `StorageAdapter`; application code should depend on `Triples`                  |
+| `effect-triples-sql`                 | `@bjacobso/triplex-sql` for host-owned migrations and SQL execution                     |
+| `effect-triples-sqlite`              | `@bjacobso/triplex-sqlite`; use `SqliteTriples.layer(...)`                              |
+| `effect-triples-postgres`            | `@bjacobso/triplex-postgres`; use `PgTriples.layerForDatabase` for host SQL composition |
+| vendored conjunctive `Triples.query` | Triplex raw Datalog `Triples.query`                                                     |
+| per-tenant matching                  | Select one organization `Triples` service, then call `match`/`entity`/`entities`        |
+| `transactionsForEntity`              | `Triples.transactionsForEntity`, an indexed snapshot-stable newest-first journal page   |
+| in-process `changes` stream          | Best-effort wakeup plus durable `transactions({ after })` catch-up                      |
 
 There are intentionally no compatibility exports for old package names or `@open-ontology/*`.
 
@@ -63,13 +64,15 @@ derive authorization from a caller-provided schema name. At request entry:
 
 1. authenticate the actor and resolve their account membership;
 2. load the server-owned `DatabaseId` mapping;
-3. obtain that database from `DatabaseManager`;
-4. provide only its scoped `Triples` service to the request program; and
+3. construct or obtain its cached `PgTriples.layerForDatabase` runtime;
+4. provide its scoped `SqlClient` and `Triples` services to the request program; and
 5. keep authorization checks in the Onboarded command/query layer.
 
-`DatabaseManager` is the intended PostgreSQL production boundary. It creates a collision-resistant
-schema, configures every pool connection for exactly that schema, and gives pagination cursors the
-logical database scope. Never share the registry/system `SqlClient` as an organization fact client.
+`PgTriples.layerForDatabase` is the intended PostgreSQL boundary when a host transaction also
+touches relational tables. It creates a collision-resistant schema-bound pool, provides its exact
+`SqlClient` alongside `Triples`, and gives pagination cursors the logical database scope. The
+generic `DatabaseManager` remains useful when callers need only `Triples`. Never share the
+registry/system client as an organization fact client.
 
 SQLite should use one file per organization:
 
@@ -193,6 +196,17 @@ are atomically unique per organization database; a duplicate returns the origina
 through `CommandAlreadyCommittedError`, and `transactionByCommand` loads the receipt. Onboarded can
 therefore wrap this primitive rather than maintaining a second command-claim table, while retaining
 its product-specific response cache and authorization checks.
+
+Wrap relational command state, `Triples.transact`, and the host outbox in the scoped client's
+outer `sql.withTransaction`. The PostgreSQL Triplex layer consumes that same client, so a failure
+on either side rolls back the relational rows, facts, journal envelope, command receipt, and commit
+position together. Triplex does not own the host response cache or outbox delivery lifecycle.
+
+For the entity audit endpoint, page `transactionsForEntity(entityId, { limit })`. Return its
+`snapshotPosition` and `nextBeforePosition` as opaque application response fields, and pass both
+back for the next page. The records already contain actor, command, correlation, causation, config
+snapshot, time, position, and complete typed assertion/retraction changes; do not maintain a
+second audit log.
 
 ## Remaining limitations
 

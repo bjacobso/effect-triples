@@ -11,7 +11,8 @@ roadmap tracks work that is not complete.
 - First-class bitemporality. Facts have independent recorded and valid intervals, and direct reads
   and Datalog use one shared temporal basis.
 - Atomically unique command receipts, causal metadata, typed assertion/retraction changes, commit
-  positions, compare-and-retract preconditions, and durable consumer checkpoints.
+  positions, compare-and-retract preconditions, indexed snapshot-stable entity timelines, and
+  durable consumer checkpoints.
 - Backend-independent Datalog semantics for patterns, joins, predicates, negation, disjunction,
   aggregates, ordering, pagination, and the intentionally constrained binary recursive-rule form.
   Query preflight rejects unsupported or ambiguous programs before backend execution.
@@ -32,6 +33,10 @@ roadmap tracks work that is not complete.
 - One greenfield SQL v1 migration, host-owned migration entrypoints, Changesets configuration,
   dist-only exports, package tarball checks, and Effect dependencies aligned through the root pnpm
   catalog.
+- PostgreSQL layers for standalone pools, an ambient host-owned `SqlClient`, and validated
+  database-scoped pools. Ambient composition shares Effect SQL's fiber-local transaction so host
+  rows, Triplex facts/journal, command claims, commit positions, and host outbox rows commit or roll
+  back together without an internal second pool.
 
 ## Backend maturity
 
@@ -44,7 +49,9 @@ roadmap tracks work that is not complete.
 | FoundationDB  | Yes                  | Native opt-in      | No         | Experimental                   |
 
 PostgreSQL includes validated logical database IDs, deterministic safely quoted schema names, and
-per-pool-connection schema binding. It should not be called production-supported until the
+per-pool-connection schema binding. Its host-owned-client and database-scoped paths are covered by
+Docker integration tests, including rollback and concurrent multi-connection isolation. It should
+not be called production-supported until the
 multi-connection isolation and shared conformance suite run in CI against a maintained PostgreSQL
 service.
 

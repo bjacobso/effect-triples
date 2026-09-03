@@ -41,6 +41,7 @@ Every successful `transact` persists an `_Transaction` entity with:
 - `:_tx/correlation-id`;
 - `:_tx/causation-id`;
 - `:_tx/config-snapshot`; and
+- one indexed `:_tx/changed-entity` reference per changed application entity; and
 - one `:_tx/change` JSON fact for every asserted or retracted application fact.
 
 `Triples.transaction(txId)` reconstructs the typed envelope. The same facts remain available to
@@ -49,6 +50,13 @@ identity within one Triplex database. Concurrent attempts acquire a backend-loca
 same transaction as the facts and envelope; exactly one commits. A loser receives
 `CommandAlreadyCommittedError` with the original transaction ID, and
 `Triples.transactionByCommand(commandId)` loads that durable receipt.
+
+`Triples.transactionsForEntity(entityId, request)` uses the changed-entity references to read a
+bounded newest-first audit page without replaying or decoding the global journal. It deduplicates
+transactions that changed several facts on the entity, then hydrates their authoritative complete
+envelopes. The first page returns a `snapshotPosition`; continuation requests combine it with the
+exclusive `nextBeforePosition`, so concurrent later commits do not enter an in-progress timeline.
+Invalid limits and positions fail with `ReadError`, and an unknown entity returns an empty page.
 
 ### Ordered transaction feed
 
@@ -230,6 +238,15 @@ These guarantees are in the shared `Triples` contract and are exercised by in-me
 SQLite in the default suite. PostgreSQL passes the same conformance and multi-database isolation
 tests through an opt-in integration suite, but remains a production candidate until those tests run
 in CI. Cloudflare and FoundationDB are experimental and are not covered by every guarantee above.
+
+PostgreSQL additionally exposes three composition boundaries. `PgTriples.layer` and
+`layerFromUrl` own a pool and migrate it for standalone use. `layerFromSqlClient` consumes an
+ambient host-owned `SqlClient`, creates no pool, and runs no DDL; both host statements and nested
+`Triples.transact` therefore resolve Effect SQL's same fiber-local transaction connection.
+`layerForDatabase` creates a pool whose every connection is bound at startup to the schema derived
+from a validated, server-resolved `DatabaseId`, and provides both that scoped client and `Triples`.
+The `*Migrated` variants are explicit provisioning conveniences. Production migration execution
+remains host-controlled through the ordered exports in `@bjacobso/triplex-sql`.
 
 Subscriptions remain conservative invalidation hints rather than an automatic live-query runtime.
 Entity snapshots, validation observations, and derivation runs remain checkpointed projections;

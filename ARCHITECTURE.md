@@ -111,6 +111,11 @@ hosts typed configuration as a modular layer over the same core.
   scalar-family joins and typed keyset ordering compare values consistently with the KV executor.
   A shared KV/SQLite/PostgreSQL conformance corpus is the regression boundary for this contract.
 - Backend packages construct the storage adapters and runtime layers for their platforms.
+- The PostgreSQL package also owns SQL-aware host composition. Its ambient-client layer builds
+  `Triples` from the caller's exact `SqlClient`, preserving Effect SQL's fiber-local transaction
+  and savepoint boundary without exposing `StorageAdapter`. Its database-scoped layer returns both
+  a schema-bound client and `Triples`; this belongs in the backend package so core remains
+  independent of SQL.
 - Backend maturity is explicit rather than inferred from package existence. In-memory KV and
   SQLite are the supported baseline. PostgreSQL passes the opt-in shared conformance and isolation
   integration suite but remains a production candidate until that suite runs in CI. Cloudflare and

@@ -17,7 +17,9 @@ attribute dependency sets now have indexed freshness positions and temporal sche
 SQLite, and PostgreSQL. Graph constraints are content-addressed, produce durable queryable
 observations, and can be enforced atomically across their full valid-time intervals. Command
 receipts are atomically unique and durable consumer checkpoints are available through the
-`operational` subpath.
+`operational` subpath. Indexed entity transaction timelines and PostgreSQL composition over an
+ambient host-owned `SqlClient` or validated database-scoped pool are also delivered; relational
+host rows, Triplex facts/journal, and outbox writes can share one Effect SQL transaction.
 
 ## Immediate release gate
 
