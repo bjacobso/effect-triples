@@ -17,15 +17,16 @@ the monorepo workspace or a reviewed package tarball during development.
 
 ## In-memory store
 
-```ts
+```ts check
 import { Effect } from "effect";
-import { KvTriples, Triples, string } from "@bjacobso/triplex";
+import { EntityId, KvTriples, Triples, string } from "@bjacobso/triplex";
 
 const program = Effect.gen(function* () {
   const triples = yield* Triples;
+  const alice = EntityId.make("person:alice");
 
   yield* triples.assert({
-    entityId: "person:alice",
+    entityId: alice,
     attribute: ":person/name",
     value: string("Alice"),
   });
@@ -63,7 +64,7 @@ tamper-evidence given a trusted decision root.
 `Attribute` and `EntityType` provide the ontology DSL. Attribute definitions own stable
 lowercase keyword identities and value types; `Attribute.use` adds requiredness and
 cardinality only where an entity type uses that attribute. `EntityType.make("Employer", …)`
-compiles ergonomic property handles such as `Employer.name` into independently addressed
+compiles ergonomic property handles such as `Employer.attributes.name` into independently addressed
 attribute nodes plus an `entity-schema` node consumed by `EntityValidation`.
 
 `ConfigRuntime.evaluate` joins the two storage-independent models: it resolves a deployed

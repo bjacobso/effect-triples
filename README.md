@@ -7,121 +7,287 @@
 
 # Triplex
 
-An Effect-native fact database with Datalog and typed, content-addressed configuration.
+An Effect-native fact database for applications that have to explain themselves.
 
-Triplex combines temporal triples, pluggable storage, Datalog queries,
-dependency-aware invalidation, entity materializations, and immutable configuration releases.
+Triplex stores what is true, what was true, which versioned rules governed each write, and what
+work the data implies. One store answers "what does this record look like today", "what did we
+believe last Tuesday", "who changed it and under which policy", and "what tasks should exist right
+now", without stitching together a database, an audit log, a config service, and a job queue.
 
-> Pre-1.0 software: APIs may change between minor releases.
+> Pre-1.0 and not yet published to npm. KV and SQLite are the supported baseline; PostgreSQL is a
+> production candidate whose integration suite is still opt-in. Cloudflare and FoundationDB are
+> experimental. See [Current state](docs/current-state.md) for the exact maturity contract.
 
-> Repository status (September 2026): the packages are not yet published to npm and the GitHub
-> remote cutover to `bjacobso/triplex` is still pending. KV and SQLite are the supported local
-> baseline. PostgreSQL passes the opt-in integration/conformance suite but is not yet exercised in
-> CI; Cloudflare and FoundationDB remain experimental. See
-> [Current state](docs/current-state.md) for the precise support matrix and release gates.
+## Why Triplex?
 
-Everything is modeled as `(entity, attribute, value)` facts. Assertions are retained and
-retractions close recorded visibility without deleting history, so past states remain queryable.
-The fact store answers raw Datalog queries, and the storage layer is a swappable Effect `Layer`:
-an in-memory hexastore for tests and the browser, SQLite for local durability, or one of the
-backend packages for PostgreSQL, Cloudflare Durable Objects, and FoundationDB.
+Most applications keep state in a database and everything that explains that state somewhere else:
+policy versions in a config service, audit trails in a log, derived to-dos in a queue. The moment a
+regulator, customer, or engineer asks _why_ something happened, the answer has to be reconstructed
+across systems that never shared identity or time.
+
+Triplex keeps those concerns separate in the API but gives them one identity model, one clock, and
+one provenance chain:
+
+| Primitive   | What it provides                                                                      |
+| ----------- | ------------------------------------------------------------------------------------- |
+| Triples     | Typed facts, atomic assertions/retractions, history, batching, and pluggable storage  |
+| Datalog     | Structural joins, negation, aggregation, recursion, and stable pagination             |
+| Journal     | Ordered commits with actor, command, causation, correlation, and config provenance    |
+| Config      | Typed Merkle graphs, immutable releases, movable refs, impact, and decision proofs    |
+| Derivations | Content-addressed candidates, source provenance, reconciliation, and temporal wakeups |
+| Projections | Entity snapshots and validation/materialization state with explicit freshness         |
+
+The layers meet at an application command without collapsing into one model:
+
+```mermaid
+flowchart LR
+  C[Config release] -->|configSnapshot| T[Atomic transaction]
+  T --> F[Bitemporal facts]
+  T --> J[Ordered causal journal]
+  F --> Q[Datalog derivation]
+  C --> Q
+  Q --> D[Provenance-carrying candidates]
+  D --> H[Host-owned workflows and projections]
+```
+
+**Good fit:** compliance and onboarding systems, policy engines, entitlement and eligibility logic,
+back-office workflows, and any domain where "as of when" and "under which rules" are first-class
+questions. It also fits agent-driven systems that need a durable, queryable world model with a
+causal record of every change.
+
+**Not a fit:** high-volume telemetry, blob storage, or workloads that only need a relational table
+and never ask about history or provenance. Triplex is a system of record, not a cache or a queue.
 
 ## Installation
+
+This is the intended command after the first release:
 
 ```sh
 pnpm add @bjacobso/triplex effect
 ```
 
-That is the intended install command after the first npm release. Until then, use this monorepo's
-pnpm workspace packages or install a reviewed package tarball produced by `pnpm pack:check`.
-
-`@bjacobso/triplex` is ESM-only and targets Node.js 22+ (its core also runs in modern
-browsers and edge runtimes). It is developed and tested against
-`effect@4.0.0-rc.112`; upgrading Effect independently may require a matching Triplex
-release. Storage backends ship as separate packages (see
-[Storage backends](#storage-backends)).
+Until then, use the monorepo workspace or a reviewed package tarball produced by
+`pnpm pack:check`. Triplex is ESM-only, targets Node.js 22+, and is aligned to
+`effect@4.0.0-rc.112`. The browser-safe core also runs in modern browsers and edge runtimes.
 
 ## Quick start
 
-Writes and queries live together on a single service, `Triples`. The core package
-includes a zero-dependency in-memory backend, so a working store is one layer —
-`KvTriples.layer`:
+`Triples` is the primary service. The core package includes an in-memory ordered-KV layer, so the
+same program can write facts, read patterns, and run Datalog without another package:
 
-```ts
+```ts check
 import { Effect } from "effect";
-import { KvTriples, Triples, string } from "@bjacobso/triplex";
+import { EntityId, KvTriples, Triples, ref, string } from "@bjacobso/triplex";
 
 const program = Effect.gen(function* () {
   const triples = yield* Triples;
+  const alice = EntityId.make("person:alice");
+  const acme = EntityId.make("company:acme");
 
-  yield* triples.assert({
-    entityId: "person:alice",
-    attribute: ":person/name",
-    value: string("Alice"),
-  });
+  const tx = yield* triples.transact(
+    [
+      {
+        op: "assert",
+        entityId: alice,
+        entityType: "Person",
+        attribute: ":person/name",
+        value: string("Alice"),
+      },
+      {
+        op: "assert",
+        entityId: alice,
+        entityType: "Person",
+        attribute: ":person/employer",
+        value: ref(acme),
+      },
+      {
+        op: "assert",
+        entityId: acme,
+        entityType: "Company",
+        attribute: ":company/name",
+        value: string("Acme"),
+      },
+    ],
+    {
+      actor: "user:ben",
+      commandId: "create-person:alice",
+      correlationId: "request:123",
+    },
+  );
 
-  // triple-pattern read
-  const facts = yield* triples.match({ attribute: ":person/name" });
+  const facts = yield* triples.entity(alice);
 
-  // Datalog read
   const { results } = yield* triples.query({
-    find: ["?name"],
-    where: [["?person", ":person/name", "?name"]],
+    find: ["?personName", "?companyName"],
+    where: [
+      ["?person", ":person/name", "?personName"],
+      ["?person", ":person/employer", "?company"],
+      ["?company", ":company/name", "?companyName"],
+    ],
   });
 
-  return results; // => [{ "?name": "Alice" }]
+  return { position: tx.position, facts, results };
 });
 
 Effect.runPromise(program.pipe(Effect.provide(KvTriples.layer)));
 ```
 
-For a runnable version that writes linked entities and reads them through both
-triple matching and Datalog, run `pnpm example:demo` or see
-[`examples/demo`](examples/demo).
+Assertions may declare `validFrom` and `validTo`. Reads accept one
+`{ recordedAt?, validAt? }` basis, which applies coherently to every clause in a query. Retracting a
+fact closes its recorded visibility without deleting its assertion history.
 
-For the application boundary around compliance derivations, run
-`pnpm example:compliance-host` or see
-[`examples/compliance-host`](examples/compliance-host). It demonstrates a
-Triples-backed config release, transaction-feed catch-up, hypothetical planning,
-durable requirement occurrences, host-owned scheduling, and expiry-driven
-reopening as one self-verifying scenario.
+Direct writes, entity/pattern reads, reference values, and transactional retractions require
+`EntityId` or `TripleId` values. Construct or decode them once at the application boundary instead
+of scattering unchecked string casts through domain code. Raw Datalog keeps string literals because
+one term can represent an entity, attribute, transaction, rule, or scalar value; its runtime schema
+validates identity positions before execution.
 
-Applications replacing the older vendored fact store can follow
-[`docs/onboarded-foundation.md`](docs/onboarded-foundation.md) for database-per-organization
-wiring, package/API mapping, data migration, RequestResolver batching, and journal consumption.
+Run `pnpm example:demo` for the smallest executable example.
 
-`Triples` is the store's one service: `assert`/`transact` and both read paths —
-`match` for triple patterns, `query` for Datalog — are methods on it.
-`SnapshotService`, `SubscriptionManager`, and `DatabaseManager` remain separate,
-optional services with their own consumers. There is no fluent `Database` facade —
-you compose the services you need and provide one storage `Layer`.
+## Integrating Triplex into an application
+
+The quick start shows the store. This walkthrough shows the shape of a real host: a small HR
+system that places workers on sites and must make sure each worker has current safety training
+for every site they are placed on. The same six steps apply to most Triplex integrations.
+
+```ts check
+import { Effect, Layer } from "effect";
+import { EntityId, KvTriples, Triples } from "@bjacobso/triplex";
+import { Attribute, ConfigStore, EntityType, GraphConstraint } from "@bjacobso/triplex/config";
+import * as Derivation from "@bjacobso/triplex/derivation";
+import { ConsumerCheckpoint } from "@bjacobso/triplex/operational";
+
+// 1. Describe the domain once. Attributes own identity and type; entity types own usage rules.
+const WorkerName = Attribute.text(":worker/name");
+const Worker = EntityType.make("Worker", {
+  attributes: { name: Attribute.use(WorkerName, { required: true }) },
+});
+
+const PlacementWorker = Attribute.ref(":placement/worker", Worker);
+const PlacementSite = Attribute.text(":placement/site");
+const Placement = EntityType.make("Placement", {
+  attributes: {
+    worker: Attribute.use(PlacementWorker, { required: true }),
+    site: Attribute.use(PlacementSite, { required: true }),
+  },
+});
+
+const SafetyTraining = Attribute.text(":evidence/site-safety");
+const workerId = EntityId.make("worker:maria");
+const placementId = EntityId.make("placement:1");
+
+const program = Effect.gen(function* () {
+  const triples = yield* Triples;
+  const config = yield* ConfigStore.ConfigStore;
+
+  // 2. Publish the schema as an immutable, content-addressed release.
+  const release = yield* config.commit({
+    label: "hr-2026.1",
+    objects: [...(yield* Worker.nodes), ...(yield* Placement.nodes), yield* SafetyTraining.node],
+    ref: "live",
+  });
+  const enforce = GraphConstraint.enforcement([...Worker.constraints, ...Placement.constraints]);
+
+  // 3. Handle an application command as one atomic, attributed transaction.
+  yield* triples.transact(
+    [
+      {
+        op: "assert",
+        entityId: workerId,
+        entityType: "Worker",
+        ...Worker.attributes.name.assertion("Maria"),
+      },
+      {
+        op: "assert",
+        entityId: placementId,
+        entityType: "Placement",
+        ...Placement.attributes.worker.assertion(workerId),
+      },
+      {
+        op: "assert",
+        entityId: placementId,
+        entityType: "Placement",
+        ...Placement.attributes.site.assertion("site:harbor"),
+      },
+    ],
+    {
+      actor: "user:ben",
+      commandId: "placement:create:1", // retried commands return the same receipt
+      correlationId: "request:8f2c",
+      configSnapshot: release.snapshot.id, // the rules this write was governed by
+      enforce, // required/unique/ref-target checks in the same transaction
+    },
+  );
+
+  // 4. Declare the work the data implies, as a content-addressed Datalog derivation.
+  const training = yield* Derivation.make({
+    name: "task.site-safety-training",
+    query: {
+      find: ["?worker", "?site"],
+      where: [
+        ["?placement", PlacementWorker.key, "?worker"],
+        ["?placement", PlacementSite.key, "?site"],
+        ["not", ["?worker", SafetyTraining.key, "?site"]],
+      ],
+    },
+    identity: ["?worker", "?site"],
+    configSnapshot: release.snapshot.id,
+  });
+
+  // 5. A background consumer follows the journal and reconciles the derivation.
+  const consumer = "hr/training-materializer";
+  const checkpoint = yield* ConsumerCheckpoint.get(triples, consumer);
+  const from = checkpoint?.position ?? 0;
+  const page = yield* triples.transactions({ after: from, limit: 100 });
+  if (page.next !== undefined) {
+    const run = yield* Derivation.Materialization.materialize(triples, training, {
+      basis: { validAt: Date.now() },
+    });
+    for (const candidate of run.reconciliation.added) {
+      // Replace with your own task/notification system; identity and revision are stable.
+      yield* Effect.log(`open training task ${candidate.id} (revision ${candidate.revision})`);
+    }
+    // run.nextTemporalBoundary tells your scheduler when evidence will expire
+    yield* ConsumerCheckpoint.advance(triples, {
+      consumer,
+      expectedPosition: from,
+      nextPosition: page.next,
+      meta: { actor: consumer },
+    });
+  }
+
+  // 6. Answer audit questions later, from the same store.
+  const receipt = yield* triples.transactionByCommand("placement:create:1");
+  const yesterday = Date.now() - 86_400_000;
+  const asOfYesterday = yield* triples.entity(EntityId.make("placement:1"), {
+    recordedAt: yesterday,
+  });
+  return { release: release.snapshot.id, receipt, asOfYesterday };
+});
+
+const AppLayer = ConfigStore.layer.pipe(Layer.provideMerge(KvTriples.layer));
+// Production: ConfigStore.layer.pipe(Layer.provideMerge(SqliteTriples.layer({ filename: "app.db" })))
+await Effect.runPromise(program.pipe(Effect.provide(AppLayer)));
+```
+
+The division of labour is deliberate:
+
+| Triplex owns                                                   | Your application owns                                   |
+| -------------------------------------------------------------- | ------------------------------------------------------- |
+| Facts, history, and the bitemporal read basis                  | Domain vocabulary and entity identifiers                |
+| Atomic transactions, command receipts, and the ordered journal | HTTP/queue handlers that turn requests into commands    |
+| Config identity, releases, refs, and constraint enforcement    | What a release contains and when `live` moves           |
+| Derivation candidates, provenance, and reconciliation diffs    | Task, notification, or workflow lifecycle for each diff |
+| Consumer checkpoints and temporal wakeup boundaries            | Timer delivery, retries, and worker scheduling          |
+
+Swapping storage changes only the provided layer. The
+[compliance host demo](examples/compliance-host) runs the complete version of this scenario,
+including hypothetical previews, evidence expiry, and reopening work without a new source
+transaction.
 
 ## Typed configuration
 
-Configuration is a first-class module of the primary package, exposed through a
-tree-shakeable subpath rather than flattening its symbols into the root:
-
-```ts
-import { Triples } from "@bjacobso/triplex";
-import {
-  ConfigRuntime,
-  ConfigStore,
-  EntityValidation,
-  Evaluate,
-  GraphConstraint,
-  TypeExpr,
-} from "@bjacobso/triplex/config";
-```
-
-`TypeExpr` describes runtime-defined types as content-addressed data. Config nodes form
-immutable Merkle graphs; commits produce `ConfigSnapshot` release roots containing
-revisions, schema stamps, and dependency closures. Git-style refs such as `live` and
-`test` can move between releases without copying configuration.
-
-The ontology DSL keeps three identities separate: PascalCase entity types, lowercase
-namespaced attribute keywords, and ergonomic TypeScript property aliases. Attribute
-requiredness and cardinality belong to an entity's use of a global attribute—not to the
-attribute definition itself:
+Configuration is a tree-shakeable part of the primary package:
 
 ```ts
 import { Attribute, EntityType } from "@bjacobso/triplex/config";
@@ -130,781 +296,102 @@ export const EmployerName = Attribute.text(":employer/name");
 
 export const Employer = EntityType.make("Employer", {
   attributes: {
-    name: Attribute.use(EmployerName, { required: true, unique: true }),
-  },
-});
-
-export const EmployerSummary = EntityType.make("EmployerSummary", {
-  attributes: {
-    name: Attribute.use(EmployerName, { required: false }),
-  },
-});
-
-export const EmploymentEmployer = Attribute.ref(":employment/employer", Employer);
-
-Employer.name.key; // ":employer/name"
-Employer.name.assertion("Acme", { validFrom });
-```
-
-`Employer.nodes` yields the independently addressed attribute definitions followed by the
-entity-schema node for committing into a release. Required, cardinality-one, uniqueness, and
-reference-target rules are independently content-addressed `GraphConstraint` children of that
-schema node. The schema references each global attribute, while reference attributes and their
-constraints also point to the target entity type.
-An assertion is a typed command descriptor (`attribute`, encoded Triple value, and optional
-domain `validFrom`); an application command decides how domain-valid time maps onto its fact
-model, while raw `Triples.transact` continues to record transaction time.
-
-`ConfigStore.layer` persists those objects through any `Triples` implementation and
-commits a release plus an optional ref move in one Triples transaction. It preserves
-deduplication, structural sharing, schema compatibility, and `validUnder` history while
-using Datalog for reverse-dependency and deploy-impact candidates. The immutable
-`InMemoryConfigStore` remains available as the reference implementation. `Evaluate`
-produces reproducible decision proofs, and `Evaluate.verify` checks their internal
-content-addressed integrity without replacing Merkle verification with database queries.
-
-`ConfigRuntime.evaluate` is the storage-to-proof bridge: it resolves a release ref, builds
-the rule catalog from that exact `ConfigSnapshot`, reads only the temporal Triple facts
-the rule can observe, and returns the pinned evaluation:
-
-```ts
-const decision =
-  yield *
-  ConfigRuntime.evaluate({
-    ref: "live",
-    rule: "may-deploy",
-    subject: "employee:alice",
-    clock: { now: Date.now(), granularity: "day" },
-  });
-
-ConfigRuntime.verify(decision); // []
-```
-
-The decision ID binds the selected release root, subject, reason, and nested evaluation;
-changing the configuration pin or proof breaks `ConfigRuntime.verify`. This is tamper
-evidence given a trusted decision root, not independent proof that the pinned rule was
-authorized or semantically correct. Passing `asOf`
-evaluates the same deployed rule against historical facts. Cardinality is
-explicit: a rule read with multiple live Triple values fails instead of selecting one
-arbitrarily, and non-scalar JSON facts are rejected at the bridge.
-
-### Validating facts against deployed types
-
-Entity types can be configuration too. Define a closed runtime shape using the exact
-Triple attribute names, commit it with the rest of the release, and explicitly revalidate
-after moving a config ref or changing facts:
-
-```ts
-const employeeSchema =
-  yield *
-  EntityValidation.define(
-    "Employee",
-    TypeExpr.struct({
-      ":employee/name": TypeExpr.required(TypeExpr.text),
-      ":employee/age": TypeExpr.required(TypeExpr.integer),
+    name: Attribute.use(EmployerName, {
+      required: true,
+      unique: true,
     }),
-  );
-
-yield *
-  configStore.commit({
-    label: "employee schema v2",
-    objects: [employeeSchema],
-    ref: "live",
-  });
-
-const validation = yield * EntityValidation.EntityValidation;
-yield * validation.revalidate({ ref: "live" });
-
-const validationState = yield * validation.currentInvalid("live");
-if (validationState.status === "stale") {
-  console.log(`validation is stale as of ${validationState.sourcePosition}`);
-}
-const invalidNow = validationState.invalid;
-const invalidAtLeastOnce = yield * validation.everInvalid();
-const messages = yield * validation.violations({ subject: "employee:alice" });
-```
-
-Every result is bound to the exact `ConfigSnapshot`, schema `ContentId`, subject, and a
-domain-separated content ID for the materialized entity state. The entity body itself is
-not copied into validation storage. Results and individual violations are immutable,
-content-addressed entities under reserved Triplex attributes. Revalidation atomically
-moves a `(ref, entity type, subject)` head; fixing an entity removes it from the current
-invalid query without erasing that it was invalid before. `currentInvalidQuery`,
-`lastInvalidQuery`, `everInvalidQuery`, and `violationsQuery` return ordinary Datalog queries for composing
-validation state with the rest of an application's graph.
-
-Schemas built through `EntityType.make` also evaluate their graph constraints during the same
-revalidation pass. Violations use stable `required`, `cardinality`, `unique`, and
-`reference-target` codes and retain the responsible constraint key as an ordinary reserved fact.
-`GraphConstraint.evaluate` can run the same definitions read-only at an explicit bitemporal basis.
-
-Applications may also enforce the exact release's portable graph constraints inside an operational
-transaction:
-
-```ts
-const snapshot = yield * config.resolveRef("live");
-const constraints = yield * GraphConstraint.collect(snapshot.root);
-
-yield *
-  triples.transact(operations, {
-    actor: "agent:worker-7",
-    configSnapshot: snapshot.id,
-    enforce: GraphConstraint.enforcement(constraints),
-  });
-```
-
-Enforcement projects the complete transaction before mutation and checks every represented
-valid-time boundary, including future-effective intervals. A new or worsened required,
-cardinality, uniqueness, or reference-target violation fails with `ConstraintViolationError` and
-rolls back the facts, journal, command receipt, and commit position together. Unchanged legacy
-violations do not block unrelated commands or repairs. KV, SQLite, and PostgreSQL serialize this
-check through the same commit-position boundary used by the journal, so concurrent Triplex writers
-cannot both win a uniqueness or absence check. Candidate loading uses source and reference-target
-type indexes plus batched subject reads, so unrelated live facts are not scanned.
-When a retraction and assertion replace the recorded value for the same business-time interval,
-carry the original fact's `validFrom`; using the transaction instant intentionally changes the
-currently-known valid-time history and is checked as such.
-
-Revalidation is an explicit checkpointed projection in this release. Each run records the
-latest causal transaction position it observed. `currentInvalid` reports `unvalidated`,
-`current`, or `stale`, and stale responses retain the last known errors instead of silently
-returning an empty set. Use `transact` for operational writes so they participate in this
-freshness boundary; standalone low-level writes do not create causal envelopes. These
-observations remain useful for migration, audit, and finding stale data. Enforcement is explicitly
-opt-in per command: raw `assert`, unconstrained `transact`, and direct adapter writes remain a fact
-store boundary. Authorization and general Datalog policy invariants remain host responsibilities.
-
-The browser example at [`examples/config-explorer`](examples/config-explorer) walks
-through typed nodes, releases, refs, impact, evaluation, and proof verification.
-
-## Portable derivations
-
-`@bjacobso/triplex/derivation` turns a pinned structural Datalog query into typed,
-content-addressed candidates without inventing application workflow objects:
-
-```ts
-import * as Derivation from "@bjacobso/triplex/derivation";
-
-const openI9 =
-  yield *
-  Derivation.make({
-    name: "task.i9",
-    configSnapshot: deployedSnapshot.id,
-    identity: ["?worker", "?scope"],
-    query: {
-      find: ["?worker", "?scope"],
-      where: [
-        ["?placement", ":placement/worker", "?worker"],
-        ["?placement", ":placement/employer", "?scope"],
-        ["not", ["?worker", ":submission/i9", "?scope"]],
-      ],
-    },
-  });
-
-const evaluation =
-  yield *
-  Derivation.evaluate(triples, openI9, {
-    basis: { validAt: Date.now() },
-  });
-
-if (evaluation.nextTemporalBoundary !== undefined) {
-  scheduler.wakeAt(evaluation.nextTemporalBoundary, openI9.id);
-}
-```
-
-Repeated graph paths with the same declared identity produce one candidate whose source
-triple and transaction provenance is merged. Candidate identity remains stable across
-definition revisions; its revision changes when the result, definition, configuration pin,
-or explanation changes. `Derivation.reconcile` classifies candidates as `added`, `removed`,
-`changed`, or `unchanged`, so an application can create durable requirement occurrences or
-tasks at its own command boundary. Definitions also expose discovered attribute dependencies
-for transaction-feed-driven invalidation.
-
-This first release intentionally accepts complete structural queries with patterns,
-predicates, and negation—no rules, disjunction, aggregation, or pagination—so exact positive
-source provenance is well-defined. Evaluation is read-only and storage-independent. Durable
-checkpoints are available through `Derivation.Materialization`:
-
-```ts
-yield *
-  Derivation.Materialization.materialize(triples, openI9, {
-    basis: { validAt: now },
-  });
-
-const state =
-  yield *
-  Derivation.Materialization.current(triples, openI9, {
-    basis: { validAt: now },
-  });
-
-let nextTemporalBoundary = state.nextTemporalBoundary;
-if (state.status !== "current") {
-  const next =
-    yield *
-    Derivation.Materialization.materialize(triples, openI9, {
-      basis: { validAt: now },
-    });
-  scheduleReconciliation(next.reconciliation);
-  nextTemporalBoundary = next.nextTemporalBoundary;
-}
-
-if (nextTemporalBoundary !== undefined) {
-  scheduler.wakeAt(nextTemporalBoundary, openI9.id);
-}
-```
-
-Candidate revisions and runs are immutable Triples system entities. A run atomically records its
-candidate set, configuration pin, bitemporal basis, and latest relevant transaction position.
-Freshness is dependency-scoped, so unrelated transactions do not make a materialization stale;
-definition changes, relevant writes, and a different temporal basis do. Concurrent runs select a
-logical head by source position within a definition rather than racing a mutable pointer. Stored
-candidate bodies are schema-decoded and their content IDs are verified when read. Historical run
-membership is also available as ordinary Datalog through `Materialization.runsQuery`.
-
-For fixed dependency sets, `triples.dependencyState(attributes, basis)` computes that source
-position and temporal schedule through backend indexes. It includes assertion and retraction
-positions while deriving wakeups only from facts visible in the requested recorded-time view.
-
-Every evaluation also reports the earliest future `validFrom` or `validTo` among facts using a
-discovered dependency attribute. This conservative schedule includes facts that currently suppress
-a result through negation, so expiring evidence can reopen an obligation even when the current
-candidate set is empty. Materialized runs persist and content-bind the same
-`nextTemporalBoundary`; a host scheduler wakes the materializer there and owns timer delivery and
-retry. The schedule is attribute-conservative, so an unrelated entity sharing a dependency
-attribute may cause a harmless extra wakeup, but recorded future-effective or expiring facts are
-not omitted.
-
-Read-only planners can evaluate temporary assertions and retractions through
-`Derivation.Overlay`:
-
-```ts
-const preview =
-  yield *
-  Derivation.Overlay.evaluateOverlay(triples, openI9, {
-    basis: { validAt: now },
-    overlay: {
-      assertions: [proposedPlacementWorker, proposedPlacementEmployer],
-      retractions: [supersededPlacementFactId],
-    },
-  });
-```
-
-The overlay copies only the definition's discovered attributes at the requested bitemporal basis
-into a fresh private in-memory index and runs the normal KV Datalog evaluator. It never writes to
-the source store or its transaction journal. Temporary facts receive deterministic content IDs and
-appear in candidate sources as `hypothetical: true`; base sources retain their real triple and
-transaction provenance. This makes collect-versus-reuse previews comparable to committed
-evaluation without pretending the preview happened.
-
-Overlay evaluation currently requires fixed attributes and rejects transaction-binding clauses.
-Provenance through recursive rules remains future work. Fixed-attribute materializations use the
-backend dependency indexes; dynamic-attribute definitions retain the slower journal fallback
-because no bounded attribute lookup can preserve their semantics.
-
-## Triples and values
-
-A fact is asserted from a `TripleInput`:
-
-```ts
-interface TripleInput {
-  entityId: string;
-  attribute: string; // ":namespace/name" convention
-  value: TripleValue;
-  entityType?: string; // optional class tag, e.g. "Person"
-  createdBy?: string;
-  validFrom?: number; // defaults to the transaction instant
-  validTo?: number; // defaults to an open-ended valid interval
-}
-```
-
-Values are tagged, not raw JavaScript. Construct them with the helpers exported from
-the package root — this keeps the stored type explicit and makes references
-first-class:
-
-| Helper                              | Value type | Example                                         |
-| ----------------------------------- | ---------- | ----------------------------------------------- |
-| `string(v)`                         | `string`   | `string("Alice")`                               |
-| `number(v)`                         | `number`   | `number(30)`                                    |
-| `boolean(v)`                        | `boolean`  | `boolean(true)`                                 |
-| `datetime(v)`                       | `datetime` | `datetime(Date.now())` / `datetime(new Date())` |
-| `ref(entityId)`                     | `ref`      | `ref("person:bob")`                             |
-| `json(v)`                           | `json`     | `json({ tags: ["a", "b"] })`                    |
-| `blob(hash, mimeType, size, name?)` | `blob`     | `blob("sha256:…", "image/png", 2048)`           |
-
-`ref` values link entities together and are what graph-style queries traverse. A
-`datetime` is stored as epoch milliseconds.
-
-Datalog constants use scalar equality unless their type is explicit. A bare string such as
-`"person:bob"` matches stored `string`, `ref`, `blob`, or serialized `json` values with that scalar;
-a bare number matches both `number` and `datetime` values with that scalar. Positive patterns,
-negation, disjunction, joins, and predicates all use this same identity. Use a typed constant such
-as `ref("person:bob")` when the pattern must match only a stored `ref`. Query bindings and projected
-results remain unwrapped JavaScript scalars.
-
-Assert one fact, a batch, or an atomic transaction, and read facts back by entity or
-by pattern:
-
-```ts
-import { number, ref, string, Triples } from "@bjacobso/triplex";
-
-Effect.gen(function* () {
-  const triples = yield* Triples;
-
-  // one fact
-  const triple = yield* triples.assert({
-    entityId: "person:alice",
-    attribute: ":person/name",
-    value: string("Alice"),
-    entityType: "Person",
-  });
-
-  // many facts at once
-  yield* triples.assertBatch([
-    { entityId: "person:alice", attribute: ":person/age", value: number(30) },
-    { entityId: "person:bob", attribute: ":person/name", value: string("Bob") },
-    { entityId: "person:alice", attribute: ":person/knows", value: ref("person:bob") },
-  ]);
-
-  // an atomic transaction with a queryable causal envelope
-  const tx = yield* triples.transact(
-    [
-      { op: "assert", entityId: "person:carol", attribute: ":person/name", value: string("Carol") },
-      { op: "retract", id: triple.id },
-    ],
-    {
-      actor: "service:importer",
-      commandId: "import:2026-09-01:carol",
-      correlationId: "import:2026-09-01",
-      configSnapshot: "sha256:…",
-    },
-  );
-
-  // reads
-  const alice = yield* triples.entity("person:alice"); // all facts for the entity
-  const names = yield* triples.match({ attribute: ":person/name" }); // by pattern
-  return { tx: tx.txId, position: tx.position, alice, names };
+  },
 });
+
+Employer.attributes.name.key; // ":employer/name"
+Employer.attributes.name.assertion("Acme", { validFrom: Date.now() });
 ```
 
-A query pattern is `{ entityId?, attribute?, entityType?, value? }`; omitted fields
-match anything. `retract` and `retractByPattern` stamp facts as retracted rather than deleting
-their assertion records, which preserves the recorded timeline.
+The attribute owns its global identity and value type. The entity type owns how it uses that
+attribute—requiredness, cardinality, uniqueness, and reference-target constraints. Those nodes can
+be committed with forms, policies, routines, and other application-defined config into one
+content-addressed release.
 
-## Temporal facts and time travel
+`ConfigStore.layer` persists immutable config objects, revisions, release snapshots, and refs
+through the same atomic `Triples` boundary. `ConfigRuntime` evaluates against a pinned release;
+`EntityValidation` records queryable observations; `GraphConstraint` can opt a command into atomic
+required/cardinality/uniqueness/reference-target enforcement.
 
-Because retraction is a stamp, not a delete, every fact carries `recordedAt` and an
-optional `retractedAt`, plus its `validFrom`/`validTo` business-time interval. The full
-timeline of an entity is always recoverable. Two
-methods expose this directly:
+Read the [configuration guide](docs/configuration.md) for releases, refs, validation, enforcement,
+and the exact tamper-evidence guarantee.
 
-```ts
-Effect.gen(function* () {
-  const triples = yield* Triples;
+## Datalog and derived facts
 
-  // Point-in-time: facts that were recorded and valid at the given instant.
-  const lastWeek = Date.now() - 7 * 24 * 60 * 60 * 1000;
-  const asOfLastWeek = yield* triples.match(
-    { attribute: ":person/name" },
-    { recordedAt: lastWeek, validAt: lastWeek },
-  );
+Raw Datalog is the query API. Patterns join by shared variables, and the portable contract includes
+predicates, negation, disjunction, aggregation, ordering, snapshot-stable keyset pagination, and a
+bounded binary recursive-rule form. Queries are schema-decoded and semantically validated before
+either the KV or SQL engine runs.
 
-  // full assertion/retraction history for one entity
-  const timeline = yield* triples.history("person:alice");
+`@bjacobso/triplex/derivation` pins a structural query, result identity, type, configuration
+snapshot, and dependency set into a content-addressed definition. Evaluation returns candidates
+with source triple and assertion-transaction provenance. Pure reconciliation reports added,
+removed, changed, and unchanged identities; the application decides whether that means opening a
+task, cancelling work, or doing nothing.
 
-  return { asOfLastWeek, timeline };
-});
-```
+Materialized runs retain a source position and return `current`, `stale`, or `unmaterialized`.
+Future `validFrom` and `validTo` edges produce a `nextTemporalBoundary`, allowing a host scheduler
+to reopen expiry-driven work without polling the whole database. Read-only overlays preview
+hypothetical facts without mutating the source store or journal.
 
-Each `transact` writes a synthetic `_Transaction` entity containing a backend-issued
-`:_tx/position`, `:_tx/instant`, actor, command, correlation, causation, governing config snapshot,
-and JSON change facts. Read one typed envelope with `triples.transaction(txId)`, query the reserved
-attributes through Datalog, or find the receipt with
-`triples.transactionByCommand(commandId)`. A `commandId` is atomically unique within one Triplex
-database. A retry fails with `CommandAlreadyCommittedError`, which identifies the original
-transaction, and commits none of the repeated operations.
+- [Datalog guide](docs/datalog.md)
+- [Derivations guide](docs/derivations.md)
+- [Compliance host demo](examples/compliance-host) — config, facts, feed catch-up, reconciliation,
+  hypothetical planning, and expiry-driven reopening in one standalone scenario
 
-Catch up in commit order and persist the position only after the page's effects are durable:
+## Temporal operations and audit
 
-```ts
-import { ConsumerCheckpoint } from "@bjacobso/triplex/operational";
+Every successful application transaction receives a monotonically increasing commit position and
+a queryable `_Transaction` envelope. It can retain:
 
-const consumer = "search-index/v1";
-const checkpoint = yield * ConsumerCheckpoint.get(triples, consumer);
-const after = checkpoint?.position ?? 0;
-const page = yield * triples.transactions({ after, limit: 100 });
+- actor and atomically unique command ID;
+- correlation and causation IDs;
+- the governing config snapshot; and
+- complete typed assertion and retraction changes, including valid intervals and source
+  transactions.
 
-for (const transaction of page.transactions) {
-  yield * handleAtLeastOnce(transaction);
-}
+`triples.transactions({ after, limit })` is the durable at-least-once catch-up feed.
+`ConsumerCheckpoint` persists a compare-and-retract-protected cursor. Best-effort change emitters
+are wakeup hints, never a substitute for journal catch-up.
 
-if (page.next !== undefined) {
-  yield *
-    ConsumerCheckpoint.advance(triples, {
-      consumer,
-      expectedPosition: after,
-      nextPosition: page.next,
-    });
-}
-```
+`queryPage` cursors are versioned, schema-decoded, and bound to the canonical query, ordering,
+temporal basis, and database scope. The first page pins an exact commit-position snapshot, so later
+writes cannot move rows between pages.
 
-The cursor is committed atomically with the journal, so a failed transaction cannot appear in the
-feed. Consumer checkpoint maintenance is an atomic reserved fact update and is deliberately omitted
-from the feed so a consumer cannot recursively consume its own cursor writes. Concurrent checkpoint
-movement uses compare-and-retract and returns `ConsumerCheckpointConflictError` to the stale worker.
-Best-effort `ChangeEmitter` notifications remain only a wake-up hint; consumers always catch up from
-their durable checkpoint.
-
-### Conditional transactions
-
-Moving facts can use compare-and-retract semantics. A `TripleLive` precondition must name a triple
-also retracted by the transaction. If another writer retracts it first, the entire transaction
-rolls back with `TransactionConflictError`:
-
-```ts
-const current = (yield *
-  triples.match({
-    entityId: "task:42",
-    attribute: ":task/status",
-  }))[0]!;
-
-yield *
-  triples.transact(
-    [
-      { op: "retract", id: current.id },
-      {
-        op: "assert",
-        entityId: "task:42",
-        attribute: ":task/status",
-        value: string("claimed"),
-      },
-    ],
-    {
-      actor: "agent:worker-7",
-      commandId: "claim:task:42",
-      preconditions: [{ _tag: "TripleLive", id: current.id }],
-    },
-  );
-```
-
-This is the primitive used by config-ref, entity-validation-head, and consumer-checkpoint movement.
-It is suitable for task claims, leases, and optimistic form updates. `Triples.transact` is atomic on
-both SQL and KV backends; the in-memory KV backend also serializes concurrent transactions. Use
-`transact` with causal metadata for operational commands; the convenience write methods still use
-the same atomic boundary but do not accept that metadata.
-
-## Datalog queries
-
-Datalog is the primary query language. Call `triples.query(query)`; it resolves to
-`{ results }`, where `results` is an array of binding objects whose keys keep the `?`
-prefix. `find` lists the variables (or constants) to project; `where` is a list of
-clauses. Sharing a variable across two patterns joins them.
-
-Every backend runs the same schema and semantic preflight before compilation or execution.
-Malformed runtime input fails with `DatalogValidationError`; a variable referenced by `find`, a
-predicate, `having`, ordering, or a wrapper without a positive binding fails with
-`UnboundVariableError`. These are typed Effect failures rather than backend exceptions. Empty
-disjunctions, duplicate projections, undefined rules, and ambiguous aggregate/projection targets
-are rejected consistently instead of being interpreted differently by KV and SQL.
-
-### Patterns and joins
-
-```ts
-// implicit join on ?person across two patterns
-triples.query({
-  find: ["?name", "?age"],
-  where: [
-    ["?person", ":person/name", "?name"],
-    ["?person", ":person/age", "?age"],
-  ],
-});
-// results => [{ "?name": "Alice", "?age": 30 }, ...]
-```
-
-Pass one temporal basis for the complete query—including joins, negation, optional
-projection, and recursive rules:
-
-```ts
-yield *
-  triples.query(query, {
-    basis: { recordedAt: someEpochMillis, validAt: someEpochMillis },
-  });
-```
-
-A pattern is `[entity, attribute, value]`. Any position may be a variable (`"?x"`) or a
-constant. To match a `ref` value, use a typed constant:
-
-```ts
-where: [["?movie", ":movie/director", { type: "ref", value: "person:nolan" }]];
-```
-
-### Predicate filters
-
-Inline comparison clauses filter bound variables. Operators: `>`, `>=`, `<`, `<=`,
-`=`, `!=`.
-
-```ts
-triples.query({
-  find: ["?name", "?age"],
-  where: [
-    ["?person", ":person/name", "?name"],
-    ["?person", ":person/age", "?age"],
-    [">=", "?age", 30],
-  ],
-});
-```
-
-### Negation and disjunction
-
-`where` is declarative: positive patterns establish bindings before predicates, negation, and
-disjunction regardless of their written order. Patterns inside a conjunctive `not` likewise bind
-its local variables before local predicates run.
-
-```ts
-// people who are NOT inactive
-where: [
-  ["?person", ":person/name", "?name"],
-  ["not", ["?person", ":person/status", "inactive"]],
-];
-
-// Alice OR Bob
-where: [
-  [
-    "or",
-    [
-      ["?person", ":person/name", "Alice"],
-      ["?person", ":person/name", "Bob"],
-    ],
-  ],
-];
-```
-
-### Aggregation, ordering, and limits
-
-`aggregate` clauses are `[op, sourceVar, targetVar]` with `count`, `sum`, `avg`, `min`,
-`max`; grouping is implicit over the non-aggregated `find` variables. `having`,
-`orderBy`, `limit`, and `offset` are also supported. Grouping, all five aggregate operators, and
-`having` share one conformance contract across KV, SQLite, and PostgreSQL.
-The aggregate source is an input and must not also appear in `find`; project its target and any
-grouping variables instead. Aggregate and optional-projection targets must be projected, while
-`having` and `orderBy` may reference only result bindings.
-Group-key equality in `having` preserves the same numeric, boolean, and text scalar families as
-ordinary Datalog equality. Aggregate targets are numeric, so comparing one to a nonnumeric literal
-or identity binding fails typed preflight; optional projections are hydrated after aggregation and
-cannot be used in `having`.
-`count` counts distinct flattened source values. `sum`, `avg`, `min`, and `max` preserve duplicate
-input rows. An ungrouped aggregate over no matches returns one row with `count` equal to zero and
-the numeric aggregates equal to `null`; an empty grouped aggregate returns no rows.
-
-Raw Datalog `>`, `>=`, `<`, and `<=` predicates are numeric-only. Their variables must be bound
-from fact values, numbers and datetimes share the numeric family, and literal operands must be
-numbers. Text and identity comparisons use `=` or `!=`; invalid ordered predicates fail during
-typed preflight instead of relying on backend coercion. Entity, attribute, transaction, and rule
-identities are strings: equality with a numeric or boolean literal is always false, and inequality
-is always true, consistently across backends. Pattern entity, attribute, and transaction positions
-therefore accept only string literals or variables; explicit typed refs are value constants.
-The `?` prefix is reserved for variables and variable names must match `?name`-style identifiers;
-malformed names fail decoding before SQL is built. Constants projected from `find` keep their
-primitive value across direct and paginated queries, with typed refs flattened to their string ID.
-
-```ts
-triples.query({
-  find: ["?count"],
-  where: [["?person", ":person/age", "?age"]],
-  aggregate: [["count", "?person", "?count"]],
-});
-// results => [{ "?count": 3 }]
-```
-
-### Stable cursor pagination
-
-`queryPage` uses an opaque, versioned keyset cursor. Triplex completes the requested order with
-every projected variable as a deterministic tie-breaker, pins the first page's exact recorded
-commit position and valid/recorded-time basis, and binds the cursor to the canonical query and
-database scope. Later assertions and
-retractions therefore do not move rows between pages. Reusing a cursor with different filters,
-ordering, basis, or organization fails with a typed `PaginationCursorError`; malformed base64 or
-JSON never escapes as an unchecked exception.
-
-Wrapper filters operate on the same typed scalar results returned to callers. Numeric and datetime
-values compare numerically; text, refs, blobs, and JSON compare as text; incompatible families and
-`null` do not satisfy either positive or negative comparison operators. `is-null` and
-`is-not-null` take no operand, while every other operator requires one. Invalid filter shapes fail
-with `DatalogValidationError` before reaching a backend.
-
-Direct ordering and cursor pagination share one typed total order across backends: numbers and
-datetimes first, booleans second, text-family values third, and `null` last. The requested direction
-orders values within each family; a deterministic entity tie-breaker makes every page boundary
-unique. Datalog result identity follows those same public scalar families: numbers and datetimes
-with the same numeric value are one result, as are strings, refs, blobs, and JSON with the same text
-value. SQL applies that identity before `DISTINCT`, grouping, counting, and pagination, then keeps
-the physical sort and decoding columns out of the returned context. Direct triple reads still
-preserve the original stored value type.
-
-```ts
-const first =
-  yield *
-  triples.queryPage({
-    inner: {
-      find: ["?person", "?name"],
-      where: [["?person", ":person/name", "?name"]],
-    },
-    orderBy: [{ variable: "?name", direction: "asc" }],
-    limit: 50,
-  });
-
-const second = first.nextCursor
-  ? yield *
-    triples.queryPage({
-      inner: {
-        find: ["?person", "?name"],
-        where: [["?person", ":person/name", "?name"]],
-      },
-      orderBy: [{ variable: "?name", direction: "asc" }],
-      limit: 50,
-      cursor: first.nextCursor,
-    })
-  : undefined;
-```
-
-Treat cursors as short-lived capabilities and never decode or edit them in application code.
-
-### Transaction provenance
-
-Bind the transaction id as an optional fourth pattern element, then join it against the
-transaction metadata entity written by `transact`:
-
-```ts
-where: [
-  ["?e", ":person/name", "?name", "?tx"],
-  ["?tx", ":_tx/actor", "?actor"],
-];
-```
-
-### Recursive rules
-
-Recursive rules (e.g. ancestor/descendant closures) run through `triples.query` like any
-other query — provide `rules` alongside `find`/`where`. Each rule is
-`{ name, body, maxDepth? }`, and same-named rules union together. A rule-application
-clause `["ancestor", "person:alice", "?ancestor"]` invokes a rule. SQL backends compile
-rules to recursive CTEs; KV backends evaluate them to a fixpoint with deduplication. Rule names
-may contain letters, digits, underscores, and hyphens; recursion depth is a positive safe integer.
-SQL compilation quotes rule identifiers and parameterizes rule bodies, applications, and depth.
-The current portable recursive form is deliberately binary: one base relationship plus recursive
-definitions shaped as `[head, attribute, next]`, `[ruleName, next, tail]`. Unsupported rule-body
-shapes fail preflight rather than being partially evaluated by one backend. Rule relations connect
-string identities: application arguments are entity-id strings or variables, and numeric or boolean
-fact values do not become rule endpoints. Repeating a variable in a rule body or application is an
-equality constraint, using normal Datalog unification semantics.
-
-```ts
-triples.query({
-  find: ["?ancestor"],
-  where: [["ancestor", "person:alice", "?ancestor"]],
-  rules: [
-    { name: "ancestor", body: [["?x", ":parent", "?y"]] },
-    {
-      name: "ancestor",
-      body: [
-        ["?x", ":parent", "?z"],
-        ["ancestor", "?z", "?y"],
-      ],
-    },
-  ],
-});
-```
-
-The compile-only entrypoint is still available for tooling: `compileWithRules(query)`
-returns the SQL and params without executing.
-
-## Entity snapshots and subscriptions
-
-`SnapshotService` materializes the current or historical state of one triple entity as
-an `EntitySnapshot`: a canonicalized, content-hashed record useful for change detection,
-sync, and audit. It is an optional projection service, not part of every one-line `Triples` layer;
-the SQL `DatabaseManager` composes it with snapshot materialization and exposes it per logical
-database:
-
-```ts
-import { SnapshotService } from "@bjacobso/triplex";
-
-Effect.gen(function* () {
-  const snapshots = yield* SnapshotService;
-  const now = yield* snapshots.current("person:alice");
-  const earlier = yield* snapshots.asOf("person:alice", someEpochMillis);
-  const changes = yield* snapshots.diff("person:alice", fromTxId, toTxId);
-  return { now, earlier, changes };
-});
-```
-
-`SubscriptionManager` is dependency discovery and invalidation infrastructure, not a live-query
-runtime. Register a Datalog query under an id; when the host supplies a write change set,
-`checkAffected` reports which registrations may be stale. There is no `store.subscribe(...)` or
-automatic query re-execution method. `TopicFilteredSyncHub` can transport best-effort wakeups, but
-durable consumers must catch up from the ordered transaction journal.
-
-An `EntitySnapshot` is not a configuration release. `ConfigSnapshot`, exported from
-`@bjacobso/triplex/config`, is an immutable root for a complete typed configuration
-release. The names and APIs remain separate so a point-in-time entity materialization
-cannot be confused with a deployable configuration graph.
-
-```ts
-import { SubscriptionManager } from "@bjacobso/triplex";
-
-Effect.gen(function* () {
-  const subs = yield* SubscriptionManager;
-  yield* subs.register("active-people", {
-    find: ["?name"],
-    where: [
-      ["?p", ":person/name", "?name"],
-      ["?p", ":person/status", "active"],
-    ],
-  });
-  const affected = yield* subs.checkAffected(changes); // from a write's change set
-  return affected;
-});
-```
+Read [Operational primitives](docs/operational-primitives.md) for the transaction, concurrency,
+pagination, projection, and host/runtime boundaries.
 
 ## Storage backends
 
-The core package runs entirely in memory. Durable backends are separate packages. “Supported”
-below describes the current repository test boundary, not merely whether a package compiles.
+“Supported” describes the current behavioral test boundary, not merely whether a package compiles.
 
-| Package                          | Surface                              | Current status                                                |
-| -------------------------------- | ------------------------------------ | ------------------------------------------------------------- |
-| `@bjacobso/triplex`              | `KvTriples.layer` (in-memory)        | Supported; core and shared conformance run in normal CI       |
-| `@bjacobso/triplex-sql`          | SQL migrations and query executor    | Shared infrastructure, not a standalone database              |
-| `@bjacobso/triplex-sqlite`       | `SqliteTriples.layer({ filename })`  | Supported; shared conformance runs in normal CI               |
-| `@bjacobso/triplex-postgres`     | `PgTriples.layer(config)`            | Candidate; shared integration/conformance is currently opt-in |
-| `@bjacobso/triplex-cloudflare`   | Durable Object SQLite adapter        | Experimental; no full shared conformance run                  |
-| `@bjacobso/triplex-foundationdb` | `FdbTriples.layer(config)`           | Experimental; native integration is opt-in                    |
-| `@bjacobso/triplex-testkit`      | shared behavioral conformance corpus | Test support package                                          |
+| Package                          | Surface                             | Status                                                        |
+| -------------------------------- | ----------------------------------- | ------------------------------------------------------------- |
+| `@bjacobso/triplex`              | `KvTriples.layer`                   | Supported in-memory baseline                                  |
+| `@bjacobso/triplex-sqlite`       | `SqliteTriples.layer({ filename })` | Supported durable baseline                                    |
+| `@bjacobso/triplex-postgres`     | `PgTriples.layer(config)`           | Candidate; shared integration/conformance is currently opt-in |
+| `@bjacobso/triplex-cloudflare`   | Durable Object SQLite adapter       | Experimental                                                  |
+| `@bjacobso/triplex-foundationdb` | `FdbTriples.layer(config)`          | Experimental                                                  |
 
-The supported durable path is a single SQLite convenience layer:
+`@bjacobso/triplex-sql` contains shared migrations and SQL query execution rather than a database.
+`@bjacobso/triplex-testkit` contains the behavioral conformance corpus used by adapters.
+
+Switching the supported quick start to SQLite changes only the provided layer:
 
 ```ts
 import { SqliteTriples } from "@bjacobso/triplex-sqlite";
 
 const SqliteLive = SqliteTriples.layer({ filename: "app.db" });
-// or SqliteTriples.layerMemory for an in-memory database
 ```
 
-The rest of your program is unchanged — it still depends only on the `Triples` service
-tag. For manual wiring, provide `TriplesLive` over a `StorageAdapter`, a
-`QueryExecutor` (`SqlQueryExecutorLive`), and a `TripleStoreRuntime`.
-
-## Entrypoints
-
-The package root exports the triples, query, entity-snapshot, and subscription APIs.
-Typed configuration stays under `@bjacobso/triplex/config`, and shared content-addressing
-primitives stay under `@bjacobso/triplex/content`. Portable derivations stay under
-`@bjacobso/triplex/derivation`, while durable feed-consumer primitives stay under
-`@bjacobso/triplex/operational`, keeping these entrypoints tree-shakeable.
-
-The core package also exposes tree-shakeable ESM subpaths for focused schemas and
-types:
+## Package entrypoints
 
 ```ts
-import { TripleInput, TransactOp, Pattern } from "@bjacobso/triplex";
+import { Triples, KvTriples } from "@bjacobso/triplex";
 import { DatalogQuery } from "@bjacobso/triplex/datalog";
 import { SubscriptionManager } from "@bjacobso/triplex/subscriptions";
 import { ConfigStore, TypeExpr } from "@bjacobso/triplex/config";
@@ -913,48 +400,42 @@ import * as Derivation from "@bjacobso/triplex/derivation";
 import { ConsumerCheckpoint } from "@bjacobso/triplex/operational";
 ```
 
-The root exports the `Triples` and `SnapshotService` runtime tags and their domain types.
-Triplex does not impose an HTTP or RPC transport contract; applications expose the core
-services through the transport that fits their runtime. Transaction history belongs to
-the authoritative `Triples.transaction` and `Triples.transactions` journal APIs rather
-than the entity-snapshot projection.
+Application code should use these public surfaces. `@bjacobso/triplex/internal` is the unstable SPI
+for Triplex adapter packages. Public exports resolve only to built `dist` files.
 
-## Content IDs and storage baseline
+## Documentation
 
-Triplex uses one browser-safe content-addressing foundation: deterministic canonical
-encoding followed by domain-separated SHA-256. A `ContentId` is formatted as
-`sha256-<64 lowercase hex characters>`, with distinct domains for entity snapshots,
-config nodes, closures, stamps, types, evaluations, release-pinned decisions, and observations.
+| Document                                                 | Purpose                                             |
+| -------------------------------------------------------- | --------------------------------------------------- |
+| [Current state](docs/current-state.md)                   | Delivered behavior, maturity, limitations, releases |
+| [Datalog](docs/datalog.md)                               | Query syntax and backend-independent semantics      |
+| [Configuration](docs/configuration.md)                   | Types, releases, refs, validation, and proofs       |
+| [Derivations](docs/derivations.md)                       | Candidates, provenance, materialization, overlays   |
+| [Operational primitives](docs/operational-primitives.md) | Transactions, journal, concurrency, projections     |
+| [Architecture](ARCHITECTURE.md)                          | Package boundaries and dependency direction         |
+| [Roadmap](docs/roadmap.md)                               | Release gates and future work                       |
+| [Onboarded foundation](docs/onboarded-foundation.md)     | Host integration and data-migration guidance        |
+| [Source provenance](docs/provenance.md)                  | Imported repository history                         |
 
-The SQL packages expose one v1 migration containing the complete current schema. Triplex
-is greenfield: there is no v2 upgrade path or alternate KV codec, so databases created by
-development builds before this baseline must be recreated.
+The configuration explorer remains a standalone browser workspace under
+[`examples/config-explorer`](examples/config-explorer).
 
 ## Development
 
-```bash
+```sh
 pnpm install --frozen-lockfile
 pnpm check
 pnpm pack:check
 ```
 
-The regular test suite is self-contained. PostgreSQL and FoundationDB integration tests
-are opt-in because they require Docker or native client libraries:
+PostgreSQL and FoundationDB integration suites are opt-in:
 
-```bash
+```sh
 pnpm test:postgres:integration
 pnpm test:foundationdb:integration
 ```
 
-See
-[CONTRIBUTING.md](./CONTRIBUTING.md) and [ARCHITECTURE.md](./ARCHITECTURE.md) for the
-package dependency graph.
-
-## Roadmap
-
-Planned work is tracked in [docs/roadmap.md](./docs/roadmap.md), including general Datalog
-invariants, reactive "live" queries, integrated full-text search, query optimization, and
-client-side sync / offline-first support.
+See [CONTRIBUTING.md](CONTRIBUTING.md) for the complete contribution contract.
 
 ## License
 
