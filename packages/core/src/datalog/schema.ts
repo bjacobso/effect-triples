@@ -76,6 +76,16 @@ export const Term = Schema.Union([Variable, Constant]).annotate({
   description: "A term that is either a variable (?x) or a constant value",
 });
 
+/**
+ * Entity, attribute, and transaction positions are identities. Triplex stores
+ * every identity as text, so these positions accept only a string literal or
+ * variable; typed refs belong in the value position.
+ */
+const IdentityTerm = Schema.String.annotate({
+  identifier: "IdentityTerm",
+  description: "A string identity literal or Datalog variable",
+});
+
 // =============================================================================
 // Clause Types
 // =============================================================================
@@ -99,8 +109,8 @@ export const PredicateOp = Schema.Literals([">", ">=", "<", "<=", "=", "!="]).an
  * - ["?movie", ":director", "?director"]    // 3-tuple
  * - ["?e", ":name", "?n", "?tx"]            // 4-tuple with tx binding
  */
-export const PatternClause3 = Schema.Tuple([Term, Term, Term]);
-export const PatternClause4 = Schema.Tuple([Term, Term, Term, Term]);
+export const PatternClause3 = Schema.Tuple([IdentityTerm, IdentityTerm, Term]);
+export const PatternClause4 = Schema.Tuple([IdentityTerm, IdentityTerm, Term, IdentityTerm]);
 export const PatternClause = Schema.Union([PatternClause4, PatternClause3]).annotate({
   identifier: "PatternClause",
   description: "A pattern clause [entity, attribute, value, tx?] for matching triples",

@@ -689,7 +689,8 @@ from fact values, numbers and datetimes share the numeric family, and literal op
 numbers. Text and identity comparisons use `=` or `!=`; invalid ordered predicates fail during
 typed preflight instead of relying on backend coercion. Entity, attribute, transaction, and rule
 identities are strings: equality with a numeric or boolean literal is always false, and inequality
-is always true, consistently across backends.
+is always true, consistently across backends. Pattern entity, attribute, and transaction positions
+therefore accept only string literals or variables; explicit typed refs are value constants.
 
 ```ts
 triples.query({

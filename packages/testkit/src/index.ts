@@ -936,6 +936,33 @@ export const triplesConformanceCases: readonly ConformanceCase[] = [
         "aggregate inputs projected as group keys must fail validation",
       );
 
+      for (const query of [
+        {
+          find: ["?value"],
+          where: [[42, ":conf/validation", "?value"]],
+        },
+        {
+          find: ["?entity"],
+          where: [
+            ["?entity", ":conf/validation", "present"],
+            ["not", ["?entity", true, "blocked"]],
+          ],
+        },
+        {
+          find: ["?entity"],
+          where: [
+            ["?entity", ":conf/validation", "present"],
+            ["or", [["?entity", ":conf/validation", "present", 42]]],
+          ],
+        },
+      ] as const) {
+        const invalidIdentity = yield* t.query(query as never).pipe(Effect.flip);
+        yield* check(
+          invalidIdentity instanceof DatalogValidationError,
+          "pattern entity, attribute, and transaction identities must be strings",
+        );
+      }
+
       const invalidPage = yield* t
         .queryPage({
           inner: {

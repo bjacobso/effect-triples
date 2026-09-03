@@ -169,6 +169,12 @@ describe("Datalog Schema", () => {
       expect(() => decode(["?x", "?y"])).toThrow();
       expect(() => decode(["?x", "?y", "?z", "?w", "?v"])).toThrow(); // too many elements (5)
       expect(() => decode("?x")).toThrow();
+      expect(() => decode([42, ":name", "Alice"])).toThrow();
+      expect(() => decode(["person:1", true, "Alice"])).toThrow();
+      expect(() =>
+        decode(["person:1", ":friend", { type: "ref", value: "person:2" }, 42]),
+      ).toThrow();
+      expect(() => decode([{ type: "ref", value: "person:1" }, ":name", "Alice"])).toThrow();
     });
   });
 

@@ -20,8 +20,10 @@ hosts typed configuration as a modular layer over the same core.
   SQLite text coercion and PostgreSQL cast failures. Identity bindings remain string-typed during
   equality predicates, so incompatible literals become backend-independent false conditions rather
   than SQL casts. `having` applies that typed equality to group keys and requires numeric operands
-  when an aggregate target participates. Pattern constants use the same flattened scalar-family identity in positive
-  patterns, negation, and disjunction; explicitly typed refs retain exact storage-type matching.
+  when an aggregate target participates. Pattern constants use the same flattened scalar-family
+  identity in positive patterns, negation, and disjunction; explicitly typed refs retain exact
+  storage-type matching. Pattern entity, attribute, and transaction identities are restricted to
+  strings or variables, preventing backend-specific stringification and PostgreSQL type errors.
   Wrapped filters use hidden typed projection columns rather than flattened SQL text, preserving
   numeric, text-family, boolean, and null semantics through pagination. Direct ordering and
   keyset pagination share the same hidden typed total-order key, including deterministic null and

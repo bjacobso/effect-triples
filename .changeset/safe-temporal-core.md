@@ -47,3 +47,5 @@ Apply the same flattened scalar identity to Datalog pattern constants across pos
 Keep entity, attribute, transaction, and rule identity bindings string-typed in equality predicates. Numeric and boolean literals now produce deterministic incompatible equality instead of SQLite coercion or PostgreSQL operator failures.
 
 Preserve typed scalar-family equality in grouped `having` filters and require numeric operands whenever an aggregate target participates. Optional projections now fail preflight when referenced from `having` because they are hydrated only after aggregation.
+
+Restrict pattern entity, attribute, and transaction identities to string literals or variables. Invalid numeric, boolean, and typed-ref identities now fail shared query decoding instead of being stringified by KV or reaching incompatible PostgreSQL comparisons.
