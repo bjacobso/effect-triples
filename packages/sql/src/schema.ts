@@ -114,7 +114,7 @@ export const INDEX_DDLS = [
   "CREATE INDEX IF NOT EXISTS idx_type ON triples(entity_type) WHERE retracted_at IS NULL",
   "CREATE INDEX IF NOT EXISTS idx_attr_string ON triples(attribute, value_string) WHERE retracted_at IS NULL AND value_type = 'string'",
   "CREATE INDEX IF NOT EXISTS idx_attr_number ON triples(attribute, value_number) WHERE retracted_at IS NULL AND value_type = 'number'",
-  "CREATE INDEX IF NOT EXISTS idx_ref_target ON triples(value_string) WHERE retracted_at IS NULL AND value_type = 'ref'",
+  "CREATE INDEX IF NOT EXISTS idx_ref_target ON triples(attribute, value_string, entity_id) WHERE retracted_at IS NULL AND value_type = 'ref'",
   "CREATE INDEX IF NOT EXISTS idx_temporal ON triples(entity_id, recorded_at, retracted_at, valid_from, valid_to)",
   "CREATE INDEX IF NOT EXISTS idx_recorded_position ON triples(recorded_position, retracted_position)",
   "CREATE INDEX IF NOT EXISTS idx_entity_attr ON triples(entity_id, attribute) WHERE retracted_at IS NULL",

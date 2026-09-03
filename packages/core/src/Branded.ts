@@ -1,10 +1,14 @@
 import { Schema } from "effect";
 
-export const TripleId = Schema.String.pipe(
+const TripleIdSchema = Schema.String.pipe(
   Schema.check(Schema.isPattern(/^[0-9A-Z]{26}$/)),
   Schema.brand("TripleId"),
 );
-export type TripleId = typeof TripleId.Type;
+export const TripleId = Object.assign(TripleIdSchema, {
+  decode: (s: string) => Schema.decodeEffect(TripleIdSchema)(s),
+  make: (s: string): TripleId => Schema.decodeSync(TripleIdSchema)(s),
+});
+export type TripleId = typeof TripleIdSchema.Type;
 
 const EntityIdSchema = Schema.String.pipe(
   Schema.check(Schema.isMinLength(1)),
@@ -38,24 +42,28 @@ export const DatabaseId = Object.assign(DatabaseIdSchema, {
 });
 export type DatabaseId = typeof DatabaseIdSchema.Type;
 
-export const TransactionId = Schema.String.pipe(
+const TransactionIdSchema = EntityId.pipe(
   Schema.check(Schema.isPattern(/^_tx\/[0-9A-Z]{26}$/)),
   Schema.brand("TransactionId"),
 );
-export type TransactionId = typeof TransactionId.Type;
+export const TransactionId = Object.assign(TransactionIdSchema, {
+  decode: (s: string) => Schema.decodeEffect(TransactionIdSchema)(s),
+  make: (s: string): TransactionId => Schema.decodeSync(TransactionIdSchema)(s),
+});
+export type TransactionId = typeof TransactionIdSchema.Type;
 
 export const decode = {
-  tripleId: (s: string) => Schema.decodeEffect(TripleId)(s),
+  tripleId: TripleId.decode,
   entityId: EntityId.decode,
   attribute: (s: string) => Schema.decodeEffect(Attribute)(s),
   databaseId: DatabaseId.decode,
-  transactionId: (s: string) => Schema.decodeEffect(TransactionId)(s),
+  transactionId: TransactionId.decode,
 };
 
 export const unsafe = {
-  tripleId: (s: string) => Schema.decodeSync(TripleId)(s),
+  tripleId: TripleId.make,
   entityId: EntityId.make,
   attribute: (s: string) => Schema.decodeSync(Attribute)(s),
   databaseId: DatabaseId.make,
-  transactionId: (s: string) => Schema.decodeSync(TransactionId)(s),
+  transactionId: TransactionId.make,
 };

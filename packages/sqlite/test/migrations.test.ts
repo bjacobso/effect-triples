@@ -61,4 +61,30 @@ describe("host-owned SQLite migrations", () => {
       expect.arrayContaining(["idx_attribute_history", "idx_attribute_temporal"]),
     );
   });
+
+  it("treats an existing v1 database as current and preserves its data", async () => {
+    const result = await runUnmigrated(
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        yield* runMigrations;
+        yield* sql`
+          INSERT INTO triples (
+            id, entity_id, attribute, value_type, value_string,
+            recorded_at, recorded_position, valid_from, schema_version, tx_id
+          ) VALUES (
+            '00000000000000000000000000', 'migration:entity', ':migration/value',
+            'string', 'preserved', 1, 1, 1, 1, '_tx/00000000000000000000000000'
+          )
+        `;
+
+        yield* runMigrations;
+
+        return yield* sql<{ value_string: string }>`
+          SELECT value_string FROM triples WHERE entity_id = 'migration:entity'
+        `;
+      }),
+    );
+
+    expect(result).toEqual([{ value_string: "preserved" }]);
+  });
 });

@@ -1,5 +1,5 @@
 import { Context, Effect, Layer } from "effect";
-import type { TripleId } from "../Branded.js";
+import { TransactionId, TripleId, type TransactionId as TransactionIdType } from "../Branded.js";
 import { generateId, generateTransactionId } from "../utils/id.js";
 
 export interface RuntimeClockService {
@@ -18,7 +18,7 @@ export interface IdGeneratorService {
   readonly generate: (scope: string) => Effect.Effect<string>;
   readonly nextId: (scope: string) => Effect.Effect<string>;
   readonly nextTripleId: Effect.Effect<TripleId>;
-  readonly nextTxId: Effect.Effect<string>;
+  readonly nextTxId: Effect.Effect<TransactionIdType>;
 }
 
 export class IdGenerator extends Context.Service<IdGenerator, IdGeneratorService>()(
@@ -57,11 +57,27 @@ export const DeterministicIdGeneratorLive = ({
         return `${scope}/${seed}-${String(nextValue).padStart(6, "0")}`;
       });
 
+    const deterministicUlid = (scope: string, value: number) => {
+      let hash = 2_166_136_261;
+      for (const character of `${seed}:${scope}`) {
+        hash ^= character.charCodeAt(0);
+        hash = Math.imul(hash, 16_777_619);
+      }
+      const prefix = (hash >>> 0).toString(36).toUpperCase().padStart(8, "0");
+      const counter = value.toString(36).toUpperCase().padStart(18, "0");
+      return `${prefix}${counter}`;
+    };
+
+    let tripleCounter = 0;
+    let transactionCounter = 0;
+
     return {
       generate: next,
       nextId: next,
-      nextTripleId: next("_triple") as Effect.Effect<TripleId>,
-      nextTxId: next("_tx"),
+      nextTripleId: Effect.sync(() => TripleId.make(deterministicUlid("triple", ++tripleCounter))),
+      nextTxId: Effect.sync(() =>
+        TransactionId.make(`_tx/${deterministicUlid("transaction", ++transactionCounter)}`),
+      ),
     } satisfies IdGeneratorService;
   });
 

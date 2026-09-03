@@ -7,7 +7,7 @@ import {
   RuntimeClockLive,
   type DeterministicRuntimeOptions,
 } from "./RuntimeServices.js";
-import type { TripleId } from "../Branded.js";
+import type { TransactionId, TripleId } from "../Branded.js";
 import { generateId, generateTransactionId } from "../utils/id.js";
 
 export interface TripleStoreRuntimeService {
@@ -15,7 +15,7 @@ export interface TripleStoreRuntimeService {
   readonly scope: string;
   readonly now: Effect.Effect<number>;
   readonly nextTripleId: Effect.Effect<TripleId>;
-  readonly nextTxId: Effect.Effect<string>;
+  readonly nextTxId: Effect.Effect<TransactionId>;
 }
 
 export class TripleStoreRuntime extends Context.Service<

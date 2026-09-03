@@ -8,6 +8,7 @@
 
 import { Data } from "effect";
 import type { ViolationAt } from "../Constraint.js";
+import type { EntityId, TransactionId, TripleId } from "../Branded.js";
 
 // Write operation errors
 export class WriteError extends Data.TaggedError("WriteError")<{
@@ -16,7 +17,7 @@ export class WriteError extends Data.TaggedError("WriteError")<{
 }> {}
 
 export class DuplicateTripleError extends Data.TaggedError("DuplicateTripleError")<{
-  readonly entityId: string;
+  readonly entityId: EntityId;
   readonly attribute: string;
   readonly message: string;
 }> {}
@@ -39,7 +40,7 @@ export class TransactionError extends Data.TaggedError("TransactionError")<{
  * reload the current facts and retry their command.
  */
 export class TransactionConflictError extends Data.TaggedError("TransactionConflictError")<{
-  readonly tripleId: string;
+  readonly tripleId: TripleId;
   readonly message: string;
 }> {}
 
@@ -51,7 +52,7 @@ export class TransactionConflictError extends Data.TaggedError("TransactionConfl
  */
 export class CommandAlreadyCommittedError extends Data.TaggedError("CommandAlreadyCommittedError")<{
   readonly commandId: string;
-  readonly transactionId: string;
+  readonly transactionId: TransactionId;
   readonly message: string;
 }> {}
 
@@ -68,11 +69,11 @@ export class ReadError extends Data.TaggedError("ReadError")<{
 }> {}
 
 export class EntityNotFoundError extends Data.TaggedError("EntityNotFoundError")<{
-  readonly entityId: string;
+  readonly entityId: EntityId;
 }> {}
 
 export class TripleNotFoundError extends Data.TaggedError("TripleNotFoundError")<{
-  readonly tripleId: string;
+  readonly tripleId: TripleId;
 }> {}
 
 // Query errors

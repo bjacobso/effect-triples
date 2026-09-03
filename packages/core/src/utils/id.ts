@@ -6,17 +6,18 @@
  */
 
 import { monotonicFactory } from "ulidx";
-import type { TripleId } from "../Branded.js";
+import { TransactionId, TripleId } from "../Branded.js";
 
 /**
  * Generate a new ULID (TripleId).
  */
-export const generateId = (): TripleId => monotonicUlid() as TripleId;
+export const generateId = (): TripleId => TripleId.make(monotonicUlid());
 
 /**
  * Generate a transaction ID.
  */
-export const generateTransactionId = (): string => `_tx/${monotonicUlid()}`;
+export const generateTransactionId = (): TransactionId =>
+  TransactionId.make(`_tx/${monotonicUlid()}`);
 
 /**
  * Transaction metadata attributes.
@@ -38,6 +39,8 @@ export const TxAttributes = {
   CONFIG_SNAPSHOT: ":_tx/config-snapshot",
   /** Persisted description of an asserted or retracted fact. */
   CHANGE: ":_tx/change",
+  /** Indexed reference from a transaction envelope to every changed entity. */
+  CHANGED_ENTITY: ":_tx/changed-entity",
 } as const;
 
 /**

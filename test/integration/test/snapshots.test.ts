@@ -14,7 +14,7 @@ import {
   diffAttributes,
   EMPTY_ENTITY_HASH,
 } from "@bjacobso/triplex/internal";
-import { EntityId } from "@bjacobso/triplex";
+import { EntityId, TransactionId } from "@bjacobso/triplex";
 import { SqliteTestLayer } from "./fixtures/SqliteTestLayer.js";
 
 const eid = EntityId.make;
@@ -722,10 +722,12 @@ describe("SnapshotService", () => {
           const writer = yield* SnapshotWriter;
           const snapService = yield* SnapshotService;
 
-          yield* writer.materialize("tx:a", 1000, ["p:alice"]);
-          yield* writer.materialize("tx:b", 1000, ["p:bob"]);
+          const first = TransactionId.make("_tx/01AAAAAAAAAAAAAAAAAAAAAAAA");
+          const second = TransactionId.make("_tx/01BBBBBBBBBBBBBBBBBBBBBBBB");
+          yield* writer.materialize(first, 1000, ["p:alice"]);
+          yield* writer.materialize(second, 1000, ["p:bob"]);
 
-          const changed = yield* snapService.findChanged("tx:a");
+          const changed = yield* snapService.findChanged(first);
           expect(changed.some((entry) => entry.entityId === "p:bob")).toBe(true);
         }).pipe(Effect.provide(SnapshotTestLayer)),
       );

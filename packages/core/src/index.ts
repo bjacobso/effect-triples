@@ -72,6 +72,8 @@ export {
   type TransactionRecord,
   type TransactionPageRequest,
   type TransactionPage,
+  type EntityTransactionPageRequest,
+  type EntityTransactionPage,
   type DependencyState,
   type QueryOptions,
   type QueryResponse,

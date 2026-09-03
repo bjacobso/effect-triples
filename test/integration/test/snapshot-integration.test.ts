@@ -23,7 +23,7 @@ import {
   TripleStoreRuntime,
   TripleStoreRuntimeLayer,
 } from "@bjacobso/triplex/internal";
-import { EntityId, type TripleId } from "@bjacobso/triplex";
+import { EntityId, TransactionId, TripleId } from "@bjacobso/triplex";
 import { SqliteAdapterLive } from "@bjacobso/triplex-sqlite";
 import { SqlQueryExecutorLive } from "@bjacobso/triplex-sql";
 
@@ -757,14 +757,18 @@ describe("StoreCapability composition", () => {
         nextTripleId: Effect.sync(
           (() => {
             let index = 0;
-            return () => `triple-${++index}` as TripleId;
+            return () => TripleId.make(String(++index).padStart(26, "0"));
           })(),
         ),
         nextTxId: Effect.sync(
           (() => {
-            const txIds = ["z-tx", "a-tx"];
+            const txIds = [
+              TransactionId.make("_tx/01ZZZZZZZZZZZZZZZZZZZZZZZZ"),
+              TransactionId.make("_tx/01AAAAAAAAAAAAAAAAAAAAAAAA"),
+            ];
             let index = 0;
-            return () => txIds[index++] ?? `tx-${index}`;
+            return () =>
+              txIds[index++] ?? TransactionId.make(`_tx/${String(index).padStart(26, "0")}`);
           })(),
         ),
       });
@@ -815,7 +819,7 @@ describe("StoreCapability composition", () => {
 
           const snap = yield* snapService.current("p:alice");
           expect(snap).not.toBeNull();
-          expect(snap!.txId).toBe("a-tx");
+          expect(snap!.txId).toBe("_tx/01AAAAAAAAAAAAAAAAAAAAAAAA");
           expect(snap!.attributes[":person/age"]).toBeUndefined();
         }).pipe(Effect.provide(TestLayer)),
       );

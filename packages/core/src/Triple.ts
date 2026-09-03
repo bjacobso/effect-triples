@@ -1,6 +1,6 @@
 import { Schema } from "effect";
 import { TripleValue } from "./Value.js";
-import { TripleId, EntityId, Attribute } from "./Branded.js";
+import { TripleId, EntityId, Attribute, TransactionId } from "./Branded.js";
 import { RuleSchema as ConstraintRule } from "./Constraint.js";
 
 export { TripleId, EntityId, Attribute };
@@ -51,8 +51,8 @@ export const TripleResponse = Schema.Struct({
   retractedAt: Schema.NullOr(Schema.Number),
   entityType: Schema.NullOr(Schema.String),
   schemaVersion: Schema.NullOr(Schema.Number),
-  txId: Schema.NullOr(Schema.String),
-  retractTxId: Schema.NullOr(Schema.String),
+  txId: Schema.NullOr(TransactionId),
+  retractTxId: Schema.NullOr(TransactionId),
 });
 export type TripleResponse = typeof TripleResponse.Type;
 
@@ -68,8 +68,8 @@ export const Triple = Schema.Struct({
   retractedAt: Schema.OptionFromOptional(Schema.Number),
   entityType: Schema.OptionFromOptional(Schema.String),
   schemaVersion: Schema.OptionFromOptional(Schema.Number),
-  txId: Schema.OptionFromOptional(Schema.String),
-  retractTxId: Schema.OptionFromOptional(Schema.String),
+  txId: Schema.OptionFromOptional(TransactionId),
+  retractTxId: Schema.OptionFromOptional(TransactionId),
 });
 export type Triple = typeof Triple.Type;
 
@@ -151,7 +151,7 @@ export const TransactRequest = Schema.Struct({
 export type TransactRequest = typeof TransactRequest.Type;
 
 export const TransactResponse = Schema.Struct({
-  txId: Schema.String,
+  txId: TransactionId,
   asserted: Schema.Array(TripleResponse),
   retracted: Schema.Number,
 });

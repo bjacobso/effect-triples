@@ -65,6 +65,7 @@ import {
 import { resolveTemporalBasis } from "../Temporal.js";
 import { TxAttributes } from "../utils/id.js";
 import { finishPagination, preparePagination } from "../Pagination.js";
+import { transactionsForEntity } from "./entityTransactionHistory.js";
 
 // =============================================================================
 // Row to Triple Conversion
@@ -118,8 +119,10 @@ const rowToTriple = (row: TripleRow): Triple => {
     retractedAt: row.retracted_at !== null ? Option.some(Number(row.retracted_at)) : Option.none(),
     entityType: row.entity_type ? Option.some(row.entity_type) : Option.none(),
     schemaVersion: row.schema_version ? Option.some(row.schema_version) : Option.none(),
-    txId: row.tx_id ? Option.some(row.tx_id) : Option.none(),
-    retractTxId: row.retract_tx_id ? Option.some(row.retract_tx_id) : Option.none(),
+    txId: row.tx_id ? Option.some(unsafe.transactionId(row.tx_id)) : Option.none(),
+    retractTxId: row.retract_tx_id
+      ? Option.some(unsafe.transactionId(row.retract_tx_id))
+      : Option.none(),
   };
 };
 
@@ -283,7 +286,7 @@ export const TriplesLive = Layer.effect(
               return yield* Effect.fail(
                 new CommandAlreadyCommittedError({
                   commandId: meta.commandId,
-                  transactionId: originalTransactionId,
+                  transactionId: unsafe.transactionId(originalTransactionId),
                   message: `Command ${meta.commandId} already committed as ${originalTransactionId}`,
                 }),
               );
@@ -385,7 +388,7 @@ export const TriplesLive = Layer.effect(
                 if (!didRetract && preconditionIds.has(op.id as string)) {
                   return yield* Effect.fail(
                     new TransactionConflictError({
-                      tripleId: op.id as string,
+                      tripleId: op.id,
                       message: `Expected live triple ${op.id}, but another transaction changed it`,
                     }),
                   );
@@ -529,7 +532,9 @@ export const TriplesLive = Layer.effect(
         .query({ attribute: TxAttributes.COMMAND_ID, value: { type: "string", value: commandId } })
         .pipe(
           Effect.flatMap((rows) =>
-            rows[0] === undefined ? Effect.succeed(null) : transaction(rows[0].entity_id),
+            rows[0] === undefined
+              ? Effect.succeed(null)
+              : transaction(unsafe.transactionId(rows[0].entity_id)),
           ),
         );
 
@@ -559,6 +564,13 @@ export const TriplesLive = Layer.effect(
         }),
       );
     };
+
+    const entityTransactions: TriplesService["transactionsForEntity"] = (entityId, request) =>
+      transactionsForEntity(
+        { currentPosition: adapter.currentCommitPosition, query, transaction },
+        entityId,
+        request,
+      );
 
     // =========================================================================
     // Datalog Reads (via QueryExecutor)
@@ -636,6 +648,7 @@ export const TriplesLive = Layer.effect(
       transaction,
       transactionByCommand,
       transactions,
+      transactionsForEntity: entityTransactions,
       currentPosition: adapter.currentCommitPosition,
       dependencyState: (attributes, basis) =>
         Effect.gen(function* () {

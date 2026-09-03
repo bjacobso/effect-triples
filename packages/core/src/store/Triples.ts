@@ -23,6 +23,7 @@ import type {
   TransactOp,
   TransactionPrecondition,
 } from "../Triple.js";
+import type { TransactionId } from "../Branded.js";
 import type { Pattern } from "../types/Pattern.js";
 import type {
   WriteError,
@@ -53,7 +54,7 @@ import type {
  * Transaction result containing the transaction ID, asserted triples, and retraction count
  */
 export interface TransactionResult {
-  readonly txId: string;
+  readonly txId: TransactionId;
   readonly position: number;
   readonly instant: number;
   readonly triples: readonly Triple[];
@@ -98,12 +99,12 @@ export interface TransactionChange {
   readonly validTo?: number;
   readonly recordedAt?: number;
   readonly retractedAt?: number;
-  readonly assertionTxId?: string;
-  readonly retractionTxId?: string;
+  readonly assertionTxId?: TransactionId;
+  readonly retractionTxId?: TransactionId;
 }
 
 export interface TransactionRecord {
-  readonly txId: string;
+  readonly txId: TransactionId;
   readonly position: number;
   readonly instant: number;
   readonly actor?: string;
@@ -125,6 +126,23 @@ export interface TransactionPage {
   readonly transactions: readonly TransactionRecord[];
   /** Position of the final returned transaction, suitable for the next `after`. */
   readonly next?: number;
+}
+
+export interface EntityTransactionPageRequest {
+  /** Maximum number of transactions to return. Defaults to 100; maximum 1,000. */
+  readonly limit?: number;
+  /** Commit-position snapshot returned by the first page. Omit on the first request. */
+  readonly snapshotPosition?: number;
+  /** Return transactions strictly before this position. */
+  readonly beforePosition?: number;
+}
+
+export interface EntityTransactionPage {
+  readonly transactions: readonly TransactionRecord[];
+  /** Commit position captured by the first page and required for stable continuation. */
+  readonly snapshotPosition: number;
+  /** Exclusive position boundary for the next page, when more results exist. */
+  readonly nextBeforePosition?: number;
 }
 
 export interface DependencyState {
@@ -211,7 +229,7 @@ export interface TriplesService {
   /** Full history (including retracted) for an entity. */
   readonly history: (entityId: EntityId) => Effect.Effect<readonly Triple[], ReadError>;
   /** Read a persisted causal transaction envelope and its fact changes. */
-  readonly transaction: (txId: string) => Effect.Effect<TransactionRecord | null, ReadError>;
+  readonly transaction: (txId: TransactionId) => Effect.Effect<TransactionRecord | null, ReadError>;
   /** Lookup the durable receipt for an atomically unique command ID. */
   readonly transactionByCommand: (
     commandId: string,
@@ -220,6 +238,11 @@ export interface TriplesService {
   readonly transactions: (
     request?: TransactionPageRequest,
   ) => Effect.Effect<TransactionPage, ReadError>;
+  /** Read the authoritative journal entries that changed one entity, newest first. */
+  readonly transactionsForEntity: (
+    entityId: EntityId,
+    request?: EntityTransactionPageRequest,
+  ) => Effect.Effect<EntityTransactionPage, ReadError>;
   /** Latest committed backend position, including internal maintenance writes. */
   readonly currentPosition: () => Effect.Effect<number, ReadError>;
   /**

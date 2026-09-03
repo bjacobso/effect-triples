@@ -28,6 +28,7 @@ import {
   FORMAT_VERSION,
 } from "./canonical.js";
 import type { ContentId } from "../content/ContentId.js";
+import { generateTransactionId } from "../utils/id.js";
 
 // ---------------------------------------------------------------------------
 // Database row types
@@ -75,7 +76,7 @@ const makeSnapshotWriter = Effect.gen(function* () {
   const materialize: SnapshotWriterShape["materialize"] = (txId, txTime, changedEntityIds) =>
     Effect.gen(function* () {
       const snapshots: EntitySnapshot[] = [];
-      const basis = yield* store.transaction(txId).pipe(
+      const basis = yield* store.transaction(unsafe.transactionId(txId)).pipe(
         Effect.mapError(
           (e) =>
             new SnapshotError({
@@ -91,7 +92,7 @@ const makeSnapshotWriter = Effect.gen(function* () {
         Effect.gen(function* () {
           const cached = positions.get(candidateTxId);
           if (cached !== undefined || positions.has(candidateTxId)) return cached ?? null;
-          const record = yield* store.transaction(candidateTxId);
+          const record = yield* store.transaction(unsafe.transactionId(candidateTxId));
           const position = record?.position ?? null;
           positions.set(candidateTxId, position);
           return position;
@@ -237,7 +238,7 @@ const makeSnapshotWriter = Effect.gen(function* () {
 
       const entityIds = rows.map((r) => r.entity_id);
       const now = yield* Clock.currentTimeMillis;
-      const txId = `backfill:${now}`;
+      const txId = generateTransactionId();
       const txTime = now;
 
       yield* materialize(txId, txTime, entityIds);

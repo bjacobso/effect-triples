@@ -11,7 +11,7 @@ import { Data, Effect, Option, Schema } from "effect";
 
 import * as CanonicalJson from "../content/CanonicalJson.js";
 import * as ContentIds from "../content/ContentId.js";
-import { unsafe, type EntityId } from "../Branded.js";
+import { EntityId, TransactionId, TripleId, unsafe } from "../Branded.js";
 import { Constant as ConstantSchema } from "../datalog/schema.js";
 import type { Constant, DatalogQuery } from "../datalog/types.js";
 import type {
@@ -68,10 +68,10 @@ export const entityId = {
 };
 
 const SourceFactSchema = Schema.Struct({
-  tripleId: Schema.String,
-  transactionId: Schema.optional(Schema.String),
+  tripleId: TripleId,
+  transactionId: Schema.optional(TransactionId),
   transactionPosition: Schema.optional(Schema.Number),
-  entityId: Schema.String,
+  entityId: EntityId,
   attribute: Schema.String,
   validFrom: Schema.Number,
   validTo: Schema.optional(Schema.Number),

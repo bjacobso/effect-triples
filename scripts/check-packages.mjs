@@ -116,13 +116,14 @@ try {
 
   writeFileSync(
     join(consumerDir, "consumer.ts"),
-    `import { DatalogValidationError, EntityId, type TripleInput } from "@bjacobso/triplex";
+    `import { DatabaseId, DatalogValidationError, EntityId, TransactionId, TripleId, type TripleInput, type TriplesService } from "@bjacobso/triplex";
 import { validateDatalogQuery, type DatalogQuery } from "@bjacobso/triplex/datalog";
 import { Attribute, ConfigRuntime, ConfigStore, EntityType, EntityValidation, Evaluate, GraphConstraint, TypeExpr } from "@bjacobso/triplex/config";
 import * as Derivation from "@bjacobso/triplex/derivation";
 import * as Cloudflare from "@bjacobso/triplex-cloudflare";
 import * as FoundationDb from "@bjacobso/triplex-foundationdb";
 import * as Postgres from "@bjacobso/triplex-postgres";
+import { PgTriples } from "@bjacobso/triplex-postgres";
 import * as Sql from "@bjacobso/triplex-sql";
 import { makeSqliteLayer } from "@bjacobso/triplex-sqlite";
 import * as Testkit from "@bjacobso/triplex-testkit";
@@ -132,6 +133,16 @@ const triple: TripleInput = {
   attribute: ":person/name",
   value: { type: "string", value: "Alice" },
 };
+const transactionId = TransactionId.make("_tx/00000000000000000000000000");
+const tripleId = TripleId.make("00000000000000000000000000");
+const transactionEntity: EntityId = transactionId;
+declare const triplesService: TriplesService;
+const timeline = triplesService.transactionsForEntity(triple.entityId, { limit: 20 });
+const ambientPostgres = PgTriples.layerFromSqlClient({ scope: "host/database" });
+const scopedPostgres = PgTriples.layerForDatabase(
+  { database: "application" },
+  DatabaseId.make("tenant-a"),
+);
 const query: DatalogQuery = {
   find: ["?name"],
   where: [["?person", ":person/name", "?name"]],
@@ -144,6 +155,12 @@ const Employer = EntityType.make("Employer", {
 });
 const nameAssertion = Employer.attributes.name.assertion("Acme");
 void triple;
+void transactionId;
+void tripleId;
+void transactionEntity;
+void timeline;
+void ambientPostgres;
+void scopedPostgres;
 void query;
 void validateDatalogQuery;
 void DatalogValidationError;

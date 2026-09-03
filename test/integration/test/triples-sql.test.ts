@@ -16,7 +16,7 @@ import {
 } from "@bjacobso/triplex/internal";
 import { SqlQueryExecutorLive } from "@bjacobso/triplex-sql";
 import { SqliteAdapterLive } from "@bjacobso/triplex-sqlite";
-import { EntityId, type TripleId } from "@bjacobso/triplex";
+import { EntityId, TransactionId, TripleId } from "@bjacobso/triplex";
 import { SqliteTestLayer } from "./fixtures/SqliteTestLayer.js";
 
 const TestLayer = SqliteTestLayer;
@@ -240,8 +240,10 @@ describe("Triples", () => {
           now += 10;
           return now;
         }),
-        nextTripleId: Effect.sync(() => `triple:det-${++tripleCounter}` as TripleId),
-        nextTxId: Effect.sync(() => `tx:det-${++txCounter}`),
+        nextTripleId: Effect.sync(() => TripleId.make(String(++tripleCounter).padStart(26, "0"))),
+        nextTxId: Effect.sync(() =>
+          TransactionId.make(`_tx/${String(++txCounter).padStart(26, "0")}`),
+        ),
       });
 
       const result = await Effect.runPromise(
@@ -256,9 +258,9 @@ describe("Triples", () => {
           expect(batch).toHaveLength(2);
           expect(batch[0]!.recordedAt).toBe(1010);
           expect(batch[1]!.recordedAt).toBe(1010);
-          expect(batch[0]!.id).toBe("triple:det-1");
-          expect(batch[1]!.id).toBe("triple:det-2");
-          expect(Option.getOrNull(batch[0]!.txId)).toBe("tx:det-1");
+          expect(batch[0]!.id).toBe("00000000000000000000000001");
+          expect(batch[1]!.id).toBe("00000000000000000000000002");
+          expect(Option.getOrNull(batch[0]!.txId)).toBe("_tx/00000000000000000000000001");
 
           const tx = yield* store.transact([
             {
@@ -269,7 +271,7 @@ describe("Triples", () => {
             },
           ]);
 
-          expect(tx.txId).toBe("tx:det-2");
+          expect(tx.txId).toBe("_tx/00000000000000000000000002");
           expect(tx.position).toBe(2);
 
           const txPosition = yield* store.match({
@@ -277,7 +279,7 @@ describe("Triples", () => {
             attribute: TxAttributes.POSITION,
           });
           expect(txPosition).toHaveLength(1);
-          expect(txPosition[0]!.id).toBe("triple:det-8");
+          expect(txPosition[0]!.id).toBe("00000000000000000000000009");
           expect(txPosition[0]!.value).toEqual({ type: "number", value: 2 });
 
           const txMeta = yield* store.match({
@@ -285,14 +287,14 @@ describe("Triples", () => {
             attribute: TxAttributes.INSTANT,
           });
           expect(txMeta).toHaveLength(1);
-          expect(txMeta[0]!.id).toBe("triple:det-9");
+          expect(txMeta[0]!.id).toBe("00000000000000000000000010");
           expect(txMeta[0]!.value).toEqual({ type: "datetime", value: 1020 });
 
           yield* store.retract(batch[0]!.id);
           const history = yield* store.history("person-1" as EntityId);
           const retracted = history.find((triple) => triple.id === batch[0]!.id);
           expect(retracted).toBeDefined();
-          expect(Option.getOrNull(retracted!.retractTxId)).toBe("tx:det-3");
+          expect(Option.getOrNull(retracted!.retractTxId)).toBe("_tx/00000000000000000000000003");
           // The two current-state reads resolve business time through the
           // injected clock before the retraction allocates its own instant.
           expect(Option.getOrNull(retracted!.retractedAt)).toBe(1050);
@@ -318,16 +320,16 @@ describe("Triples", () => {
             value: string("Alice"),
           });
 
-          expect(triple.id).toBe("_triple/unit-000001");
+          expect(triple.id).toBe("00W1X84B000000000000000001");
           expect(triple.recordedAt).toBe(123_456);
-          expect(Option.getOrNull(triple.txId)).toBe("_tx/unit-000001");
+          expect(Option.getOrNull(triple.txId)).toBe("_tx/0051DTYX000000000000000001");
 
           const tx = yield* store.transact([
             { op: "assert", entityId: eid("person-2"), attribute: ":name", value: string("Bob") },
           ]);
 
-          expect(tx.txId).toBe("_tx/unit-000002");
-          expect(tx.triples[0]!.id).toBe("_triple/unit-000005");
+          expect(tx.txId).toBe("_tx/0051DTYX000000000000000002");
+          expect(tx.triples[0]!.id).toBe("00W1X84B000000000000000006");
         }).pipe(Effect.provide(makeRuntimeTestLayer(RuntimeLayer))),
       );
     });
@@ -338,8 +340,10 @@ describe("Triples", () => {
       const RuntimeLayer = Layer.succeed(TripleStoreRuntime, {
         scope: "test:sqlite-pagination-position",
         now: Effect.succeed(1_800_000_000_000),
-        nextTripleId: Effect.sync(() => `triple:page-${++tripleCounter}` as TripleId),
-        nextTxId: Effect.sync(() => `tx:page-${++txCounter}`),
+        nextTripleId: Effect.sync(() => TripleId.make(String(++tripleCounter).padStart(26, "0"))),
+        nextTxId: Effect.sync(() =>
+          TransactionId.make(`_tx/${String(++txCounter).padStart(26, "0")}`),
+        ),
       });
 
       const pages = await Effect.runPromise(

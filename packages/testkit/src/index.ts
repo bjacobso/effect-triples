@@ -1632,6 +1632,126 @@ export const triplesConformanceCases: readonly ConformanceCase[] = [
     }),
   },
   {
+    name: "entity transaction history is indexed, complete, and snapshot-stable",
+    run: Effect.gen(function* () {
+      const t = yield* Triples;
+      const subject = eid("conf:entity-history:subject");
+      const unrelated = eid("conf:entity-history:unrelated");
+      const asserted = yield* t.transact(
+        [
+          {
+            op: "assert",
+            entityId: subject,
+            entityType: "HistorySubject",
+            attribute: ":history/name",
+            value: string("before"),
+          },
+          {
+            op: "assert",
+            entityId: subject,
+            entityType: "HistorySubject",
+            attribute: ":history/state",
+            value: string("open"),
+          },
+        ],
+        {
+          actor: "history:actor",
+          commandId: "conf:entity-history:create",
+          correlationId: "history:correlation",
+          causationId: "history:causation",
+          configSnapshot: "history:config:v1",
+        },
+      );
+      const unrelatedTransaction = yield* t.transact([
+        {
+          op: "assert",
+          entityId: unrelated,
+          attribute: ":history/name",
+          value: string("unrelated"),
+        },
+      ]);
+      const corrected = yield* t.transact(
+        [
+          { op: "retract", id: asserted.triples[0]!.id },
+          {
+            op: "assert",
+            entityId: subject,
+            entityType: "HistorySubject",
+            attribute: ":history/name",
+            value: string("after"),
+          },
+        ],
+        { actor: "history:reviewer", configSnapshot: "history:config:v2" },
+      );
+
+      const first = yield* t.transactionsForEntity(subject, { limit: 1 });
+      yield* check(
+        first.transactions.length === 1 &&
+          first.transactions[0]?.txId === corrected.txId &&
+          first.transactions[0].changes.some(
+            (change) =>
+              change.op === "retract" &&
+              change.value?.type === "string" &&
+              change.value.value === "before",
+          ) &&
+          first.transactions[0].changes.some(
+            (change) =>
+              change.op === "assert" &&
+              change.value?.type === "string" &&
+              change.value.value === "after",
+          ) &&
+          first.nextBeforePosition === corrected.position,
+        "the newest entity transaction should include complete assertion and retraction changes",
+      );
+
+      const concurrent = yield* t.transact([
+        {
+          op: "assert",
+          entityId: subject,
+          attribute: ":history/concurrent",
+          value: string("later"),
+        },
+      ]);
+      const second = yield* t.transactionsForEntity(subject, {
+        limit: 1,
+        snapshotPosition: first.snapshotPosition,
+        beforePosition: first.nextBeforePosition!,
+      });
+      yield* check(
+        second.transactions.length === 1 &&
+          second.transactions[0]?.txId === asserted.txId &&
+          second.transactions[0].changes.length === 2 &&
+          second.nextBeforePosition === undefined &&
+          ![...first.transactions, ...second.transactions].some(
+            (transaction) =>
+              transaction.txId === unrelatedTransaction.txId ||
+              transaction.txId === concurrent.txId,
+          ),
+        "continuation should deduplicate multi-change commits and exclude unrelated or later commits",
+      );
+      const create = second.transactions[0];
+      yield* check(
+        create?.actor === "history:actor" &&
+          create.commandId === "conf:entity-history:create" &&
+          create.correlationId === "history:correlation" &&
+          create.causationId === "history:causation" &&
+          create.configSnapshot === "history:config:v1",
+        "entity history should preserve the complete causal envelope",
+      );
+
+      const unknown = yield* t.transactionsForEntity(eid("conf:entity-history:missing"));
+      yield* check(
+        unknown.transactions.length === 0,
+        "an unknown entity should have an empty transaction history",
+      );
+      const malformed = yield* t.transactionsForEntity(subject, { limit: 0 }).pipe(Effect.flip);
+      yield* check(
+        malformed._tag === "ReadError",
+        "malformed entity-history pagination should fail in the typed error channel",
+      );
+    }),
+  },
+  {
     name: "graph constraints reject invalid post-states across valid time",
     run: Effect.gen(function* () {
       const t = yield* Triples;

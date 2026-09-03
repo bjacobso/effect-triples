@@ -60,6 +60,8 @@ import { resolveTemporalBasis, type ResolvedTemporalBasis } from "../../Temporal
 import { TxAttributes } from "../../utils/id.js";
 import { finishPagination, preparePagination } from "../../Pagination.js";
 import * as ContentIds from "../../content/ContentId.js";
+import { unsafe } from "../../Branded.js";
+import { transactionsForEntity } from "../../store/entityTransactionHistory.js";
 
 const COMMIT_POSITION_KEY = new Uint8Array([0x21]);
 const COMMAND_RECEIPT_PREFIX = 0x22;
@@ -171,8 +173,11 @@ const datomToTriple = (datom: Datom): Triple => ({
   retractedAt: datom.retractedAt !== null ? Option.some(datom.retractedAt) : Option.none(),
   entityType: datom.entityType !== null ? Option.some(datom.entityType) : Option.none(),
   schemaVersion: Option.none(),
-  txId: Option.some(datom.txId),
-  retractTxId: datom.retractTxId !== null ? Option.some(datom.retractTxId) : Option.none(),
+  txId: Option.some(unsafe.transactionId(datom.txId)),
+  retractTxId:
+    datom.retractTxId !== null
+      ? Option.some(unsafe.transactionId(datom.retractTxId))
+      : Option.none(),
 });
 
 const tripleInputToDatom = (
@@ -444,7 +449,7 @@ const makeKvTriplesService = Effect.gen(function* () {
                 return yield* Effect.fail(
                   new CommandAlreadyCommittedError({
                     commandId: meta.commandId,
-                    transactionId: originalTransactionId,
+                    transactionId: unsafe.transactionId(originalTransactionId),
                     message: `Command ${meta.commandId} already committed as ${originalTransactionId}`,
                   }),
                 );
@@ -668,7 +673,7 @@ const makeKvTriplesService = Effect.gen(function* () {
         ),
       ),
 
-    transaction: (txId: string) =>
+    transaction: (txId) =>
       Effect.gen(function* () {
         const datoms = yield* hexaStore.scanCollectAsync({ entity: txId });
         return transactionRecordFromTriples(txId, datoms.map(datomToTriple));
@@ -689,7 +694,10 @@ const makeKvTriplesService = Effect.gen(function* () {
         const fact = commandFacts[0];
         if (fact === undefined) return null;
         const datoms = yield* hexaStore.scanCollectAsync({ entity: fact.entityId });
-        return transactionRecordFromTriples(fact.entityId, datoms.map(datomToTriple));
+        return transactionRecordFromTriples(
+          unsafe.transactionId(fact.entityId),
+          datoms.map(datomToTriple),
+        );
       }).pipe(
         Effect.catch((e) =>
           Effect.fail(
@@ -724,6 +732,8 @@ const makeKvTriplesService = Effect.gen(function* () {
         }),
       );
     },
+
+    transactionsForEntity: (entityId, request) => transactionsForEntity(service, entityId, request),
 
     currentPosition: () => currentKvCommitPosition(kvBackend),
 

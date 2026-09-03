@@ -13,7 +13,7 @@ import type { DatalogQueryError, ReadError } from "../errors/index.js";
 import { extractDependencies } from "../subscriptions/extract-dependencies.js";
 import * as TypeExpr from "../config/TypeExpr.js";
 import * as TypeSchema from "../config/TypeSchema.js";
-import { unsafe } from "../Branded.js";
+import { unsafe, type EntityId, type TransactionId, type TripleId } from "../Branded.js";
 
 export class DefinitionError extends Data.TaggedError("DerivationDefinitionError")<{
   readonly message: string;
@@ -127,10 +127,10 @@ export const make = (
   });
 
 export interface SourceFact {
-  readonly tripleId: string;
-  readonly transactionId?: string;
+  readonly tripleId: TripleId;
+  readonly transactionId?: TransactionId;
   readonly transactionPosition?: number;
-  readonly entityId: string;
+  readonly entityId: EntityId;
   readonly attribute: string;
   readonly validFrom: number;
   readonly validTo?: number;

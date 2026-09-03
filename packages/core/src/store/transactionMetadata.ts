@@ -2,14 +2,14 @@ import type { Triple, TripleInput } from "../Triple.js";
 import { TxAttributes } from "../utils/id.js";
 import type { TransactionChange, TransactionMeta, TransactionRecord } from "./Triples.js";
 import { Option } from "effect";
-import { unsafe } from "../Branded.js";
+import { EntityId, TransactionId, TripleId, unsafe } from "../Branded.js";
 
 const text = (value: string) => ({ type: "string" as const, value });
 
 export const transactionChangeFromTriple = (
   op: "assert" | "retract",
   triple: Triple,
-  transactionId: string,
+  transactionId: TransactionId,
   transactionInstant: number,
 ): TransactionChange => ({
   op,
@@ -27,14 +27,14 @@ export const transactionChangeFromTriple = (
 });
 
 export const metadataInputs = (
-  txId: string,
+  txId: TransactionId,
   position: number,
   instant: number,
   meta: TransactionMeta | undefined,
   changes: readonly TransactionChange[],
 ): readonly TripleInput[] => {
   const input = (attribute: string, value: TripleInput["value"]): TripleInput => ({
-    entityId: unsafe.entityId(txId),
+    entityId: txId,
     attribute,
     value,
     entityType: "_Transaction",
@@ -49,6 +49,9 @@ export const metadataInputs = (
     ...(meta?.configSnapshot
       ? [input(TxAttributes.CONFIG_SNAPSHOT, text(meta.configSnapshot))]
       : []),
+    ...[...new Set(changes.map((change) => change.entityId))].map((entityId) =>
+      input(TxAttributes.CHANGED_ENTITY, { type: "ref", value: entityId }),
+    ),
     ...changes.map((change) => input(TxAttributes.CHANGE, { type: "json", value: change })),
   ];
 };
@@ -60,8 +63,47 @@ const scalar = (triple: Triple | undefined): string | undefined => {
     : undefined;
 };
 
+const decodeChange = (value: unknown): TransactionChange | undefined => {
+  if (
+    typeof value !== "object" ||
+    value === null ||
+    !("op" in value) ||
+    !("tripleId" in value) ||
+    !("entityId" in value) ||
+    !("attribute" in value)
+  ) {
+    return undefined;
+  }
+  const candidate = value as Record<string, unknown>;
+  if (
+    (candidate["op"] !== "assert" && candidate["op"] !== "retract") ||
+    typeof candidate["tripleId"] !== "string" ||
+    typeof candidate["entityId"] !== "string" ||
+    typeof candidate["attribute"] !== "string" ||
+    (candidate["assertionTxId"] !== undefined && typeof candidate["assertionTxId"] !== "string") ||
+    (candidate["retractionTxId"] !== undefined && typeof candidate["retractionTxId"] !== "string")
+  ) {
+    return undefined;
+  }
+  try {
+    return {
+      ...(candidate as unknown as TransactionChange),
+      tripleId: TripleId.make(candidate["tripleId"]),
+      entityId: EntityId.make(candidate["entityId"]),
+      ...(typeof candidate["assertionTxId"] === "string"
+        ? { assertionTxId: TransactionId.make(candidate["assertionTxId"]) }
+        : {}),
+      ...(typeof candidate["retractionTxId"] === "string"
+        ? { retractionTxId: TransactionId.make(candidate["retractionTxId"]) }
+        : {}),
+    };
+  } catch {
+    return undefined;
+  }
+};
+
 export const transactionRecordFromTriples = (
-  txId: string,
+  txId: TransactionId,
   triples: readonly Triple[],
 ): TransactionRecord | null => {
   const at = (attribute: string) => triples.find((triple) => triple.attribute === attribute);
@@ -80,24 +122,8 @@ export const transactionRecordFromTriples = (
   const changes = triples
     .filter((triple) => triple.attribute === TxAttributes.CHANGE && triple.value.type === "json")
     .flatMap((triple) => {
-      const value = triple.value.value;
-      if (
-        typeof value !== "object" ||
-        value === null ||
-        !("op" in value) ||
-        !("tripleId" in value) ||
-        !("entityId" in value) ||
-        !("attribute" in value)
-      ) {
-        return [];
-      }
-      const candidate = value as unknown as TransactionChange;
-      return (candidate.op === "assert" || candidate.op === "retract") &&
-        typeof candidate.tripleId === "string" &&
-        typeof candidate.entityId === "string" &&
-        typeof candidate.attribute === "string"
-        ? [candidate]
-        : [];
+      const change = decodeChange(triple.value.value);
+      return change === undefined ? [] : [change];
     });
   return {
     txId,
@@ -123,11 +149,12 @@ export const transactionRecordFromTriples = (
 export const transactionRecordsFromTriples = (
   triples: readonly Triple[],
 ): readonly TransactionRecord[] => {
-  const grouped = new Map<string, Triple[]>();
+  const grouped = new Map<TransactionId, Triple[]>();
   for (const triple of triples) {
-    const group = grouped.get(triple.entityId) ?? [];
+    const txId = unsafe.transactionId(triple.entityId);
+    const group = grouped.get(txId) ?? [];
     group.push(triple);
-    grouped.set(triple.entityId, group);
+    grouped.set(txId, group);
   }
   return [...grouped.entries()]
     .flatMap(([txId, txTriples]) => {
