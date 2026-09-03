@@ -1,6 +1,10 @@
-# Database Package Suggestions & Roadmap
+# Triplex roadmap
 
 This document outlines strategic enhancements to make `@bjacobso/triplex` a world-class, open-source triple store and Datalog engine.
+
+For the implemented surface, backend maturity, and release status, start with
+[`current-state.md`](current-state.md). Items below are future work unless explicitly marked
+delivered.
 
 The operational foundation and its ordering constraints are specified in
 [`operational-primitives.md`](operational-primitives.md). Atomic KV transactions,
@@ -11,8 +15,21 @@ implemented, including durable temporal wakeups for future-effective and expirin
 wrapped Datalog API now has typed, scope-bound, commit-position-stable keyset cursors. Fixed
 attribute dependency sets now have indexed freshness positions and temporal schedules across KV,
 SQLite, and PostgreSQL. Graph constraints are content-addressed, produce durable queryable
-observations, and can be enforced atomically across their full valid-time intervals. Command receipts are atomically
-unique and durable consumer checkpoints are available through the `operational` subpath.
+observations, and can be enforced atomically across their full valid-time intervals. Command
+receipts are atomically unique and durable consumer checkpoints are available through the
+`operational` subpath.
+
+## Immediate release gate
+
+- Add a Changesets-driven GitHub release workflow and test a canary package in a clean external
+  consumer. Changesets, package metadata, peer dependencies, dist-only exports, and pack checks are
+  already present; registry publication is not.
+- Run the PostgreSQL multi-connection isolation and full shared conformance suite in CI. Until then,
+  PostgreSQL is a production candidate, not a supported default.
+- Keep Cloudflare and FoundationDB explicitly experimental or hold their packages from the first
+  release until they pass the same behavioral contract.
+- Complete the GitHub repository/remote cutover to `bjacobso/triplex` only after the release branch
+  and package tarballs are verified.
 
 ## Immediate correctness gate: backend parity
 
@@ -44,9 +61,11 @@ unique and durable consumer checkpoints are available through the `operational` 
   without guessing. Distinctness, grouping, counts, and page boundaries use that same flattened
   public identity across KV, SQLite, and PostgreSQL.
 - Recursive SQL rule definitions, applications, optional projection attributes, and depth bounds
-  are parameterized; validated rule names are quoted identifiers.
-- Keep PostgreSQL, FoundationDB, and Cloudflare experimental until each backend passes the shared
-  conformance and differential suites in CI.
+  are parameterized; validated rule names are quoted identifiers. The portable recursive shape is
+  binary and identity-only. Same-named definitions union, repeated variables unify, and unsupported
+  recursion fails during typed preflight.
+- Promote PostgreSQL from production candidate only after its suite runs in CI. Keep FoundationDB
+  and Cloudflare experimental until each passes the shared conformance and differential suites.
 
 ## 1. Schema-Aware Constraints & Enforcement
 
@@ -69,18 +88,23 @@ unique and durable consumer checkpoints are available through the `operational` 
 
 **Goal:** Power real-time, reactive user interfaces.
 
-- Implement triple-level dependency tracking for Datalog queries.
+- Delivered foundation: dependency extraction, `SubscriptionManager.checkAffected`, indexed
+  dependency positions, an ordered transaction feed, durable consumer checkpoints, and
+  best-effort wakeup transport.
 - Provide a `watchQuery` function that emits new results when relevant facts change.
 - Enable incremental result updates to minimize re-computation.
 - Build reliable invalidation on the ordered transaction feed; `ChangeEmitter` remains a
   best-effort wake-up mechanism.
 
-## 3. Application-Level Multi-tenancy
+## 3. Application-level tenancy and authorization
 
 **Goal:** Native, safe isolation for SaaS applications.
 
-- Define tenancy and authorization above the raw Triples service until there is a complete threat
-  model and a backend-portable query/write policy contract.
+- Delivered foundation: explicit database scope, branded `DatabaseId`, scope-bound cursors, and
+  PostgreSQL schema-per-database isolation. SQLite hosts use one file/layer per database and KV
+  callers use an explicitly named scope.
+- Keep authenticated account-to-database selection and authorization above raw `Triples` until
+  there is a complete threat model and a backend-portable query/write policy contract.
 - Do not add an ambient `tenantId` column that silently changes query semantics.
 
 ## Delivered foundation: Bitemporality (Valid Time)
@@ -125,7 +149,7 @@ unique and durable consumer checkpoints are available through the `operational` 
 - Provide a lightweight browser-side Hexastore for local querying.
 - Implement conflict resolution strategies for offline writes.
 
-## 7. Developer Experience (DX) & Tooling
+## 7. Developer experience and tooling
 
 **Goal:** Make the database "inspectable" and easy to use.
 

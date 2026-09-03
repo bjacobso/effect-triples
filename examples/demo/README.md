@@ -9,5 +9,5 @@ From the repository root:
 pnpm example:demo
 ```
 
-The same program can use a durable backend by replacing `KvTriples.layer` with one
-of the backend layers documented in the root README.
+The same program can use SQLite or a candidate/experimental backend by replacing
+`KvTriples.layer` with one of the layers documented in the root README's support matrix.

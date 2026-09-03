@@ -15,6 +15,10 @@ hosts typed configuration as a modular layer over the same core.
   before predicates so written clause order cannot change query meaning. A shared runtime preflight
   schema-decodes queries and enforces binding, projection, aggregation, wrapper, and supported
   binary-rule invariants before either engine runs; invalid input remains a typed Effect failure.
+  Binary rules operate only on string identities, and repeated variables in rule bodies and
+  applications are equality constraints rather than independent bindings. Same-named definitions
+  union into one relation; SQL evaluates that relation with recursive CTEs while KV iterates to a
+  deduplicated fixpoint.
   Aggregate duplicate, distinct-count, and empty-input behavior is also backend-independent. Raw
   ordered predicates are numeric-only and guard number/datetime storage types explicitly, avoiding
   SQLite text coercion and PostgreSQL cast failures. Identity bindings remain string-typed during
@@ -107,6 +111,11 @@ hosts typed configuration as a modular layer over the same core.
   scalar-family joins and typed keyset ordering compare values consistently with the KV executor.
   A shared KV/SQLite/PostgreSQL conformance corpus is the regression boundary for this contract.
 - Backend packages construct the storage adapters and runtime layers for their platforms.
+- Backend maturity is explicit rather than inferred from package existence. In-memory KV and
+  SQLite are the supported baseline. PostgreSQL passes the opt-in shared conformance and isolation
+  integration suite but remains a production candidate until that suite runs in CI. Cloudflare and
+  FoundationDB are experimental; shared core changes must keep them compiling, but their semantics
+  are not part of the default conformance claim.
 - `@bjacobso/triplex-testkit` is the public home for reusable backend conformance helpers.
 - `test/integration` owns tests that intentionally compose multiple publishable packages.
 - `test/stress` owns opt-in performance and scale tests.
@@ -118,3 +127,8 @@ usable in browsers and edge runtimes.
 The core package must not use `node:crypto` or another Node-only hashing API. Canonical encoding
 and SHA-256 live in `content`, so both entity snapshots and typed configuration retain identical
 content-addressing semantics in Node.js, browsers, and edge runtimes.
+
+Repository and release maturity are tracked separately in
+[`docs/current-state.md`](docs/current-state.md). Package manifests already describe the future
+`bjacobso/triplex` identity, but the npm publication and GitHub remote cutover are not architectural
+guarantees and have not happened yet.

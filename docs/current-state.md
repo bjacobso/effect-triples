@@ -1,0 +1,87 @@
+# Current state
+
+This document is the concise maturity contract for Triplex as of September 2026. The README
+explains how to use the system, the architecture document defines dependency boundaries, and the
+roadmap tracks work that is not complete.
+
+## Delivered
+
+- One `Triples` service for atomic writes, triple-pattern reads, batched entity reads, history,
+  raw Datalog, stable query pages, dependency state, and the ordered transaction journal.
+- First-class bitemporality. Facts have independent recorded and valid intervals, and direct reads
+  and Datalog use one shared temporal basis.
+- Atomically unique command receipts, causal metadata, typed assertion/retraction changes, commit
+  positions, compare-and-retract preconditions, and durable consumer checkpoints.
+- Backend-independent Datalog semantics for patterns, joins, predicates, negation, disjunction,
+  aggregates, ordering, pagination, and the intentionally constrained binary recursive-rule form.
+  Query preflight rejects unsupported or ambiguous programs before backend execution.
+- Immutable entity snapshots as a projection, distinct from immutable configuration release
+  snapshots.
+- A browser-safe canonical encoding and domain-separated SHA-256 `ContentId` foundation shared by
+  entity snapshots, config graphs, derivations, validation observations, and decisions.
+- Typed configuration nodes, catalogs, releases, refs, impact queries, reactors, evaluation proofs,
+  an immutable in-memory reference store, and a transactional Triples-backed `ConfigStore`.
+- An ontology DSL that separates global attribute identity/type from usage-local requiredness,
+  cardinality, uniqueness, and reference-target constraints.
+- Queryable validation observations plus opt-in atomic enforcement of required, cardinality,
+  uniqueness, and reference-target constraints.
+- Content-addressed Datalog derivations with explicit candidate identity, source provenance,
+  immutable materialization runs, freshness positions, temporal wakeups, pure reconciliation, and
+  read-only hypothetical overlays.
+- Standalone demos for basic linked facts and the application-owned compliance/work boundary.
+- One greenfield SQL v1 migration, host-owned migration entrypoints, Changesets configuration,
+  dist-only exports, package tarball checks, and Effect dependencies aligned through the root pnpm
+  catalog.
+
+## Backend maturity
+
+| Backend       | Bitemporal `Triples` | Shared conformance | Default CI | Intended use today             |
+| ------------- | -------------------- | ------------------ | ---------- | ------------------------------ |
+| In-memory KV  | Yes                  | Yes                | Yes        | Tests, browser, ephemeral data |
+| SQLite        | Yes                  | Yes                | Yes        | Supported local persistence    |
+| PostgreSQL    | Yes                  | Yes, opt-in        | No         | Production candidate           |
+| Cloudflare DO | Partial product API  | No                 | Build/unit | Experimental                   |
+| FoundationDB  | Yes                  | Native opt-in      | No         | Experimental                   |
+
+PostgreSQL includes validated logical database IDs, deterministic safely quoted schema names, and
+per-pool-connection schema binding. It should not be called production-supported until the
+multi-connection isolation and shared conformance suite run in CI against a maintained PostgreSQL
+service.
+
+Cloudflare has the current temporal SQL columns and adapter contract but does not expose the same
+one-line `Triples` composition or pass the shared backend corpus. FoundationDB requires a non-empty
+subspace by default and scopes clears to it, but still depends on native infrastructure outside the
+normal test matrix.
+
+## Honest limitations
+
+- Packages have not been published to npm. The repository metadata targets `bjacobso/triplex`, but
+  the remote repository cutover is still pending.
+- `SubscriptionManager` discovers dependencies and reports possible invalidations. It does not
+  push result deltas or automatically re-run queries.
+- Entity snapshots, validation results, and derivation materializations are projections. Callers
+  must inspect their source position and freshness; projection failure cannot roll back an already
+  committed source transaction.
+- Exact derivation provenance currently supports patterns, predicates, and negation. Recursive
+  rules, disjunction, aggregation, pagination, dynamic attributes, and transaction-binding clauses
+  are rejected where a complete explanation cannot be preserved.
+- Config decision verification proves internal content integrity given a trusted decision root. It
+  does not independently prove that an external actor chose the right rule or answer.
+- Constraint enforcement is opt-in and serialized through the commit-position boundary. Direct
+  adapter writes, authorization, general Datalog invariants, inbox/outbox delivery, timers, retries,
+  and application workflow lifecycle are host responsibilities.
+- The schema is intentionally greenfield. Databases created by pre-baseline development builds
+  must be recreated or migrated by application-owned tooling.
+
+## First-release gates
+
+1. Run PostgreSQL isolation and the shared conformance corpus in CI.
+2. Add a GitHub/Changesets release workflow and verify a canary install in an external consumer.
+3. Decide whether Cloudflare and FoundationDB are included as explicitly experimental packages in
+   the first release or held back until they pass the same corpus.
+4. Perform the GitHub remote/repository cutover to `bjacobso/triplex`.
+5. Publish the scoped packages together and verify their peer dependency and exports behavior from
+   the registry.
+
+No npm deprecations are required today because none of the new `@bjacobso/triplex*` package names
+has been published.

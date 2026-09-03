@@ -12,6 +12,9 @@ and Effect services.
 npm install effect @bjacobso/triplex
 ```
 
+This is the intended command for the first release. The package is not yet published to npm; use
+the monorepo workspace or a reviewed package tarball during development.
+
 ## In-memory store
 
 ```ts
@@ -112,5 +115,8 @@ domain-separated SHA-256 `ContentId` values. IDs use the format
 The pre-1.0 entity-snapshot hash changed from `fnv1a:<8 hex characters>`. The unpublished
 SQL schema now has one canonical baseline; databases from earlier development builds must
 be recreated or have their derived snapshots rebuilt from temporal triples.
+
+See the repository [current-state document](../../docs/current-state.md) for backend maturity,
+known limitations, and first-release gates.
 
 MIT © 2026 Ben Jacobson.

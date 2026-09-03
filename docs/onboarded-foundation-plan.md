@@ -1,6 +1,6 @@
-# Onboarded foundation implementation plan
+# Onboarded foundation completion record
 
-This plan tracks the work required for Triplex to replace Onboarded's vendored
+This record tracks the work completed to prepare Triplex to replace Onboarded's vendored
 fact store without weakening isolation, temporal, pagination, or audit
 semantics. Onboarded remains a read-only reference; all implementation lives in
 Triplex and stays application-independent.
@@ -32,7 +32,7 @@ Triplex and stays application-independent.
 - [x] Persist complete typed fact data in assertion and retraction changes.
 - [x] Preserve actor, command, correlation, causation, config snapshot, commit
       position, and transaction instant.
-- [x] Add parameterized/indexed command-ID lookup without claiming uniqueness.
+- [x] Add parameterized/indexed command-ID lookup with an atomic uniqueness claim per database.
 - [x] Test a historical correction as a complete who/what/when/why timeline.
 
 ### 3. Database-per-organization isolation
@@ -81,7 +81,7 @@ Triplex and stays application-independent.
       and journal consumption.
 - [x] Update architecture and roadmap documents.
 
-## Release gates
+## Local implementation gates
 
 - [x] `pnpm check`
 - [x] `pnpm pack:check`
@@ -91,5 +91,14 @@ Triplex and stays application-independent.
 - [x] Package consumer installation checks
 - [x] Generated SQL reviewed for parameterization and database isolation
 
-Implementation is committed by slice. Nothing is pushed until all completed
-slices and the release gates relevant to them are green.
+The original implementation slices and local gates were completed and committed. Since that
+baseline, Triplex has also added atomically unique command receipts, durable consumer checkpoints,
+content-addressed graph constraints with opt-in atomic enforcement, portable derivations,
+freshness-aware materialization runs, temporal wakeups, hypothetical overlays, and a substantially
+stronger cross-backend Datalog contract.
+
+This does not mean the application cutover is complete. Packages remain unpublished, PostgreSQL
+integration is not yet a required CI job, and an Onboarded database copy still needs a rehearsed
+migration plus shadow comparisons. Current release and backend maturity is maintained in
+[`current-state.md`](current-state.md); application integration guidance lives in
+[`onboarded-foundation.md`](onboarded-foundation.md).

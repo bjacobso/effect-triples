@@ -23,6 +23,16 @@ pnpm test:postgres:integration
 pnpm test:foundationdb:integration
 ```
 
+Changes to the temporal model, Datalog compiler/executors, SQL schema, transaction boundary,
+pagination, database isolation, derivations, or graph constraints should run
+`pnpm test:postgres:integration` before review. Changes to FoundationDB-specific code should also
+run its integration suite when the native client is available.
+
 All packages are ESM-only. Public exports must point to generated files under `dist`, and every
 package change must continue to pass `pnpm pack:check` so source files, tests, caches, and local
 dependencies never leak into npm tarballs.
+
+Add a Changeset for a publishable package change. Packages are not yet published, so the first
+release must also validate a canary tarball in a clean external consumer and enable the PostgreSQL
+integration gate in CI. Current maturity and release gates live in
+[`docs/current-state.md`](docs/current-state.md).

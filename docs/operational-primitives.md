@@ -25,8 +25,10 @@ all of its writes roll back.
 
 This intentionally small primitive covers moving pointers and state machines without pretending
 that a read followed by an arbitrary write is compare-and-set. Config refs and entity-validation
-heads use it. An atomic "assert when no value exists" requires a separate uniqueness/index
-contract and is not part of this version.
+heads use it. There is no generic public "assert when no value exists" precondition. The narrower
+graph-constraint enforcement path does atomically protect declared required, cardinality,
+uniqueness, and reference-target invariants by evaluating them inside the serialized commit
+boundary.
 
 ### Causal transaction envelopes
 
@@ -56,8 +58,8 @@ envelopes in that order and exposes the last position as the next durable resume
 transactions publish neither facts nor a position. This avoids treating timestamps or
 client-generated ULIDs as commit order under concurrency.
 
-The feed covers every successful application fact write. Delivery built on repeated page reads is at least
-once, so consumers retain a checkpoint and deduplicate by command or transaction identity.
+The feed covers every successful application fact write. Delivery built on repeated page reads is
+at least once, so consumers retain a checkpoint and deduplicate by command or transaction identity.
 `ChangeEmitter` remains a best-effort wake-up mechanism and never replaces catch-up reads.
 
 ### Consumer checkpoints
@@ -148,7 +150,7 @@ The initial provenance contract supports patterns, predicates, and negation. Rec
 disjunction, aggregation, and pagination are rejected until their exact provenance semantics are
 implemented.
 
-## Next primitives
+## Delivered extensions and next primitives
 
 ### Deferred: scoped optimistic concurrency
 
@@ -221,6 +223,18 @@ as S3 or R2 stay outside core. Garbage collection follows reachability and reten
 Connect release diffs to affected-entity queries, typed transformations, checkpointed batches,
 validation observations, and completion facts. Triplex owns provenance and resumability; domain
 transformations remain application code.
+
+## Runtime and backend boundary
+
+These guarantees are in the shared `Triples` contract and are exercised by in-memory KV and
+SQLite in the default suite. PostgreSQL passes the same conformance and multi-database isolation
+tests through an opt-in integration suite, but remains a production candidate until those tests run
+in CI. Cloudflare and FoundationDB are experimental and are not covered by every guarantee above.
+
+Subscriptions remain conservative invalidation hints rather than an automatic live-query runtime.
+Entity snapshots, validation observations, and derivation runs remain checkpointed projections;
+their freshness/source positions are part of their correctness contract. See
+[`current-state.md`](current-state.md) for the complete maturity matrix.
 
 ## Boundary
 

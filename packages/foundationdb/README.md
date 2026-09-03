@@ -20,4 +20,9 @@ const backend = makeFdbKvBackend({
 An isolated disposable cluster can opt into root access with
 `allowUnsafeRootSubspace: true`.
 
+The package exposes `FdbTriples.layer(config)` and FoundationDB watch helpers. Native integration
+tests are opt-in and the backend is not in the default shared conformance matrix.
+
+Status: experimental and not yet published to npm.
+
 MIT © 2026 Ben Jacobson.

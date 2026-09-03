@@ -10,21 +10,30 @@
 An Effect-native fact database with Datalog and typed, content-addressed configuration.
 
 Triplex combines temporal triples, pluggable storage, Datalog queries,
-reactive subscriptions, entity materializations, and immutable configuration releases.
+dependency-aware invalidation, entity materializations, and immutable configuration releases.
 
 > Pre-1.0 software: APIs may change between minor releases.
 
-Everything is modeled as `(entity, attribute, value)` facts. Writes are append-only,
-so history is retained and any past state is queryable. The fact store answers raw
-Datalog queries, and the storage layer is a swappable Effect `Layer`:
-an in-memory hexastore for tests and the browser, or SQLite, PostgreSQL, Cloudflare
-Durable Objects, and FoundationDB for durable deployments.
+> Repository status (September 2026): the packages are not yet published to npm and the GitHub
+> remote cutover to `bjacobso/triplex` is still pending. KV and SQLite are the supported local
+> baseline. PostgreSQL passes the opt-in integration/conformance suite but is not yet exercised in
+> CI; Cloudflare and FoundationDB remain experimental. See
+> [Current state](docs/current-state.md) for the precise support matrix and release gates.
+
+Everything is modeled as `(entity, attribute, value)` facts. Assertions are retained and
+retractions close recorded visibility without deleting history, so past states remain queryable.
+The fact store answers raw Datalog queries, and the storage layer is a swappable Effect `Layer`:
+an in-memory hexastore for tests and the browser, SQLite for local durability, or one of the
+backend packages for PostgreSQL, Cloudflare Durable Objects, and FoundationDB.
 
 ## Installation
 
 ```sh
 pnpm add @bjacobso/triplex effect
 ```
+
+That is the intended install command after the first npm release. Until then, use this monorepo's
+pnpm workspace packages or install a reviewed package tarball produced by `pnpm pack:check`.
 
 `@bjacobso/triplex` is ESM-only and targets Node.js 22+ (its core also runs in modern
 browsers and edge runtimes). It is developed and tested against
@@ -403,6 +412,8 @@ interface TripleInput {
   value: TripleValue;
   entityType?: string; // optional class tag, e.g. "Person"
   createdBy?: string;
+  validFrom?: number; // defaults to the transaction instant
+  validTo?: number; // defaults to an open-ended valid interval
 }
 ```
 
@@ -476,8 +487,8 @@ Effect.gen(function* () {
 ```
 
 A query pattern is `{ entityId?, attribute?, entityType?, value? }`; omitted fields
-match anything. Writes never mutate in place — `retract` and `retractByPattern` stamp a
-fact as retracted rather than deleting it, which is what makes the store temporal.
+match anything. `retract` and `retractByPattern` stamp facts as retracted rather than deleting
+their assertion records, which preserves the recorded timeline.
 
 ## Temporal facts and time travel
 
@@ -809,7 +820,9 @@ returns the SQL and params without executing.
 
 `SnapshotService` materializes the current or historical state of one triple entity as
 an `EntitySnapshot`: a canonicalized, content-hashed record useful for change detection,
-sync, and audit:
+sync, and audit. It is an optional projection service, not part of every one-line `Triples` layer;
+the SQL `DatabaseManager` composes it with snapshot materialization and exposes it per logical
+database:
 
 ```ts
 import { SnapshotService } from "@bjacobso/triplex";
@@ -823,11 +836,11 @@ Effect.gen(function* () {
 });
 ```
 
-`SubscriptionManager` powers reactive/live queries. Register a Datalog query under an
-id; as facts change, `checkAffected` reports which subscriptions are invalidated. There
-is no `store.subscribe(...)` method — this dependency-tracking model, together with
-`TopicFilteredSyncHub` for websocket-style push, is the building block for live queries
-and client sync.
+`SubscriptionManager` is dependency discovery and invalidation infrastructure, not a live-query
+runtime. Register a Datalog query under an id; when the host supplies a write change set,
+`checkAffected` reports which registrations may be stale. There is no `store.subscribe(...)` or
+automatic query re-execution method. `TopicFilteredSyncHub` can transport best-effort wakeups, but
+durable consumers must catch up from the ordered transaction journal.
 
 An `EntitySnapshot` is not a configuration release. `ConfigSnapshot`, exported from
 `@bjacobso/triplex/config`, is an immutable root for a complete typed configuration
@@ -853,21 +866,20 @@ Effect.gen(function* () {
 
 ## Storage backends
 
-The core package runs entirely in memory. Durable backends are separate packages that
-provide the same `Triples` service over a real store, each with a one-line convenience
-layer.
+The core package runs entirely in memory. Durable backends are separate packages. “Supported”
+below describes the current repository test boundary, not merely whether a package compiles.
 
-| Package                          | Convenience layer                        | Runtime                                        |
-| -------------------------------- | ---------------------------------------- | ---------------------------------------------- |
-| `@bjacobso/triplex`              | `KvTriples.layer` (in-memory)            | Node.js 22+, browsers, edge runtimes           |
-| `@bjacobso/triplex-sql`          | shared SQL query executor                | SQL-capable runtimes                           |
-| `@bjacobso/triplex-sqlite`       | `SqliteTriples.layer({ filename })`      | Node.js 22+                                    |
-| `@bjacobso/triplex-postgres`     | `PgTriples.layer(config)`                | Node.js 22+                                    |
-| `@bjacobso/triplex-cloudflare`   | Cloudflare Durable Object SQLite adapter | Cloudflare Workers                             |
-| `@bjacobso/triplex-foundationdb` | `FdbTriples.layer(config)`               | Node.js 22+ with FoundationDB client libraries |
-| `@bjacobso/triplex-testkit`      | `makeTriplesConformanceSuite` + fixtures | Node.js 22+                                    |
+| Package                          | Surface                              | Current status                                                |
+| -------------------------------- | ------------------------------------ | ------------------------------------------------------------- |
+| `@bjacobso/triplex`              | `KvTriples.layer` (in-memory)        | Supported; core and shared conformance run in normal CI       |
+| `@bjacobso/triplex-sql`          | SQL migrations and query executor    | Shared infrastructure, not a standalone database              |
+| `@bjacobso/triplex-sqlite`       | `SqliteTriples.layer({ filename })`  | Supported; shared conformance runs in normal CI               |
+| `@bjacobso/triplex-postgres`     | `PgTriples.layer(config)`            | Candidate; shared integration/conformance is currently opt-in |
+| `@bjacobso/triplex-cloudflare`   | Durable Object SQLite adapter        | Experimental; no full shared conformance run                  |
+| `@bjacobso/triplex-foundationdb` | `FdbTriples.layer(config)`           | Experimental; native integration is opt-in                    |
+| `@bjacobso/triplex-testkit`      | shared behavioral conformance corpus | Test support package                                          |
 
-A durable stack is a single convenience layer. For SQLite:
+The supported durable path is a single SQLite convenience layer:
 
 ```ts
 import { SqliteTriples } from "@bjacobso/triplex-sqlite";
@@ -927,8 +939,15 @@ pnpm pack:check
 ```
 
 The regular test suite is self-contained. PostgreSQL and FoundationDB integration tests
-are opt-in because they require Docker or native client libraries. See
-[CONTRIBUTING.md](./CONTRIBUTING.md), and [ARCHITECTURE.md](./ARCHITECTURE.md) for the
+are opt-in because they require Docker or native client libraries:
+
+```bash
+pnpm test:postgres:integration
+pnpm test:foundationdb:integration
+```
+
+See
+[CONTRIBUTING.md](./CONTRIBUTING.md) and [ARCHITECTURE.md](./ARCHITECTURE.md) for the
 package dependency graph.
 
 ## Roadmap

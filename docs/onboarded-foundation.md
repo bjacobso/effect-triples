@@ -10,6 +10,11 @@ It publishes generic configuration, writes facts pinned to that release, evaluat
 derivation with provenance, reconciles candidates into durable host-owned work, previews a
 hypothetical submission, and reopens work at an evidence-expiry boundary.
 
+Adoption status: the required database primitives exist, but the packages are not yet on npm and
+PostgreSQL conformance is still an opt-in local integration rather than a required CI job. Treat
+[`current-state.md`](current-state.md) as the release-readiness gate before replacing the vendored
+implementation.
+
 ## Guarantees available now
 
 - One atomic `Triples.transact` boundary for assertions, retractions, optimistic `TripleLive`
@@ -62,9 +67,9 @@ derive authorization from a caller-provided schema name. At request entry:
 4. provide only its scoped `Triples` service to the request program; and
 5. keep authorization checks in the Onboarded command/query layer.
 
-`DatabaseManager` is the PostgreSQL production boundary. It creates a collision-resistant schema,
-configures every pool connection for exactly that schema, and gives pagination cursors the logical
-database scope. Never share the registry/system `SqlClient` as an organization fact client.
+`DatabaseManager` is the intended PostgreSQL production boundary. It creates a collision-resistant
+schema, configures every pool connection for exactly that schema, and gives pagination cursors the
+logical database scope. Never share the registry/system `SqlClient` as an organization fact client.
 
 SQLite should use one file per organization:
 
@@ -206,3 +211,5 @@ its product-specific response cache and authorization checks.
 - FoundationDB and Cloudflare remain experimental and are not Onboarded production targets.
 - A production migration must be rehearsed against an Onboarded database copy and shadow-compared
   before removing the vendored implementation.
+- The package swap must wait for a published canary consumer check and PostgreSQL conformance in CI;
+  neither is complete today.

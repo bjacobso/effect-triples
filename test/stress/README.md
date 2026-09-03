@@ -356,4 +356,9 @@ When adding new stress tests:
 2. Use realistic data from `src/data-generator.ts` or create new generators
 3. Add backend-specific thresholds in `src/backend.ts`
 4. Update performance tables in this README
-5. Test against all backends before submitting
+5. Test the changed path against every available backend it supports; KV/SQLite are the baseline,
+   while PostgreSQL and FoundationDB require their opt-in infrastructure
+
+Stress results are performance diagnostics, not backend conformance. Consult
+[`docs/current-state.md`](../../docs/current-state.md) before inferring support status from a
+successful benchmark.
