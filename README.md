@@ -343,6 +343,46 @@ hypothetical facts without mutating the source store or journal.
 - [Compliance host demo](examples/compliance-host) — config, facts, feed catch-up, reconciliation,
   hypothetical planning, and expiry-driven reopening in one standalone scenario
 
+## Explorer dashboard
+
+Run the standalone Foldkit dashboard to inspect a real browser-local Triplex database:
+
+```sh
+pnpm dashboard
+```
+
+Open <http://localhost:4173>. The standalone layer publishes a typed classroom configuration,
+records students, teachers, a course, a quiz form, submissions, and a materialized grading
+candidate. The dashboard itself is domain-independent: it discovers entity types, attributes,
+references, configured derivations, journal entries, and configuration objects from the supplied
+Triplex services. The entity browser lists discovered types and opens each as a reflected,
+cursor-paginated table pinned to one temporal basis. The form preview renders nodes that explicitly
+opt into the portable `triplex.form/v1` contract. The configuration inspector exposes every logical
+object and immutable revision, canonical stored bodies, dependency closures, release ancestry, and
+moving refs. Swap the demo layer for a host database without changing the inspector.
+
+The package lives at [`packages/dashboard`](packages/dashboard). It uses one app-lifetime Effect
+layer as a Foldkit resource; named commands resolve `Triples` and `ConfigStore` from that layer,
+while `@foldkit/ui` supplies accessible controls and Tailwind supplies styling.
+
+## Agent CLI
+
+`@bjacobso/triplex-cli` exposes the same database and configuration services through Effect v4's
+typed CLI modules. It is JSON-first, non-interactive, schema-validates external input, and supports
+SQLite, PostgreSQL, and database-scoped PostgreSQL:
+
+```sh
+pnpm --silent triplex --sqlite ./app.db describe
+pnpm --silent triplex --sqlite ./app.db entity types
+pnpm --silent triplex --sqlite ./app.db --pretty config object form quiz/bitemporal-facts
+pnpm --silent triplex --sqlite ./app.db query run --input query.json
+```
+
+Agents can inspect entity types and bitemporal facts, page entity audit history, run or explain raw
+Datalog, inspect config objects/revisions/releases/refs and deploy impact, apply attributed atomic
+transactions, move refs, and resolve command receipts. Write commands require an actor and unique
+command ID. See the [CLI contract and examples](packages/cli/README.md).
+
 ## Temporal operations and audit
 
 Every successful application transaction receives a monotonically increasing commit position and
@@ -499,8 +539,8 @@ for Triplex adapter packages. Public exports resolve only to built `dist` files.
 | [Onboarded foundation](docs/onboarded-foundation.md)     | Host integration and data-migration guidance        |
 | [Source provenance](docs/provenance.md)                  | Imported repository history                         |
 
-The configuration explorer remains a standalone browser workspace under
-[`examples/config-explorer`](examples/config-explorer).
+The focused configuration explorer remains under [`examples/config-explorer`](examples/config-explorer),
+and the full database dashboard lives under [`packages/dashboard`](packages/dashboard).
 
 ## Development
 

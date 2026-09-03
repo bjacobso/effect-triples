@@ -1,0 +1,66 @@
+{
+  "name": "@bjacobso/triplex-cli",
+  "version": "0.1.0",
+  "description": "Agent-friendly Effect CLI for exploring and operating Triplex databases.",
+  "keywords": [
+    "agent",
+    "cli",
+    "database",
+    "datalog",
+    "effect",
+    "triplex"
+  ],
+  "homepage": "https://github.com/bjacobso/triplex#readme",
+  "bugs": {
+    "url": "https://github.com/bjacobso/triplex/issues"
+  },
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/bjacobso/triplex.git",
+    "directory": "packages/cli"
+  },
+  "bin": {
+    "triplex": "./dist/cli.js"
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "type": "module",
+  "sideEffects": false,
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsdown && tsc --declaration --emitDeclarationOnly --rootDir src --outDir dist",
+    "clean": "rm -rf dist",
+    "dev": "node --disable-warning=ExperimentalWarning --import tsx src/cli.ts",
+    "test": "vitest --run",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@bjacobso/triplex": "workspace:^",
+    "@bjacobso/triplex-postgres": "workspace:^",
+    "@bjacobso/triplex-sqlite": "workspace:^",
+    "@effect/platform-node": "catalog:"
+  },
+  "devDependencies": {
+    "@types/node": "catalog:",
+    "effect": "catalog:",
+    "tsx": "catalog:",
+    "vitest": "catalog:"
+  },
+  "peerDependencies": {
+    "effect": "catalog:"
+  },
+  "engines": {
+    "node": ">=22"
+  }
+}

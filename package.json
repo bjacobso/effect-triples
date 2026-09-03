@@ -11,6 +11,8 @@
     "check": "pnpm format:check && pnpm lint && pnpm typecheck && pnpm docs:check && pnpm test && pnpm build",
     "dev": "turbo watch build",
     "docs:check": "node scripts/check-markdown-code.mjs",
+    "dashboard": "pnpm --filter @bjacobso/triplex-dashboard dev",
+    "triplex": "pnpm --filter @bjacobso/triplex-cli dev",
     "example:compliance-host": "pnpm --filter triplex-compliance-host start",
     "example:demo": "pnpm --filter triplex-demo start",
     "format": "oxfmt --write .",

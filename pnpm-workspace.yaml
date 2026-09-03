@@ -16,8 +16,12 @@ catalog:
   "@effect/sql-pg": 4.0.0-rc.112
   "@effect/sql-sqlite-node": 4.0.0-rc.112
   "@effect/vitest": 4.0.0-rc.112
+  "@foldkit/ui": 0.157.0
+  "@foldkit/vite-plugin": 0.20.1
+  "@tailwindcss/vite": 4.3.3
   "@types/node": 25.9.1
   effect: 4.0.0-rc.112
+  foldkit: 0.157.0
   foundationdb: 2.0.1
   oxfmt: 0.44.0
   oxlint: 1.59.0
@@ -27,4 +31,6 @@ catalog:
   turbo: 2.8.20
   typescript: 6.0.2
   ulidx: 2.4.1
+  vite: 8.2.2
   vitest: 4.1.11
+  tailwindcss: 4.3.3

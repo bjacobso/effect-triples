@@ -1,0 +1,29 @@
+{
+  "name": "@bjacobso/triplex-dashboard",
+  "version": "0.1.0",
+  "private": true,
+  "description": "A standalone Foldkit explorer for Triplex databases.",
+  "type": "module",
+  "scripts": {
+    "build": "vite build",
+    "clean": "rm -rf dist",
+    "dev": "vite --host 0.0.0.0 --port 4173",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@bjacobso/triplex": "workspace:^",
+    "@foldkit/ui": "catalog:",
+    "effect": "catalog:",
+    "foldkit": "catalog:"
+  },
+  "devDependencies": {
+    "@foldkit/vite-plugin": "catalog:",
+    "@tailwindcss/vite": "catalog:",
+    "@types/node": "catalog:",
+    "tailwindcss": "catalog:",
+    "typescript": "catalog:",
+    "vite": "catalog:",
+    "vitest": "catalog:"
+  }
+}

@@ -29,7 +29,13 @@ roadmap tracks work that is not complete.
 - Content-addressed Datalog derivations with explicit candidate identity, source provenance,
   immutable materialization runs, freshness positions, temporal wakeups, pure reconciliation, and
   read-only hypothetical overlays.
-- Standalone demos for basic linked facts and the application-owned compliance/work boundary.
+- Standalone demos for basic linked facts and the application-owned compliance/work boundary, plus
+  a Foldkit/Tailwind browser dashboard that exercises facts, reflected entity-type tables,
+  config-rendered form previews, raw Datalog, derivations, the journal, and full configuration
+  object/revision/release history through one app-lifetime Effect layer.
+- An Effect v4 agent CLI with schema-decoded commands and stable JSON output for SQLite and
+  PostgreSQL. It explores entities, bitemporal facts, Datalog, causal history, configuration
+  revisions/releases/refs/impact, applies attributed idempotent transactions, and moves refs.
 - One greenfield SQL v1 migration, host-owned migration entrypoints, Changesets configuration,
   dist-only exports, package tarball checks, and Effect dependencies aligned through the root pnpm
   catalog.

@@ -111,6 +111,9 @@ hosts typed configuration as a modular layer over the same core.
   scalar-family joins and typed keyset ordering compare values consistently with the KV executor.
   A shared KV/SQLite/PostgreSQL conformance corpus is the regression boundary for this contract.
 - Backend packages construct the storage adapters and runtime layers for their platforms.
+- `@bjacobso/triplex-cli` is an application package over the public core, config, SQLite, and
+  PostgreSQL surfaces. It uses Effect v4's CLI modules for typed parsing and service composition;
+  it does not expose or depend on backend adapters or `@bjacobso/triplex/internal`.
 - The PostgreSQL package also owns SQL-aware host composition. Its ambient-client layer builds
   `Triples` from the caller's exact `SqlClient`, preserving Effect SQL's fiber-local transaction
   and savepoint boundary without exposing `StorageAdapter`. Its database-scoped layer returns both
