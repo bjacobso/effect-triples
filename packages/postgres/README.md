@@ -14,10 +14,58 @@ import { PgTriples } from "@bjacobso/triplex-postgres";
 const TriplesLive = PgTriples.layerFromUrl(process.env.DATABASE_URL!);
 ```
 
-For database-per-organization hosts, compose `DatabaseManagerLive` with the PostgreSQL
-`StorageBackend`. Logical `DatabaseId` values map to deterministic, safely quoted schemas, and
-every connection in a physical pool is bound to that schema. Unmigrated client/adapter layers are
-available when the host owns DDL.
+That standalone convenience owns a pool and applies Triplex migrations. A production host that
+already owns an Effect SQL pool can give Triplex the same ambient client without importing the
+internal adapter SPI:
+
+```ts
+import { Effect, Layer } from "effect";
+import { SqlClient } from "effect/unstable/sql";
+import { Triples } from "@bjacobso/triplex";
+import { PgTriples, makePostgresqlLayerUnmigratedFromUrl } from "@bjacobso/triplex-postgres";
+
+const HostSql = makePostgresqlLayerUnmigratedFromUrl(process.env.DATABASE_URL!);
+const DatabaseLive = PgTriples.layerFromSqlClient({ scope: "host/main" }).pipe(
+  Layer.provideMerge(HostSql),
+);
+
+const command = Effect.gen(function* () {
+  const sql = yield* SqlClient.SqlClient;
+  const triples = yield* Triples;
+  yield* sql.withTransaction(
+    Effect.gen(function* () {
+      yield* sql`INSERT INTO host_records (id) VALUES ('record:1')`;
+      yield* triples.transact(operations, metadata);
+      yield* sql`INSERT INTO host_outbox (id) VALUES ('delivery:1')`;
+    }),
+  );
+}).pipe(Effect.provide(DatabaseLive));
+```
+
+`layerFromSqlClient` creates no hidden pool and performs no DDL. The host SQL, Triplex facts,
+journal, command claim, and commit position use the same fiber-local transaction connection.
+Failures roll the whole unit back and nested transactions retain Effect SQL savepoint semantics.
+`layerFromSqlClientMigrated` is an explicitly named setup convenience.
+
+For a server-owned database mapping, use a validated `DatabaseId`:
+
+```ts
+import { DatabaseId } from "@bjacobso/triplex";
+import { PgTriples } from "@bjacobso/triplex-postgres";
+
+const DatabaseLive = PgTriples.layerForDatabase(postgresConfig, DatabaseId.make("customer-a"));
+```
+
+Logical IDs map to collision-resistant schema names, every physical connection is bound at
+startup to exactly that schema, and the logical scope is included in query-page cursors. The host
+must resolve `DatabaseId` from authenticated server-owned state, not raw request input.
+`layerForDatabase` expects a provisioned schema and runs no migration;
+`layerForDatabaseMigrated` explicitly creates and migrates it for setup tools and tests. The
+generic core `DatabaseManager` remains available for Triples-only dynamic databases, while this
+package-level API is the boundary for hosts that also need the scoped `SqlClient`.
+
+Ordered migration definitions and `runMigrations` are exported by `@bjacobso/triplex-sql` for
+host deployment tooling. Triplex uses its own `triplex_schema_migrations` table.
 
 PostgreSQL passes the opt-in shared conformance and multi-connection isolation integration suite,
 but that suite is not yet a required CI job. Treat this package as a production candidate rather

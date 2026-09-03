@@ -12,18 +12,35 @@
  */
 
 import { describe, it, expect } from "vitest";
-import { Effect, Layer, Redacted } from "effect";
-import { DatabaseManager, Triples, unsafe, string, number, ref } from "@bjacobso/triplex";
+import { Context, Effect, Layer, Redacted } from "effect";
+import { SqlClient } from "effect/unstable/sql";
+import {
+  DatabaseId,
+  DatabaseManager,
+  EntityId,
+  Triples,
+  unsafe,
+  string,
+  number,
+  ref,
+} from "@bjacobso/triplex";
 import { compile } from "@bjacobso/triplex/datalog";
-import { ConfigNode, ConfigStore } from "@bjacobso/triplex/config";
+import { ConfigNode, ConfigStore, GraphConstraint } from "@bjacobso/triplex/config";
 import {
   DatabaseRegistry,
   IdGeneratorLive,
   RuntimeClockLive,
   TripleStoreRuntimeLayer,
 } from "@bjacobso/triplex/internal";
-import { DatabaseManagerLive, DatabaseRegistryLive } from "@bjacobso/triplex-sql";
-import { makePostgresqlBackend, PostgresqlDialect } from "@bjacobso/triplex-postgres";
+import { DatabaseManagerLive, DatabaseRegistryLive, runMigrations } from "@bjacobso/triplex-sql";
+import {
+  databaseToSchema,
+  makePostgresqlBackend,
+  makePostgresqlLayerUnmigratedFromUrl,
+  PgTriples,
+  PostgresqlDialect,
+  type PostgresqlConfig,
+} from "@bjacobso/triplex-postgres";
 import { makeTriplesConformanceSuite } from "@bjacobso/triplex-testkit";
 import {
   PgConnectionInfo,
@@ -35,6 +52,44 @@ import {
 // Skip all container-based tests if Docker is not available
 const DOCKER_AVAILABLE = checkDockerAvailable();
 
+const configFromUrl = (url: string): PostgresqlConfig => {
+  const parsed = new URL(url);
+  return {
+    host: parsed.hostname,
+    port: Number(parsed.port),
+    database: parsed.pathname.slice(1),
+    username: decodeURIComponent(parsed.username),
+    password: Redacted.make(decodeURIComponent(parsed.password)),
+    pool: { min: 2, max: 4 },
+  };
+};
+
+const runWithHostSql = <A, E>(effect: Effect.Effect<A, E, Triples | SqlClient.SqlClient>) =>
+  Effect.runPromise(
+    Effect.scoped(
+      Effect.gen(function* () {
+        const { url } = yield* PgConnectionInfo;
+        const hostSql = makePostgresqlLayerUnmigratedFromUrl(url);
+        const triplex = PgTriples.layerFromSqlClient({ scope: "host:public" }).pipe(
+          Layer.provideMerge(hostSql),
+        );
+        return yield* Effect.gen(function* () {
+          // Production hosts run this from deployment tooling; the runtime
+          // layer below deliberately performs no DDL.
+          yield* runMigrations;
+          return yield* effect;
+        }).pipe(Effect.provide(triplex));
+      }).pipe(Effect.provide(PgContainerLayer)),
+    ),
+  );
+
+const prepareHostTables = Effect.gen(function* () {
+  const sql = yield* SqlClient.SqlClient;
+  yield* sql`CREATE TABLE IF NOT EXISTS host_records (id TEXT PRIMARY KEY, body TEXT NOT NULL)`;
+  yield* sql`CREATE TABLE IF NOT EXISTS host_outbox (id TEXT PRIMARY KEY, body TEXT NOT NULL)`;
+  yield* sql`TRUNCATE host_records, host_outbox`;
+});
+
 describe("PostgreSQL Integration", () => {
   // Helper to run effects with PostgreSQL via testcontainers
   const runWithPostgres = <A, E>(effect: Effect.Effect<A, E, Triples>) =>
@@ -45,6 +100,333 @@ describe("PostgreSQL Integration", () => {
     { timeout: 120_000 },
     async () => {
       await runWithPostgres(makeTriplesConformanceSuite());
+    },
+  );
+
+  describe("host-owned SqlClient composition", () => {
+    it.skipIf(!DOCKER_AVAILABLE)(
+      "commits host rows, Triplex facts, journal, and outbox together",
+      { timeout: 120_000 },
+      async () => {
+        const result = await runWithHostSql(
+          Effect.gen(function* () {
+            yield* prepareHostTables;
+            const sql = yield* SqlClient.SqlClient;
+            const triples = yield* Triples;
+            const entityId = EntityId.make("host:atomic:success");
+            const committed = yield* sql.withTransaction(
+              Effect.gen(function* () {
+                yield* sql`INSERT INTO host_records (id, body) VALUES ('success', 'host')`;
+                const transaction = yield* triples.transact(
+                  [
+                    {
+                      op: "assert",
+                      entityId,
+                      entityType: "HostRecord",
+                      attribute: ":host/state",
+                      value: string("committed"),
+                    },
+                  ],
+                  { actor: "host:test", commandId: "host:atomic:success" },
+                );
+                yield* sql`INSERT INTO host_outbox (id, body) VALUES ('success', 'deliver')`;
+                return transaction;
+              }),
+            );
+            return {
+              committed,
+              host: yield* sql<{ count: number }>`SELECT COUNT(*)::int AS count FROM host_records`,
+              outbox: yield* sql<{ count: number }>`SELECT COUNT(*)::int AS count FROM host_outbox`,
+              facts: yield* triples.entity(entityId),
+              journal: yield* triples.transaction(committed.txId),
+            };
+          }),
+        );
+        expect(result.host[0]?.count).toBe(1);
+        expect(result.outbox[0]?.count).toBe(1);
+        expect(result.facts).toHaveLength(1);
+        expect(result.journal?.commandId).toBe("host:atomic:success");
+      },
+    );
+
+    it.skipIf(!DOCKER_AVAILABLE)(
+      "rolls back Triplex facts, journal, command claim, and position after a host failure",
+      { timeout: 120_000 },
+      async () => {
+        const result = await runWithHostSql(
+          Effect.gen(function* () {
+            yield* prepareHostTables;
+            const sql = yield* SqlClient.SqlClient;
+            const triples = yield* Triples;
+            const entityId = EntityId.make("host:atomic:host-failure");
+            const before = yield* triples.currentPosition();
+            yield* sql
+              .withTransaction(
+                Effect.gen(function* () {
+                  yield* sql`INSERT INTO host_records (id, body) VALUES ('host-failure', 'host')`;
+                  yield* triples.transact(
+                    [
+                      {
+                        op: "assert",
+                        entityId,
+                        attribute: ":host/state",
+                        value: string("must-roll-back"),
+                      },
+                    ],
+                    { commandId: "host:atomic:host-failure" },
+                  );
+                  return yield* Effect.fail(new Error("host outbox failed"));
+                }),
+              )
+              .pipe(Effect.flip);
+            return {
+              host: yield* sql<{ count: number }>`SELECT COUNT(*)::int AS count FROM host_records`,
+              facts: yield* triples.entity(entityId),
+              receipt: yield* triples.transactionByCommand("host:atomic:host-failure"),
+              before,
+              after: yield* triples.currentPosition(),
+            };
+          }),
+        );
+        expect(result.host[0]?.count).toBe(0);
+        expect(result.facts).toHaveLength(0);
+        expect(result.receipt).toBeNull();
+        expect(result.after).toBe(result.before);
+      },
+    );
+
+    it.skipIf(!DOCKER_AVAILABLE)(
+      "rolls back a host write when Triplex rejects a graph constraint",
+      { timeout: 120_000 },
+      async () => {
+        const result = await runWithHostSql(
+          Effect.gen(function* () {
+            yield* prepareHostTables;
+            const sql = yield* SqlClient.SqlClient;
+            const triples = yield* Triples;
+            const entityId = EntityId.make("host:atomic:constraint-failure");
+            const constraint = GraphConstraint.required("HostRecord", ":host/name");
+            const failure = yield* sql
+              .withTransaction(
+                Effect.gen(function* () {
+                  yield* sql`INSERT INTO host_records (id, body) VALUES ('constraint', 'host')`;
+                  yield* triples.transact(
+                    [
+                      {
+                        op: "assert",
+                        entityId,
+                        entityType: "HostRecord",
+                        attribute: ":host/state",
+                        value: string("invalid"),
+                      },
+                    ],
+                    { enforce: GraphConstraint.enforcement([constraint]) },
+                  );
+                }),
+              )
+              .pipe(Effect.flip);
+            return {
+              failure,
+              host: yield* sql<{ count: number }>`SELECT COUNT(*)::int AS count FROM host_records`,
+              facts: yield* triples.entity(entityId),
+            };
+          }),
+        );
+        expect(result.failure).toMatchObject({ _tag: "ConstraintViolationError" });
+        expect(result.host[0]?.count).toBe(0);
+        expect(result.facts).toHaveLength(0);
+      },
+    );
+
+    it.skipIf(!DOCKER_AVAILABLE)(
+      "keeps duplicate commands idempotent inside a host transaction",
+      { timeout: 120_000 },
+      async () => {
+        const result = await runWithHostSql(
+          Effect.gen(function* () {
+            yield* prepareHostTables;
+            const sql = yield* SqlClient.SqlClient;
+            const triples = yield* Triples;
+            const original = yield* triples.transact(
+              [
+                {
+                  op: "assert",
+                  entityId: EntityId.make("host:duplicate:original"),
+                  attribute: ":host/state",
+                  value: string("original"),
+                },
+              ],
+              { commandId: "host:duplicate" },
+            );
+            const duplicate = yield* sql
+              .withTransaction(
+                Effect.gen(function* () {
+                  yield* sql`INSERT INTO host_records (id, body) VALUES ('duplicate', 'host')`;
+                  yield* triples.transact(
+                    [
+                      {
+                        op: "assert",
+                        entityId: EntityId.make("host:duplicate:retry"),
+                        attribute: ":host/state",
+                        value: string("retry"),
+                      },
+                    ],
+                    { commandId: "host:duplicate" },
+                  );
+                }),
+              )
+              .pipe(Effect.flip);
+            return {
+              original,
+              duplicate,
+              host: yield* sql<{ count: number }>`SELECT COUNT(*)::int AS count FROM host_records`,
+              retry: yield* triples.entity(EntityId.make("host:duplicate:retry")),
+              receipt: yield* triples.transactionByCommand("host:duplicate"),
+            };
+          }),
+        );
+        expect(result.duplicate).toMatchObject({
+          _tag: "CommandAlreadyCommittedError",
+          transactionId: result.original.txId,
+        });
+        expect(result.host[0]?.count).toBe(0);
+        expect(result.retry).toHaveLength(0);
+        expect(result.receipt?.txId).toBe(result.original.txId);
+      },
+    );
+
+    it.skipIf(!DOCKER_AVAILABLE)(
+      "uses savepoints for nested host and Triplex transactions",
+      { timeout: 120_000 },
+      async () => {
+        const result = await runWithHostSql(
+          Effect.gen(function* () {
+            yield* prepareHostTables;
+            const sql = yield* SqlClient.SqlClient;
+            const triples = yield* Triples;
+            const entityId = EntityId.make("host:nested:fact");
+            yield* sql.withTransaction(
+              Effect.gen(function* () {
+                yield* sql`INSERT INTO host_records (id, body) VALUES ('outer', 'kept')`;
+                yield* sql
+                  .withTransaction(
+                    Effect.gen(function* () {
+                      yield* sql`INSERT INTO host_records (id, body) VALUES ('inner', 'rolled-back')`;
+                      return yield* Effect.fail(new Error("rollback inner savepoint"));
+                    }),
+                  )
+                  .pipe(Effect.catch(() => Effect.void));
+                yield* triples.transact([
+                  {
+                    op: "assert",
+                    entityId,
+                    attribute: ":host/state",
+                    value: string("kept"),
+                  },
+                ]);
+                yield* sql`INSERT INTO host_outbox (id, body) VALUES ('outer', 'kept')`;
+              }),
+            );
+            return {
+              rows: yield* sql<{ id: string }>`SELECT id FROM host_records ORDER BY id`,
+              outbox: yield* sql<{ count: number }>`SELECT COUNT(*)::int AS count FROM host_outbox`,
+              facts: yield* triples.entity(entityId),
+            };
+          }),
+        );
+        expect(result.rows).toEqual([{ id: "outer" }]);
+        expect(result.outbox[0]?.count).toBe(1);
+        expect(result.facts).toHaveLength(1);
+      },
+    );
+  });
+
+  it.skipIf(!DOCKER_AVAILABLE)(
+    "composes isolated database-scoped SqlClient and Triples pools",
+    { timeout: 120_000 },
+    async () => {
+      await Effect.runPromise(
+        Effect.scoped(
+          Effect.gen(function* () {
+            const { url } = yield* PgConnectionInfo;
+            const config = configFromUrl(url);
+            const acmeId = DatabaseId.make("host-acme");
+            const globexId = DatabaseId.make("host-globex");
+            const [acmeContext, globexContext] = yield* Effect.all(
+              [
+                Layer.build(PgTriples.layerForDatabaseMigrated(config, acmeId)),
+                Layer.build(PgTriples.layerForDatabaseMigrated(config, globexId)),
+              ],
+              { concurrency: "unbounded" },
+            );
+            const acmeSql = Context.get(acmeContext, SqlClient.SqlClient);
+            const globexSql = Context.get(globexContext, SqlClient.SqlClient);
+            const acme = Context.get(acmeContext, Triples);
+            const globex = Context.get(globexContext, Triples);
+            yield* Effect.all(
+              [
+                acmeSql`CREATE TABLE host_records (id TEXT PRIMARY KEY)`,
+                globexSql`CREATE TABLE host_records (id TEXT PRIMARY KEY)`,
+              ],
+              { concurrency: "unbounded" },
+            );
+            yield* Effect.all(
+              Array.from({ length: 8 }, (_, index) => {
+                const side = index % 2 === 0 ? "acme" : "globex";
+                const sql = side === "acme" ? acmeSql : globexSql;
+                const triples = side === "acme" ? acme : globex;
+                return sql.withTransaction(
+                  Effect.gen(function* () {
+                    yield* sql`INSERT INTO host_records (id) VALUES (${`${side}:${index}`})`;
+                    yield* triples.transact([
+                      {
+                        op: "assert",
+                        entityId: EntityId.make(`shared:entity:${index}`),
+                        attribute: ":host/database",
+                        value: string(side),
+                      },
+                    ]);
+                  }),
+                );
+              }),
+              { concurrency: "unbounded" },
+            );
+            const query = {
+              find: ["?entity", "?database"],
+              where: [["?entity", ":host/database", "?database"]],
+            } as const;
+            const [acmeResult, globexResult, acmeSchema, globexSchema] = yield* Effect.all([
+              acme.query(query),
+              globex.query(query),
+              acmeSql<{ current_schema: string }>`SELECT current_schema()`,
+              globexSql<{ current_schema: string }>`SELECT current_schema()`,
+            ]);
+            expect(acmeResult.results).toHaveLength(4);
+            expect(acmeResult.results.every((row) => row["?database"] === "acme")).toBe(true);
+            expect(globexResult.results).toHaveLength(4);
+            expect(globexResult.results.every((row) => row["?database"] === "globex")).toBe(true);
+            expect(acmeSchema[0]?.current_schema).toBe(databaseToSchema(acmeId));
+            expect(globexSchema[0]?.current_schema).toBe(databaseToSchema(globexId));
+
+            const pageRequest = {
+              inner: query,
+              orderBy: [{ variable: "?entity", direction: "asc" }],
+              limit: 1,
+            } as const;
+            const acmePage = yield* acme.queryPage(pageRequest);
+            const crossScope = yield* globex
+              .queryPage({ ...pageRequest, cursor: acmePage.nextCursor })
+              .pipe(Effect.flip);
+            expect(crossScope).toMatchObject({
+              _tag: "PaginationCursorError",
+              reason: "scope_mismatch",
+            });
+            expect(
+              (yield* globex.transactionsForEntity(EntityId.make("shared:entity:0"))).transactions,
+            ).toHaveLength(0);
+          }).pipe(Effect.provide(PgContainerLayer)),
+        ),
+      );
     },
   );
 

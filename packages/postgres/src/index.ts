@@ -14,6 +14,8 @@ export {
 export {
   makePostgresqlBackend,
   makePostgresqlBackendFromUrl,
+  makePostgresqlDatabaseSqlLayer,
+  makePostgresqlDatabaseSqlLayerMigrated,
   databaseToSchema,
   type PostgresqlBackendConfig,
 } from "./PostgresqlBackend.js";
@@ -26,4 +28,4 @@ export {
   PostgresqlLiveFromUrl,
   type PostgresqlConfig,
 } from "./PostgresqlLayer.js";
-export { PgTriples, type PgTriplesLayer } from "./PgTriples.js";
+export { PgTriples, type PgTriplesLayer, type PgTriplesFromSqlClientOptions } from "./PgTriples.js";

@@ -12,7 +12,7 @@ import { PgClient } from "@effect/sql-pg";
 import { createHash } from "node:crypto";
 import type { DatabaseId } from "@bjacobso/triplex";
 import { type SqlDialect } from "@bjacobso/triplex/internal";
-import { StorageBackend, type StorageBackendService } from "@bjacobso/triplex-sql";
+import { runMigrations, StorageBackend, type StorageBackendService } from "@bjacobso/triplex-sql";
 import { PostgresqlDialect } from "./dialect.js";
 import { PostgresqlAdapterLive } from "./PostgresqlAdapter.js";
 
@@ -116,6 +116,29 @@ const createSchemaLayer = (config: PostgresqlBackendConfig, schema: string) =>
       }),
     ),
   );
+
+/**
+ * A pool whose every physical connection is bound to one validated Triplex
+ * database schema. This does not create the schema or run migrations.
+ */
+export const makePostgresqlDatabaseSqlLayer = (
+  config: PostgresqlBackendConfig,
+  database: DatabaseId,
+) => createScopedPoolLayer(config, databaseToSchema(database));
+
+/**
+ * Explicit convenience provisioning for demos and tests: create the schema
+ * and run the exported Triplex SQL migrations before exposing its client.
+ */
+export const makePostgresqlDatabaseSqlLayerMigrated = (
+  config: PostgresqlBackendConfig,
+  database: DatabaseId,
+) => {
+  const schema = databaseToSchema(database);
+  return createSchemaLayer(config, schema).pipe(
+    Layer.tap((context) => Effect.provide(runMigrations, context)),
+  );
+};
 
 // =============================================================================
 // Implementation
