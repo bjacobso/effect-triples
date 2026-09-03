@@ -32,8 +32,10 @@ unique and durable consumer checkpoints are available through the `operational` 
   deterministic ties. Raw ordered predicates now accept only numeric-capable value bindings and
   numeric constants, rejecting backend-dependent text and identity coercions during typed
   preflight. Continue expanding hostile schema-valid input.
-- SQL projection now carries hidden storage tags through execution, so strings such as `"007"`,
-  numeric-looking entity IDs and refs, datetimes, booleans, and JSON are decoded without guessing.
+- SQL projection now carries hidden canonical scalar-family columns through execution, so strings
+  such as `"007"`, numeric-looking entity IDs and refs, datetimes, booleans, and JSON are decoded
+  without guessing. Distinctness, grouping, counts, and page boundaries use that same flattened
+  public identity across KV, SQLite, and PostgreSQL.
 - Recursive SQL rule definitions, applications, optional projection attributes, and depth bounds
   are parameterized; validated rule names are quoted identifiers.
 - Keep PostgreSQL, FoundationDB, and Cloudflare experimental until each backend passes the shared

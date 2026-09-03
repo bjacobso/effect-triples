@@ -93,12 +93,8 @@ describe("Datalog Wrapper Compiler", () => {
 
       const result = compileWrapped(query);
 
-      expect(result.sql).toContain(
-        "\"_triplex_value_1_type\" IN ('string', 'ref', 'blob', 'json')",
-      );
-      expect(result.sql).toContain(
-        'COALESCE("_triplex_value_1_string", "_triplex_value_1_json") = ?',
-      );
+      expect(result.sql).toContain("\"_triplex_value_1_type\" = 'string'");
+      expect(result.sql).toContain('"_triplex_value_1_order_text" = ?');
       expect(result.params).toContain("Engineering");
     });
 
@@ -113,9 +109,7 @@ describe("Datalog Wrapper Compiler", () => {
 
       const result = compileWrapped(query);
 
-      expect(result.sql).toContain(
-        'COALESCE("_triplex_value_0_string", "_triplex_value_0_json") LIKE ?',
-      );
+      expect(result.sql).toContain('"_triplex_value_0_order_text" LIKE ?');
       expect(result.params).toContain("%Smith%");
     });
 
@@ -130,9 +124,7 @@ describe("Datalog Wrapper Compiler", () => {
 
       const result = compileWrapped(query);
 
-      expect(result.sql).toContain(
-        'COALESCE("_triplex_value_0_string", "_triplex_value_0_json") LIKE ?2 COLLATE NOCASE',
-      );
+      expect(result.sql).toContain('"_triplex_value_0_order_text" LIKE ?2 COLLATE NOCASE');
       expect(result.params).toContain("%smith%");
     });
 
@@ -153,12 +145,8 @@ describe("Datalog Wrapper Compiler", () => {
 
       const result = compileWrapped(query);
 
-      expect(result.sql).toContain(
-        'COALESCE("_triplex_value_1_number", "_triplex_value_1_datetime") >= ?',
-      );
-      expect(result.sql).toContain(
-        'COALESCE("_triplex_value_1_number", "_triplex_value_1_datetime") < ?',
-      );
+      expect(result.sql).toContain('"_triplex_value_1_order_number" >= ?');
+      expect(result.sql).toContain('"_triplex_value_1_order_number" < ?');
       expect(result.params).toContain(18);
       expect(result.params).toContain(65);
     });
@@ -177,7 +165,7 @@ describe("Datalog Wrapper Compiler", () => {
 
       const result = compileWrapped(query);
 
-      expect(result.sql).toContain('"?email" IS NOT NULL');
+      expect(result.sql).toContain('"_triplex_value_1_type" IS NOT NULL');
     });
 
     it("should combine multiple filters with AND", () => {
@@ -274,9 +262,7 @@ describe("Datalog Wrapper Compiler", () => {
       const result = compileWrapped(query);
 
       expect(result.countSql).not.toBeNull();
-      expect(result.countSql).toContain(
-        'COALESCE("_triplex_value_0_string", "_triplex_value_0_json") LIKE ?2 COLLATE NOCASE',
-      );
+      expect(result.countSql).toContain('"_triplex_value_0_order_text" LIKE ?2 COLLATE NOCASE');
       expect(result.countParams).toContain("%smith%");
     });
 
@@ -450,9 +436,7 @@ describe("Datalog Wrapper Compiler", () => {
       const result = compileWrapped(query, undefined, { cursorValues: ["Smith"] });
 
       // Should have both filter and cursor conditions combined with AND
-      expect(result.sql).toContain(
-        'COALESCE("_triplex_value_1_string", "_triplex_value_1_json") = ?',
-      );
+      expect(result.sql).toContain('"_triplex_value_1_order_text" = ?');
       expect(result.sql).toContain('"_triplex_value_0_order_text" > ?');
       expect(result.params).toContain("Engineering");
       expect(result.params).toContain("Smith");

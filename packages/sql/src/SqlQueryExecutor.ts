@@ -54,12 +54,13 @@ const toNumber = (value: unknown): number | null => {
   return null;
 };
 
-const decodeStoredValue = (row: ResultRow, columns: CompiledValueColumns): QueryContext[string] => {
+const decodeProjectedValue = (
+  row: ResultRow,
+  columns: CompiledValueColumns,
+): QueryContext[string] => {
   const type = row[columns.type];
   switch (type) {
-    case "string":
-    case "ref":
-    case "blob": {
+    case "string": {
       const value = row[columns.string];
       return value === null || value === undefined ? null : String(value);
     }
@@ -68,16 +69,6 @@ const decodeStoredValue = (row: ResultRow, columns: CompiledValueColumns): Query
     case "boolean": {
       const value = row[columns.boolean];
       return value === true || value === 1 || value === 1n || value === "1";
-    }
-    case "datetime":
-      return toNumber(row[columns.datetime]);
-    case "json": {
-      const value = row[columns.json];
-      return value === null || value === undefined
-        ? null
-        : typeof value === "string"
-          ? value
-          : JSON.stringify(value);
     }
     default:
       return null;
@@ -95,7 +86,7 @@ const rowToContext = (
   for (const [colName, varName] of columnMap) {
     const valueColumns = valueColumnMap.get(colName);
     if (valueColumns) {
-      context[varName] = decodeStoredValue(row, valueColumns);
+      context[varName] = decodeProjectedValue(row, valueColumns);
       continue;
     }
 

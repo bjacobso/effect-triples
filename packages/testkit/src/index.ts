@@ -181,6 +181,85 @@ export const triplesConformanceCases: readonly ConformanceCase[] = [
     }),
   },
   {
+    name: "datalog deduplicates flattened scalar families before grouping and pagination",
+    run: Effect.gen(function* () {
+      const t = yield* Triples;
+      const textValue = "sha256:dedupe-seven";
+      yield* t.assertBatch([
+        { entityId: "conf:dedupe:number", attribute: ":conf/dedupe", value: number(7) },
+        { entityId: "conf:dedupe:datetime", attribute: ":conf/dedupe", value: datetime(7) },
+        { entityId: "conf:dedupe:string", attribute: ":conf/dedupe", value: string(textValue) },
+        { entityId: "conf:dedupe:ref", attribute: ":conf/dedupe", value: ref(textValue) },
+        {
+          entityId: "conf:dedupe:blob",
+          attribute: ":conf/dedupe",
+          value: blob(textValue, "application/octet-stream", 7),
+        },
+      ]);
+
+      const direct = yield* t.query({
+        find: ["?value"],
+        where: [["?entity", ":conf/dedupe", "?value"]],
+        orderBy: [{ variable: "?value" }],
+      });
+      yield* check(
+        JSON.stringify(direct.results) ===
+          JSON.stringify([{ "?value": 7 }, { "?value": textValue }]),
+        "projection DISTINCT must collapse storage types with the same public scalar value",
+      );
+
+      const grouped = yield* t.query({
+        find: ["?value", "?count"],
+        where: [["?entity", ":conf/dedupe", "?value"]],
+        aggregate: [["count", "?entity", "?count"]],
+        orderBy: [{ variable: "?value" }],
+      });
+      yield* check(
+        grouped.results.length === 2 &&
+          grouped.results[0]?.["?value"] === 7 &&
+          grouped.results[0]?.["?count"] === 2 &&
+          grouped.results[1]?.["?value"] === textValue &&
+          grouped.results[1]?.["?count"] === 3,
+        "GROUP BY must use flattened scalar identity instead of physical storage tags",
+      );
+
+      const first = yield* t.queryPage({
+        inner: {
+          find: ["?value"],
+          where: [["?entity", ":conf/dedupe", "?value"]],
+        },
+        orderBy: [{ variable: "?value" }],
+        limit: 1,
+        includeCount: true,
+      });
+      yield* check(
+        first.results.length === 1 &&
+          first.results[0]?.["?value"] === 7 &&
+          first.totalCount === 2 &&
+          first.nextCursor !== undefined,
+        "the first page must count logical rows and expose a cursor after the numeric family",
+      );
+
+      const second = yield* t.queryPage({
+        inner: {
+          find: ["?value"],
+          where: [["?entity", ":conf/dedupe", "?value"]],
+        },
+        orderBy: [{ variable: "?value" }],
+        limit: 1,
+        includeCount: true,
+        cursor: first.nextCursor,
+      });
+      yield* check(
+        second.results.length === 1 &&
+          second.results[0]?.["?value"] === textValue &&
+          second.totalCount === 2 &&
+          second.nextCursor === undefined,
+        "cursor pagination must visit each flattened scalar row exactly once",
+      );
+    }),
+  },
+  {
     name: "datalog value joins compare every scalar family",
     run: Effect.gen(function* () {
       const t = yield* Triples;

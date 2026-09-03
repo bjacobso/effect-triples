@@ -141,7 +141,7 @@ export interface CompiledQuery {
   params: unknown[];
   /** Maps result column names to variable names */
   columnMap: Map<string, string>;
-  /** Storage columns needed to decode a projected triple value without guessing its type. */
+  /** Canonical scalar-family columns used to decode a projected triple value. */
   valueColumnMap: Map<string, CompiledValueColumns>;
   /** Result columns whose SQL representation must be decoded as a number. */
   numericColumns: Set<string>;
@@ -157,8 +157,6 @@ export interface CompiledValueColumns {
   readonly string: string;
   readonly number: string;
   readonly boolean: string;
-  readonly datetime: string;
-  readonly json: string;
 }
 
 export interface CompileOptions {
@@ -866,9 +864,37 @@ interface OptionalProjectionExpressions {
   readonly string: string;
   readonly number: string;
   readonly boolean: string;
-  readonly datetime: string;
-  readonly json: string;
 }
+
+/**
+ * SQL projections use the same flattened scalar families as the public
+ * Datalog context. Canonicalizing here lets SELECT DISTINCT and GROUP BY
+ * collapse storage-level aliases such as number/datetime and string/ref.
+ */
+const valueProjectionExpressions = (alias: string): OptionalProjectionExpressions => ({
+  // SqlQueryExecutor decodes from the hidden canonical columns. Keeping the
+  // public carrier constant prevents its SQL affinity from affecting DISTINCT.
+  scalar: "NULL",
+  category: `CASE WHEN ${numberScalarTypeCondition(alias)} THEN 0 WHEN ${alias}.value_type = 'boolean' THEN 1 ELSE 2 END`,
+  orderNumber: numberScalarExpression(alias),
+  orderText: textScalarExpression(alias),
+  type: `CASE WHEN ${numberScalarTypeCondition(alias)} THEN 'number' WHEN ${alias}.value_type = 'boolean' THEN 'boolean' WHEN ${textScalarTypeCondition(alias)} THEN 'string' ELSE NULL END`,
+  string: `CASE WHEN ${textScalarTypeCondition(alias)} THEN ${textScalarExpression(alias)} ELSE NULL END`,
+  number: `CASE WHEN ${numberScalarTypeCondition(alias)} THEN ${numberScalarExpression(alias)} ELSE NULL END`,
+  boolean: `CASE WHEN ${alias}.value_type = 'boolean' THEN ${alias}.value_boolean ELSE NULL END`,
+});
+
+const valueProjectionGroupExpressions = (
+  projection: OptionalProjectionExpressions,
+): readonly string[] => [
+  projection.category,
+  projection.orderNumber,
+  projection.orderText,
+  projection.type,
+  projection.string,
+  projection.number,
+  projection.boolean,
+];
 
 const optionalProjectionExpressions = (
   variable: string,
@@ -898,20 +924,22 @@ const optionalProjectionExpressions = (
   };
 
   return {
-    scalar: select(
-      "COALESCE(opt.value_string, CAST(opt.value_number AS TEXT), CAST(opt.value_boolean AS TEXT), CAST(opt.value_datetime AS TEXT), opt.value_json)",
-    ),
+    scalar: "NULL",
     category: `COALESCE(${select(
       "CASE WHEN opt.value_type IN ('number', 'datetime') THEN 0 WHEN opt.value_type = 'boolean' THEN 1 ELSE 2 END",
     )}, 3)`,
     orderNumber: select("COALESCE(opt.value_number, opt.value_datetime)"),
     orderText: select("COALESCE(opt.value_string, opt.value_json)"),
-    type: select("opt.value_type"),
-    string: select("opt.value_string"),
-    number: select("opt.value_number"),
-    boolean: select("opt.value_boolean"),
-    datetime: select("opt.value_datetime"),
-    json: select("opt.value_json"),
+    type: select(
+      "CASE WHEN opt.value_type IN ('number', 'datetime') THEN 'number' WHEN opt.value_type = 'boolean' THEN 'boolean' WHEN opt.value_type IN ('string', 'ref', 'blob', 'json') THEN 'string' ELSE NULL END",
+    ),
+    string: select(
+      "CASE WHEN opt.value_type IN ('string', 'ref', 'blob', 'json') THEN COALESCE(opt.value_string, opt.value_json) ELSE NULL END",
+    ),
+    number: select(
+      "CASE WHEN opt.value_type IN ('number', 'datetime') THEN COALESCE(opt.value_number, opt.value_datetime) ELSE NULL END",
+    ),
+    boolean: select("CASE WHEN opt.value_type = 'boolean' THEN opt.value_boolean ELSE NULL END"),
   };
 };
 
@@ -1081,8 +1109,6 @@ const buildSelectAndGroupBy = (
             string: `_triplex_value_${index}_string`,
             number: `_triplex_value_${index}_number`,
             boolean: `_triplex_value_${index}_boolean`,
-            datetime: `_triplex_value_${index}_datetime`,
-            json: `_triplex_value_${index}_json`,
           };
           selectParts.push(`${projection.scalar} AS ${colName}`);
           selectParts.push(`${projection.category} AS "${columns.category}"`);
@@ -1092,8 +1118,6 @@ const buildSelectAndGroupBy = (
           selectParts.push(`${projection.string} AS "${columns.string}"`);
           selectParts.push(`${projection.number} AS "${columns.number}"`);
           selectParts.push(`${projection.boolean} AS "${columns.boolean}"`);
-          selectParts.push(`${projection.datetime} AS "${columns.datetime}"`);
-          selectParts.push(`${projection.json} AS "${columns.json}"`);
           columnMap.set(term, term);
           valueColumnMap.set(term, columns);
         }
@@ -1102,6 +1126,7 @@ const buildSelectAndGroupBy = (
 
       const colName = `"${term}"`;
       if (isTripleValueBinding(binding)) {
+        const projection = valueProjectionExpressions(binding.alias);
         const index = valueColumnMap.size;
         const columns: CompiledValueColumns = {
           category: `_triplex_value_${index}_category`,
@@ -1111,21 +1136,15 @@ const buildSelectAndGroupBy = (
           string: `_triplex_value_${index}_string`,
           number: `_triplex_value_${index}_number`,
           boolean: `_triplex_value_${index}_boolean`,
-          datetime: `_triplex_value_${index}_datetime`,
-          json: `_triplex_value_${index}_json`,
         };
-        selectParts.push(`${getColumnExpression(binding)} AS ${colName}`);
-        selectParts.push(
-          `CASE WHEN ${numberScalarTypeCondition(binding.alias)} THEN 0 WHEN ${binding.alias}.value_type = 'boolean' THEN 1 WHEN ${binding.alias}.value_type IS NULL THEN 3 ELSE 2 END AS "${columns.category}"`,
-        );
-        selectParts.push(`${numberScalarExpression(binding.alias)} AS "${columns.orderNumber}"`);
-        selectParts.push(`${textScalarExpression(binding.alias)} AS "${columns.orderText}"`);
-        selectParts.push(`${binding.alias}.value_type AS "${columns.type}"`);
-        selectParts.push(`${binding.alias}.value_string AS "${columns.string}"`);
-        selectParts.push(`${binding.alias}.value_number AS "${columns.number}"`);
-        selectParts.push(`${binding.alias}.value_boolean AS "${columns.boolean}"`);
-        selectParts.push(`${binding.alias}.value_datetime AS "${columns.datetime}"`);
-        selectParts.push(`${binding.alias}.value_json AS "${columns.json}"`);
+        selectParts.push(`${projection.scalar} AS ${colName}`);
+        selectParts.push(`${projection.category} AS "${columns.category}"`);
+        selectParts.push(`${projection.orderNumber} AS "${columns.orderNumber}"`);
+        selectParts.push(`${projection.orderText} AS "${columns.orderText}"`);
+        selectParts.push(`${projection.type} AS "${columns.type}"`);
+        selectParts.push(`${projection.string} AS "${columns.string}"`);
+        selectParts.push(`${projection.number} AS "${columns.number}"`);
+        selectParts.push(`${projection.boolean} AS "${columns.boolean}"`);
         valueColumnMap.set(term, columns);
       } else {
         selectParts.push(`${getColumnExpression(binding)} AS ${colName}`);
@@ -1149,16 +1168,12 @@ const buildSelectAndGroupBy = (
       if (isVariable(term) && !aggregateTargets.has(term)) {
         const binding = ctx.bindings.get(term);
         if (binding) {
-          groupByParts.push(getColumnExpression(binding));
           if (isTripleValueBinding(binding)) {
             groupByParts.push(
-              `${binding.alias}.value_type`,
-              `${binding.alias}.value_string`,
-              `${binding.alias}.value_number`,
-              `${binding.alias}.value_boolean`,
-              `${binding.alias}.value_datetime`,
-              `${binding.alias}.value_json`,
+              ...valueProjectionGroupExpressions(valueProjectionExpressions(binding.alias)),
             );
+          } else {
+            groupByParts.push(getColumnExpression(binding));
           }
         }
       }

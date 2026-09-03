@@ -39,7 +39,7 @@ export interface CompiledWrappedQuery {
   countParams: readonly unknown[];
   /** Column map from inner query */
   columnMap: Map<string, string>;
-  /** Hidden storage columns used for exact value decoding. */
+  /** Hidden canonical scalar-family columns used for value decoding. */
   valueColumnMap: Map<string, CompiledValueColumns>;
   /** Columns whose SQL representation must be decoded as a number. */
   numericColumns: Set<string>;
@@ -111,24 +111,28 @@ const compileFilter = (
   const colName = `"${filter.column}"`;
   const value = isTypedConstant(filter.value) ? filter.value.value : filter.value;
   const columns = compiled.valueColumnMap.get(filter.column);
-  if (columns === undefined || filter.op === "is-null" || filter.op === "is-not-null") {
+  if (columns === undefined) {
     return compileFilterOp(colName, filter.op, value, collector, dialect);
   }
 
   const type = quoted(columns.type);
+  if (filter.op === "is-null" || filter.op === "is-not-null") {
+    return compileFilterOp(type, filter.op, value, collector, dialect);
+  }
+
   let scalar: string;
   let typeCondition: string;
   let storedValue: unknown = value;
   if (typeof value === "number") {
-    scalar = `COALESCE(${quoted(columns.number)}, ${quoted(columns.datetime)})`;
-    typeCondition = `${type} IN ('number', 'datetime')`;
+    scalar = quoted(columns.orderNumber);
+    typeCondition = `${type} = 'number'`;
   } else if (typeof value === "boolean") {
     scalar = quoted(columns.boolean);
     typeCondition = `${type} = 'boolean'`;
     storedValue = dialect.name === "sqlite" ? (value ? 1 : 0) : value;
   } else {
-    scalar = `COALESCE(${quoted(columns.string)}, ${quoted(columns.json)})`;
-    typeCondition = `${type} IN ('string', 'ref', 'blob', 'json')`;
+    scalar = quoted(columns.orderText);
+    typeCondition = `${type} = 'string'`;
   }
   return `(${typeCondition} AND ${compileFilterOp(scalar, filter.op, storedValue, collector, dialect)})`;
 };
@@ -336,8 +340,6 @@ export const compileWrapped = (
       `"${columns.string}"`,
       `"${columns.number}"`,
       `"${columns.boolean}"`,
-      `"${columns.datetime}"`,
-      `"${columns.json}"`,
     ]) {
       selectColumns.add(column);
     }

@@ -713,7 +713,11 @@ with `DatalogValidationError` before reaching a backend.
 Direct ordering and cursor pagination share one typed total order across backends: numbers and
 datetimes first, booleans second, text-family values third, and `null` last. The requested direction
 orders values within each family; a deterministic entity tie-breaker makes every page boundary
-unique. SQL keeps this physical sort key hidden while returning the original typed values.
+unique. Datalog result identity follows those same public scalar families: numbers and datetimes
+with the same numeric value are one result, as are strings, refs, blobs, and JSON with the same text
+value. SQL applies that identity before `DISTINCT`, grouping, counting, and pagination, then keeps
+the physical sort and decoding columns out of the returned context. Direct triple reads still
+preserve the original stored value type.
 
 ```ts
 const first =

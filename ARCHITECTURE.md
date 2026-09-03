@@ -21,7 +21,9 @@ hosts typed configuration as a modular layer over the same core.
   Wrapped filters use hidden typed projection columns rather than flattened SQL text, preserving
   numeric, text-family, boolean, and null semantics through pagination. Direct ordering and
   keyset pagination share the same hidden typed total-order key, including deterministic null and
-  mixed-family placement.
+  mixed-family placement. Projection identity is canonicalized into those public scalar families
+  before SQL distinctness, grouping, counting, and pagination, matching the KV result model even
+  when different stored value types flatten to the same public value.
 - Core's `content` module owns deterministic canonical encoding, domain-separated browser-safe
   SHA-256, and the shared `ContentId` format. Entity snapshots and configuration use distinct
   domains over this one foundation.
@@ -93,7 +95,7 @@ hosts typed configuration as a modular layer over the same core.
   journal APIs.
 - `@bjacobso/triplex-sql` is now migrations and `SqlQueryExecutor` (the SQL implementation of the
   `QueryExecutor` SPI) shared by SQLite and PostgreSQL. Datalog SQL projections retain hidden
-  value-tag columns until result decoding, and
+  canonical scalar-family columns until result decoding, and
   scalar-family joins and typed keyset ordering compare values consistently with the KV executor.
   A shared KV/SQLite/PostgreSQL conformance corpus is the regression boundary for this contract.
 - Backend packages construct the storage adapters and runtime layers for their platforms.
