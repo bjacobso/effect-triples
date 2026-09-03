@@ -38,6 +38,8 @@ Make wrapped Datalog filters type-aware across KV, SQLite, and PostgreSQL. Valid
 
 Use one typed total-order key for direct Datalog ordering and cursor pagination across KV, SQLite, and PostgreSQL. Mixed numbers, datetimes, booleans, text-family values, and nulls now retain identical order and stable page boundaries on every supported backend.
 
+Define binary Datalog rules as identity relations, rejecting non-string application arguments and using the same canonical text-family edge encoding across KV, SQLite, and PostgreSQL.
+
 Make raw ordered Datalog predicates explicitly numeric across every engine. Number and datetime value bindings compare without coercing text, boolean, entity, attribute, transaction, or rule bindings, and invalid literal or binding shapes fail in typed preflight rather than leaking SQLite/PostgreSQL behavior.
 
 Canonicalize projected Datalog values before SQL distinctness, grouping, counting, and pagination. Stored number/datetime and string/ref/blob/JSON aliases that flatten to the same public scalar now produce one result on KV, SQLite, and PostgreSQL.

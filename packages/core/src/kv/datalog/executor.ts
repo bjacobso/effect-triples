@@ -194,8 +194,8 @@ const executeOr = (
  * intentionally the simple, correct algorithm; it is not semi-naive.
  */
 interface RulePair {
-  readonly arg1: Constant | null;
-  readonly arg2: Constant | null;
+  readonly arg1: string;
+  readonly arg2: string;
 }
 
 const ruleHeadVariables = (rule: Rule): readonly [string, string] | null => {
@@ -277,7 +277,10 @@ const deriveRulePairs = (
           if (current.length === 0) break;
         }
         for (const context of current) {
-          const pair = { arg1: context[head[0]]!, arg2: context[head[1]]! };
+          const arg1 = normalizedRuleConstant(context[head[0]]!);
+          const arg2 = normalizedRuleConstant(context[head[1]]!);
+          if (typeof arg1 !== "string" || typeof arg2 !== "string") continue;
+          const pair = { arg1, arg2 };
           const key = JSON.stringify([pair.arg1, pair.arg2]);
           if (!seen.has(key)) {
             seen.add(key);

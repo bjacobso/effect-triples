@@ -1539,7 +1539,8 @@ const compileRuleDefinition = (rule: Rule, ctx: CompilerContext): string => {
 
         // Handle value
         if (isVariable(value)) {
-          paramMap.set(value, `${alias}.value_string`);
+          allConditions.push(textScalarTypeCondition(alias));
+          paramMap.set(value, textScalarExpression(alias));
         } else {
           allConditions.push(compilePatternValueCondition(alias, value, ctx));
         }
@@ -1573,9 +1574,10 @@ const compileRuleDefinition = (rule: Rule, ctx: CompilerContext): string => {
         if (isVariable(value)) {
           const boundCol = paramMap.get(value);
           if (boundCol) {
-            joinConditions.push(`${alias}.value_string = ${boundCol}`);
+            joinConditions.push(`${textScalarExpression(alias)} = ${boundCol}`);
           }
-          paramMap.set(value, `${alias}.value_string`);
+          joinConditions.push(textScalarTypeCondition(alias));
+          paramMap.set(value, textScalarExpression(alias));
         } else {
           joinConditions.push(compilePatternValueCondition(alias, value, ctx));
         }
@@ -1608,12 +1610,13 @@ const compileRuleDefinition = (rule: Rule, ctx: CompilerContext): string => {
  * The CTE structure is:
  *   WITH RECURSIVE ancestor(arg1, arg2, depth) AS (
  *     -- Base: direct parent relationship
- *     SELECT entity_id, value_string, 0 FROM triples WHERE attribute = ':parent'
+ *     SELECT entity_id, COALESCE(value_string, value_json), 0 FROM triples
+ *     WHERE attribute = ':parent' AND value_type IN ('string', 'ref', 'blob', 'json')
  *     UNION ALL
  *     -- Recursive: extend through another parent edge
  *     SELECT t.entity_id, a.arg2, a.depth + 1
  *     FROM triples t
- *     JOIN ancestor a ON t.value_string = a.arg1
+ *     JOIN ancestor a ON COALESCE(t.value_string, t.value_json) = a.arg1
  *     WHERE t.attribute = ':parent' AND a.depth < maxDepth
  *   )
  */
@@ -1689,6 +1692,7 @@ const compileRecursiveCTE = (ruleName: string, rules: Rule[], ctx: CompilerConte
 
     const conditions: string[] = [
       `t.retracted_at IS NULL`,
+      textScalarTypeCondition("t"),
       `r.depth < ${ctx.collector.add(maxDepth)}`,
     ];
 
@@ -1705,16 +1709,16 @@ const compileRecursiveCTE = (ruleName: string, rules: Rule[], ctx: CompilerConte
     let joinCondition = "1=1";
     if (isVariable(value) && isVariable(ruleArg1) && value === ruleArg1) {
       // The pattern's value links to the rule's arg1
-      // SELECT entity_id, r.arg2 FROM triples t JOIN rule r ON t.value_string = r.arg1
-      joinCondition = "t.value_string = r.arg1";
+      // SELECT entity_id, r.arg2 FROM triples t JOIN rule r ON the flattened text identity
+      joinCondition = `${textScalarExpression("t")} = r.arg1`;
     } else if (isVariable(entity) && isVariable(ruleArg1) && entity === ruleArg1) {
       // The pattern's entity links to the rule's arg1
       joinCondition = "t.entity_id = r.arg1";
     }
 
     // Determine what to select for arg1 and arg2
-    let selectArg1 = "t.entity_id";
-    let selectArg2 = "r.arg2";
+    const selectArg1 = "t.entity_id";
+    const selectArg2 = "r.arg2";
 
     // If the pattern entity is the first variable and value is linked to rule arg1
     // then entity -> arg1, rule.arg2 -> arg2
@@ -1750,6 +1754,16 @@ interface CompiledRuleApplication {
   readonly joinCondition: string;
 }
 
+const resolveRuleIdentityBinding = (
+  binding: VariableBinding,
+): { readonly expression: string; readonly condition?: string } =>
+  isTripleValueBinding(binding)
+    ? {
+        expression: textScalarExpression(binding.alias),
+        condition: textScalarTypeCondition(binding.alias),
+      }
+    : { expression: resolveBinding(binding) };
+
 const compileRuleApplicationInWhere = (
   ruleApp: RuleApplication,
   ctx: CompilerContext,
@@ -1764,8 +1778,9 @@ const compileRuleApplicationInWhere = (
   if (isVariable(arg1)) {
     const binding = ctx.bindings.get(arg1);
     if (binding) {
-      const boundCol = resolveBinding(binding, { valueMode: "string" });
-      joinConditions.push(`${ruleAlias}.arg1 = ${boundCol}`);
+      const resolved = resolveRuleIdentityBinding(binding);
+      if (resolved.condition) joinConditions.push(resolved.condition);
+      joinConditions.push(`${ruleAlias}.arg1 = ${resolved.expression}`);
     } else {
       // New variable - we'll bind it from the rule result
       ctx.bindings.set(arg1, ruleBinding(ruleAlias, "arg1"));
@@ -1778,8 +1793,9 @@ const compileRuleApplicationInWhere = (
   if (isVariable(arg2)) {
     const binding = ctx.bindings.get(arg2);
     if (binding) {
-      const boundCol = resolveBinding(binding, { valueMode: "string" });
-      joinConditions.push(`${ruleAlias}.arg2 = ${boundCol}`);
+      const resolved = resolveRuleIdentityBinding(binding);
+      if (resolved.condition) joinConditions.push(resolved.condition);
+      joinConditions.push(`${ruleAlias}.arg2 = ${resolved.expression}`);
     } else {
       // New variable - bind it from rule result
       ctx.bindings.set(arg2, ruleBinding(ruleAlias, "arg2"));

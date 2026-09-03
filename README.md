@@ -780,7 +780,9 @@ may contain letters, digits, underscores, and hyphens; recursion depth is a posi
 SQL compilation quotes rule identifiers and parameterizes rule bodies, applications, and depth.
 The current portable recursive form is deliberately binary: one base relationship plus recursive
 definitions shaped as `[head, attribute, next]`, `[ruleName, next, tail]`. Unsupported rule-body
-shapes fail preflight rather than being partially evaluated by one backend.
+shapes fail preflight rather than being partially evaluated by one backend. Rule relations connect
+string identities: application arguments are entity-id strings or variables, and numeric or boolean
+fact values do not become rule endpoints.
 
 ```ts
 triples.query({

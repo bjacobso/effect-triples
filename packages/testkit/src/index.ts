@@ -697,6 +697,21 @@ export const triplesConformanceCases: readonly ConformanceCase[] = [
           attribute: ":conf/rules-parent",
           value: ref("conf:rules:other"),
         },
+        {
+          entityId: "conf:rules:text-source",
+          attribute: ":conf/rules-parent",
+          value: string("conf:rules:text-target"),
+        },
+        {
+          entityId: "conf:rules:number-source",
+          attribute: ":conf/rules-parent",
+          value: number(7),
+        },
+        {
+          entityId: "conf:rules:boolean-source",
+          attribute: ":conf/rules-parent",
+          value: boolean(false),
+        },
       ]);
 
       const { results } = yield* t.query({
@@ -747,6 +762,31 @@ export const triplesConformanceCases: readonly ConformanceCase[] = [
         JSON.stringify(shared.results.map((row) => row["?ancestor"]).sort()) ===
           JSON.stringify(["conf:rules:c", "conf:rules:d"]),
         "multiple applications of one rule should use independent aliases",
+      );
+
+      const relation = yield* t.query({
+        find: ["?source", "?target"],
+        where: [["conf-rules-ancestor", "?source", "?target"]],
+        rules: [
+          {
+            name: "conf-rules-ancestor",
+            body: [["?child", ":conf/rules-parent", "?parent"]],
+          },
+        ],
+      });
+      const pairs = relation.results
+        .map((row) => `${String(row["?source"])}->${String(row["?target"])}`)
+        .sort();
+      yield* check(
+        JSON.stringify(pairs) ===
+          JSON.stringify([
+            "conf:rules:a->conf:rules:b",
+            "conf:rules:b->conf:rules:c",
+            "conf:rules:c->conf:rules:d",
+            "conf:rules:text-source->conf:rules:text-target",
+            "conf:rules:unrelated->conf:rules:other",
+          ]),
+        "binary rule relations should expose only string identity endpoints",
       );
     }),
   },

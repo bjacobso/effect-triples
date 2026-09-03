@@ -11,6 +11,7 @@ import {
   OrClause,
   Clause,
   DatalogQuery,
+  RuleApplication,
   Rule,
   isVariable,
   isAttribute,
@@ -350,6 +351,27 @@ describe("Datalog Schema", () => {
       ).toThrow();
       expect(() =>
         decode({ name: "ancestor", body: [["?x", ":parent", "?y"]], maxDepth: 1.5 }),
+      ).toThrow();
+    });
+  });
+
+  describe("RuleApplication", () => {
+    const decode = Schema.decodeUnknownSync(RuleApplication);
+
+    it("accepts string identities and variables", () => {
+      expect(decode(["ancestor", "person:alice", "?ancestor"])).toEqual([
+        "ancestor",
+        "person:alice",
+        "?ancestor",
+      ]);
+      expect(decode(["connected", "?left", "?right"])).toEqual(["connected", "?left", "?right"]);
+    });
+
+    it("rejects scalar values that cannot identify rule endpoints", () => {
+      expect(() => decode(["ancestor", 42, "?ancestor"])).toThrow();
+      expect(() => decode(["ancestor", "person:alice", false])).toThrow();
+      expect(() =>
+        decode(["ancestor", { type: "ref", value: "person:alice" }, "?ancestor"]),
       ).toThrow();
     });
   });

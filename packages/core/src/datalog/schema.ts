@@ -212,11 +212,12 @@ export const RuleApplication = Schema.Tuple([
     Schema.check(Schema.isPattern(/^[a-zA-Z_][a-zA-Z0-9_-]*$/)),
     Schema.annotate({ description: "Rule name (alphanumeric, no ? or : prefix)" }),
   ),
-  Term,
-  Term,
+  IdentityTerm,
+  IdentityTerm,
 ]).annotate({
   identifier: "RuleApplication",
-  description: "A rule application [ruleName, arg1, arg2] for recursive queries",
+  description:
+    "A rule application [ruleName, arg1, arg2] over string identities for recursive queries",
 });
 
 /**
