@@ -19,11 +19,13 @@ hosts typed configuration as a modular layer over the same core.
   ordered predicates are numeric-only and guard number/datetime storage types explicitly, avoiding
   SQLite text coercion and PostgreSQL cast failures. Identity bindings remain string-typed during
   equality predicates, so incompatible literals become backend-independent false conditions rather
-  than SQL casts. `having` applies that typed equality to group keys and requires numeric operands
-  when an aggregate target participates. Pattern constants use the same flattened scalar-family
+  than SQL casts. `having` applies that typed equality to the exact canonical `GROUP BY`
+  expressions and requires numeric operands when an aggregate target participates. Pattern constants use the same flattened scalar-family
   identity in positive patterns, negation, and disjunction; explicitly typed refs retain exact
   storage-type matching. Pattern entity, attribute, and transaction identities are restricted to
   strings or variables, preventing backend-specific stringification and PostgreSQL type errors.
+  The reserved `?` prefix is accepted only for validated variable identifiers, and constant
+  projections carry explicit scalar metadata through SQL wrappers so KV and SQL decode them alike.
   Wrapped filters use hidden typed projection columns rather than flattened SQL text, preserving
   numeric, text-family, boolean, and null semantics through pagination. Direct ordering and
   keyset pagination share the same hidden typed total-order key, including deterministic null and

@@ -36,7 +36,9 @@ unique and durable consumer checkpoints are available through the `operational` 
   aggregate equality is numeric-only and optional projections are rejected before SQL compilation.
   Pattern constants now use the same scalar-family identity through positive patterns, negation,
   and disjunction, while typed refs remain exact. Pattern identity positions now reject non-string
-  constants before backend execution. Continue expanding hostile schema-valid input.
+  constants before backend execution. The `?` prefix is reserved for schema-valid variables, and
+  constant projections retain typed primitive values through direct and wrapped execution.
+  Continue expanding hostile schema-valid input.
 - SQL projection now carries hidden canonical scalar-family columns through execution, so strings
   such as `"007"`, numeric-looking entity IDs and refs, datetimes, booleans, and JSON are decoded
   without guessing. Distinctness, grouping, counts, and page boundaries use that same flattened

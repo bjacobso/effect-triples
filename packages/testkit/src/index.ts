@@ -260,6 +260,45 @@ export const triplesConformanceCases: readonly ConformanceCase[] = [
     }),
   },
   {
+    name: "datalog constant projections retain their scalar values through pagination",
+    run: Effect.gen(function* () {
+      const t = yield* Triples;
+      const projectedRef = ref("conf:constant-projection:ref");
+      yield* t.assert({
+        entityId: "conf:constant-projection:entity",
+        attribute: ":conf/constant-projection",
+        value: string("anchor"),
+      });
+
+      const query = {
+        find: ["literal", 7, true, projectedRef, "?entity"],
+        where: [["?entity", ":conf/constant-projection", "anchor"]],
+      } as const;
+      const assertProjection = (row: Readonly<Record<string, unknown>> | undefined): boolean =>
+        row?.["literal"] === "literal" &&
+        row?.["7"] === 7 &&
+        row?.["true"] === true &&
+        row?.[String(projectedRef)] === projectedRef.value &&
+        row?.["?entity"] === "conf:constant-projection:entity";
+
+      const direct = yield* t.query(query);
+      yield* check(
+        direct.results.length === 1 && assertProjection(direct.results[0]),
+        "direct constant projections must retain booleans and flatten typed refs",
+      );
+
+      const page = yield* t.queryPage({
+        inner: query,
+        orderBy: [{ variable: "?entity" }],
+        limit: 1,
+      });
+      yield* check(
+        page.results.length === 1 && assertProjection(page.results[0]),
+        "wrapped queries must not drop constant projection columns",
+      );
+    }),
+  },
+  {
     name: "datalog pattern constants use flattened scalar identity in filters",
     run: Effect.gen(function* () {
       const t = yield* Triples;
@@ -786,6 +825,17 @@ export const triplesConformanceCases: readonly ConformanceCase[] = [
       yield* check(
         numeric.results[0]?.["?count"] === 2,
         "number and datetime values should share one numeric group",
+      );
+
+      const orderedNumeric = yield* t.query({
+        find: ["?bucket", "?count"],
+        where: [["?entity", ":conf/having-bucket", "?bucket"]],
+        aggregate: [["count", "?entity", "?count"]],
+        having: [[">", "?bucket", 6]],
+      });
+      yield* check(
+        orderedNumeric.results.length === 1 && orderedNumeric.results[0]?.["?bucket"] === 7,
+        "ordered HAVING must use the canonical numeric group expression",
       );
 
       const textOnly = yield* t.query({

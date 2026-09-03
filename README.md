@@ -691,6 +691,9 @@ typed preflight instead of relying on backend coercion. Entity, attribute, trans
 identities are strings: equality with a numeric or boolean literal is always false, and inequality
 is always true, consistently across backends. Pattern entity, attribute, and transaction positions
 therefore accept only string literals or variables; explicit typed refs are value constants.
+The `?` prefix is reserved for variables and variable names must match `?name`-style identifiers;
+malformed names fail decoding before SQL is built. Constants projected from `find` keep their
+primitive value across direct and paginated queries, with typed refs flattened to their string ID.
 
 ```ts
 triples.query({

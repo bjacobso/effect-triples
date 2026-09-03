@@ -58,8 +58,16 @@ export const isTypedConstant = (value: unknown): value is TypedConstant =>
 /**
  * Constant: a literal value (string, number, boolean, or typed constant)
  */
+const LiteralString = Schema.String.pipe(
+  Schema.check(Schema.isPattern(/^(?!\?)[\s\S]*$/)),
+  Schema.annotate({
+    identifier: "DatalogLiteralString",
+    description: "A string literal that does not use the reserved ? variable prefix",
+  }),
+);
+
 export const Constant = Schema.Union([
-  Schema.String,
+  LiteralString,
   Schema.Number,
   Schema.Boolean,
   TypedConstant,
@@ -81,7 +89,7 @@ export const Term = Schema.Union([Variable, Constant]).annotate({
  * every identity as text, so these positions accept only a string literal or
  * variable; typed refs belong in the value position.
  */
-const IdentityTerm = Schema.String.annotate({
+const IdentityTerm = Schema.Union([Variable, LiteralString]).annotate({
   identifier: "IdentityTerm",
   description: "A string identity literal or Datalog variable",
 });

@@ -352,6 +352,20 @@ describe("Datalog Wrapper Compiler", () => {
       expect(result.columnMap.get("?name")).toBe("?name");
       expect(result.columnMap.get("?age")).toBe("?age");
     });
+
+    it("selects and preserves inner constant projections", () => {
+      const query: WrappedQuery = {
+        inner: {
+          find: [true, { type: "ref", value: "entity:constant" }, "?name"],
+          where: [["?person", ":name", "?name"]],
+        },
+      };
+
+      const result = compileWrapped(query);
+
+      expect(result.sql).toContain('SELECT "_constant_0", "_constant_1", "?name"');
+      expect([...result.constantColumns.values()]).toEqual([true, "entity:constant"]);
+    });
   });
 
   describe("cursor pagination", () => {

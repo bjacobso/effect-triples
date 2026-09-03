@@ -166,6 +166,17 @@ describe("SQL Injection Prevention", () => {
       expect(result.params).toContain(payload);
       expect(result.columnMap.get("_constant_0")).toBe(payload);
     });
+
+    it("should reject malformed variable names before building result aliases", () => {
+      const payload = '?name" FROM triples; DROP TABLE triples; --';
+
+      expect(() =>
+        compile({
+          find: [payload],
+          where: [["?person", ":name", "Alice"]],
+        } as never),
+      ).toThrow("Invalid Datalog query shape");
+    });
   });
 
   describe("Query with Rules", () => {

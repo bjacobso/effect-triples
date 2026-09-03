@@ -80,10 +80,15 @@ const rowToContext = (
   columnMap: Map<string, string>,
   valueColumnMap: Map<string, CompiledValueColumns>,
   numericColumns: Set<string>,
+  constantColumns: Map<string, string | number | boolean>,
 ): QueryContext => {
   const context: Record<string, string | number | boolean | null> = {};
 
   for (const [colName, varName] of columnMap) {
+    if (constantColumns.has(colName)) {
+      context[varName] = constantColumns.get(colName)!;
+      continue;
+    }
     const valueColumns = valueColumnMap.get(colName);
     if (valueColumns) {
       context[varName] = decodeProjectedValue(row, valueColumns);
@@ -199,7 +204,13 @@ export const SqlQueryExecutorLive = Layer.effect(
 
         // 3. Convert rows to QueryContext objects
         const results: QueryContext[] = rows.map((row) =>
-          rowToContext(row, compiled.columnMap, compiled.valueColumnMap, compiled.numericColumns),
+          rowToContext(
+            row,
+            compiled.columnMap,
+            compiled.valueColumnMap,
+            compiled.numericColumns,
+            compiled.constantColumns,
+          ),
         );
 
         // 4. Return with optional debug info
@@ -270,7 +281,13 @@ export const SqlQueryExecutorLive = Layer.effect(
 
         // 4. Convert rows to QueryContext objects
         const results: QueryContext[] = rows.map((row) =>
-          rowToContext(row, compiled.columnMap, compiled.valueColumnMap, compiled.numericColumns),
+          rowToContext(
+            row,
+            compiled.columnMap,
+            compiled.valueColumnMap,
+            compiled.numericColumns,
+            compiled.constantColumns,
+          ),
         );
 
         // 5. Build result. The Triples boundary owns the opaque cursor envelope.

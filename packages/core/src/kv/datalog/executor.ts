@@ -411,7 +411,7 @@ const actualize = (contexts: readonly Context[], find: readonly Term[]): Context
           row[term] = null;
         }
       } else {
-        row[String(term)] = term as Constant;
+        row[String(term)] = normalizedRuleConstant(term as Constant);
       }
     }
 
@@ -433,7 +433,7 @@ const projectAggregateInputs = (contexts: readonly Context[], find: readonly Ter
       if (isVariable(term)) {
         row[term] = term in ctx ? ctx[term]! : null;
       } else {
-        row[String(term)] = term as Constant;
+        row[String(term)] = normalizedRuleConstant(term as Constant);
       }
     }
     return row;

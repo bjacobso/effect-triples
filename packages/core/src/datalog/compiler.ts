@@ -145,6 +145,8 @@ export interface CompiledQuery {
   valueColumnMap: Map<string, CompiledValueColumns>;
   /** Result columns whose SQL representation must be decoded as a number. */
   numericColumns: Set<string>;
+  /** Parameterized constant projections and their backend-independent public values. */
+  constantColumns: Map<string, string | number | boolean>;
   /** Optional metrics - only included when debug=true */
   metrics?: QueryMetrics;
 }
@@ -920,6 +922,103 @@ const optionalProjectionExpressions = (
   };
 };
 
+/** Equality over a grouped binding must reference the exact canonical
+ * expressions present in GROUP BY so PostgreSQL accepts it. */
+const compileGroupedBindingEquality = (left: VariableBinding, right: VariableBinding): string => {
+  if (isTripleValueBinding(left) && isTripleValueBinding(right)) {
+    const leftProjection = valueProjectionExpressions(left.alias);
+    const rightProjection = valueProjectionExpressions(right.alias);
+    return `((${leftProjection.type} = 'number' AND ${rightProjection.type} = 'number' AND ${leftProjection.number} = ${rightProjection.number}) OR (${leftProjection.type} = 'boolean' AND ${rightProjection.type} = 'boolean' AND ${leftProjection.boolean} = ${rightProjection.boolean}) OR (${leftProjection.type} = 'string' AND ${rightProjection.type} = 'string' AND ${leftProjection.string} = ${rightProjection.string}))`;
+  }
+
+  if (isTripleValueBinding(left)) {
+    const projection = valueProjectionExpressions(left.alias);
+    return `(${projection.type} = 'string' AND ${projection.string} = ${resolveBinding(right)})`;
+  }
+  if (isTripleValueBinding(right)) {
+    const projection = valueProjectionExpressions(right.alias);
+    return `(${projection.type} = 'string' AND ${resolveBinding(left)} = ${projection.string})`;
+  }
+  return `${resolveBinding(left)} = ${resolveBinding(right)}`;
+};
+
+const compileGroupedBindingConstantEquality = (
+  binding: VariableBinding,
+  value: Constant,
+  ctx: CompilerContext,
+): string => {
+  if (!isTripleValueBinding(binding)) {
+    const scalar = constantScalar(value);
+    return typeof scalar === "string"
+      ? `${resolveBinding(binding)} = ${formatValue(scalar, ctx)}`
+      : "1 = 0";
+  }
+
+  const projection = valueProjectionExpressions(binding.alias);
+  const scalar = constantScalar(value);
+  if (typeof scalar === "number") {
+    return `(${projection.type} = 'number' AND ${projection.number} = ${formatValue(scalar, ctx)})`;
+  }
+  if (typeof scalar === "boolean") {
+    return `(${projection.type} = 'boolean' AND ${projection.boolean} = ${formatStoredValue(scalar, ctx)})`;
+  }
+  return `(${projection.type} = 'string' AND ${projection.string} = ${formatValue(scalar, ctx)})`;
+};
+
+const compileGroupedEqualityCondition = (left: Term, right: Term, ctx: CompilerContext): string => {
+  if (isVariable(left) && isVariable(right)) {
+    const leftBinding = ctx.bindings.get(left);
+    const rightBinding = ctx.bindings.get(right);
+    if (!leftBinding) throw new Error(`Unbound variable in HAVING: ${left}`);
+    if (!rightBinding) throw new Error(`Unbound variable in HAVING: ${right}`);
+    return compileGroupedBindingEquality(leftBinding, rightBinding);
+  }
+  if (isVariable(left)) {
+    const binding = ctx.bindings.get(left);
+    if (!binding) throw new Error(`Unbound variable in HAVING: ${left}`);
+    return compileGroupedBindingConstantEquality(binding, right as Constant, ctx);
+  }
+  if (isVariable(right)) {
+    const binding = ctx.bindings.get(right);
+    if (!binding) throw new Error(`Unbound variable in HAVING: ${right}`);
+    return compileGroupedBindingConstantEquality(binding, left as Constant, ctx);
+  }
+  return constantScalar(left as Constant) === constantScalar(right as Constant) ? "1 = 1" : "1 = 0";
+};
+
+const groupedNumericTermExpression = (
+  term: Term,
+  ctx: CompilerContext,
+): OrderedTermExpression | null => {
+  if (!isVariable(term)) {
+    const value = constantScalar(term as Constant);
+    return typeof value === "number" ? { expression: formatValue(value, ctx) } : null;
+  }
+  const aggregate = ctx.aggregateExpressions.get(term);
+  if (aggregate !== undefined) return { expression: aggregate };
+
+  const binding = ctx.bindings.get(term);
+  if (!binding || !isTripleValueBinding(binding)) return null;
+  const projection = valueProjectionExpressions(binding.alias);
+  return { expression: projection.number, typeCondition: `${projection.type} = 'number'` };
+};
+
+const compileGroupedOrderedCondition = (
+  op: ">" | ">=" | "<" | "<=",
+  left: Term,
+  right: Term,
+  ctx: CompilerContext,
+): string => {
+  const leftTerm = groupedNumericTermExpression(left, ctx);
+  const rightTerm = groupedNumericTermExpression(right, ctx);
+  if (leftTerm === null || rightTerm === null) return "1 = 0";
+  const conditions = [leftTerm.typeCondition, rightTerm.typeCondition].filter(
+    (condition): condition is string => condition !== undefined,
+  );
+  conditions.push(`${leftTerm.expression} ${op} ${rightTerm.expression}`);
+  return `(${conditions.join(" AND ")})`;
+};
+
 /**
  * HAVING equality involving an aggregate is numeric: aggregate targets are
  * numbers (or null for an empty input), and a grouped fact value must belong
@@ -930,10 +1029,10 @@ const compileHavingEqualityCondition = (left: Term, right: Term, ctx: CompilerCo
   const hasAggregate =
     (isVariable(left) && ctx.aggregateExpressions.has(left)) ||
     (isVariable(right) && ctx.aggregateExpressions.has(right));
-  if (!hasAggregate) return compileEqualityCondition(left, right, ctx);
+  if (!hasAggregate) return compileGroupedEqualityCondition(left, right, ctx);
 
-  const leftTerm = orderedTermExpression(left, ctx);
-  const rightTerm = orderedTermExpression(right, ctx);
+  const leftTerm = groupedNumericTermExpression(left, ctx);
+  const rightTerm = groupedNumericTermExpression(right, ctx);
   if (leftTerm === null || rightTerm === null) return "1 = 0";
 
   const conditions = [leftTerm.typeCondition, rightTerm.typeCondition].filter(
@@ -956,7 +1055,7 @@ const buildHavingClause = (
 
   const conditions = having.map(([op, left, right]) => {
     if (op === ">" || op === ">=" || op === "<" || op === "<=") {
-      return compileOrderedPredicateCondition(op, left, right, ctx);
+      return compileGroupedOrderedCondition(op, left, right, ctx);
     }
     const equality = compileHavingEqualityCondition(left, right, ctx);
     return op === "=" ? equality : `NOT (${equality})`;
@@ -1005,6 +1104,7 @@ interface SelectAndGroupByResult {
   columnMap: Map<string, string>;
   valueColumnMap: Map<string, CompiledValueColumns>;
   numericColumns: Set<string>;
+  constantColumns: Map<string, string | number | boolean>;
   selectParts: string[];
   groupByClause: string;
   hasAggregates: boolean;
@@ -1022,6 +1122,7 @@ const buildSelectAndGroupBy = (
   const columnMap = new Map<string, string>();
   const valueColumnMap = new Map<string, CompiledValueColumns>();
   const numericColumns = new Set<string>();
+  const constantColumns = new Map<string, string | number | boolean>();
   const selectParts: string[] = [];
   const hasAggregates = Boolean(aggregate && aggregate.length > 0);
   const aggregateTargets = new Set<string>();
@@ -1136,6 +1237,7 @@ const buildSelectAndGroupBy = (
     const colName = `_constant_${selectParts.length}`;
     selectParts.push(`${formatValue(term, ctx)} AS ${colName}`);
     columnMap.set(colName, String(term));
+    constantColumns.set(colName, constantScalar(term));
   }
 
   let groupByClause = "";
@@ -1168,6 +1270,7 @@ const buildSelectAndGroupBy = (
     columnMap,
     valueColumnMap,
     numericColumns,
+    constantColumns,
     selectParts,
     groupByClause,
     hasAggregates,
@@ -1229,6 +1332,7 @@ export const compile = (
     columnMap,
     valueColumnMap,
     numericColumns,
+    constantColumns,
     selectParts,
     groupByClause,
     hasAggregates,
@@ -1266,6 +1370,7 @@ export const compile = (
     columnMap,
     valueColumnMap,
     numericColumns,
+    constantColumns,
   };
 
   if (includeMetrics) {
@@ -1763,6 +1868,7 @@ export const compileWithRules = (
     columnMap,
     valueColumnMap,
     numericColumns,
+    constantColumns,
     selectParts,
     groupByClause,
     hasAggregates,
@@ -1819,6 +1925,7 @@ export const compileWithRules = (
     columnMap,
     valueColumnMap,
     numericColumns,
+    constantColumns,
   };
 
   if (includeMetrics) {

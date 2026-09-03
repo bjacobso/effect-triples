@@ -579,6 +579,17 @@ describe("Datalog SQL Compiler", () => {
       expect(result.columnMap.get("?name")).toBe("?name");
       expect(result.columnMap.get("?age")).toBe("?age");
     });
+
+    it("records flattened constant projections for backend-independent decoding", () => {
+      const query: DatalogQuery = {
+        find: [true, 7, { type: "ref", value: "entity:constant" }, "?name"],
+        where: [["?person", ":name", "?name"]],
+      };
+
+      const result = compile(query);
+
+      expect([...result.constantColumns.values()]).toEqual([true, 7, "entity:constant"]);
+    });
   });
 
   describe("HAVING clause compilation", () => {

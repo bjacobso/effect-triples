@@ -85,6 +85,7 @@ describe("Datalog Schema", () => {
       expect(() => decode(undefined)).toThrow();
       expect(() => decode({})).toThrow();
       expect(() => decode([])).toThrow();
+      expect(() => decode("?reserved-for-variables")).toThrow();
     });
   });
 
@@ -100,6 +101,8 @@ describe("Datalog Schema", () => {
       expect(decode("Alice")).toBe("Alice");
       expect(decode(42)).toBe(42);
       expect(decode(true)).toBe(true);
+
+      expect(() => decode("?not-a-valid-variable")).toThrow();
     });
   });
 

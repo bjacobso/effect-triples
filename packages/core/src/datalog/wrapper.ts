@@ -13,7 +13,7 @@ import {
   type CompiledQuery,
   type CompiledValueColumns,
 } from "./compiler.js";
-import { isTypedConstant, isVariable } from "./schema.js";
+import { isTypedConstant } from "./schema.js";
 import type { SqlDialect } from "../dialects/index.js";
 import { SqliteDialect } from "../dialects/sqlite.js";
 import { createParamCollector, type ParamCollector } from "../params.js";
@@ -43,6 +43,8 @@ export interface CompiledWrappedQuery {
   valueColumnMap: Map<string, CompiledValueColumns>;
   /** Columns whose SQL representation must be decoded as a number. */
   numericColumns: Set<string>;
+  /** Parameterized constant projections and their public scalar values. */
+  constantColumns: Map<string, string | number | boolean>;
 }
 
 // =============================================================================
@@ -326,11 +328,7 @@ export const compileWrapped = (
   const cte = `WITH ${cteName} AS (\n${innerCompiled.sql}\n)`;
 
   // 3. Build SELECT columns from inner query's find clause
-  const selectColumns = new Set(
-    inner.find
-      .filter((term): term is string => typeof term === "string" && isVariable(term))
-      .map((v) => `"${v}"`),
-  );
+  const selectColumns = new Set([...innerCompiled.columnMap.keys()].map((column) => `"${column}"`));
   for (const columns of innerCompiled.valueColumnMap.values()) {
     for (const column of [
       `"${columns.category}"`,
@@ -424,5 +422,6 @@ export const compileWrapped = (
     columnMap: innerCompiled.columnMap,
     valueColumnMap: innerCompiled.valueColumnMap,
     numericColumns: innerCompiled.numericColumns,
+    constantColumns: innerCompiled.constantColumns,
   };
 };
