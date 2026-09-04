@@ -1,6 +1,6 @@
 {
   "name": "@bjacobso/triplex-testkit",
-  "version": "0.1.0",
+  "version": "0.0.0",
   "description": "Backend test helpers for Triplex",
   "keywords": [
     "effect",
@@ -32,6 +32,9 @@
       "import": "./dist/index.js",
       "default": "./dist/index.js"
     }
+  },
+  "publishConfig": {
+    "access": "public"
   },
   "scripts": {
     "build": "tsdown",

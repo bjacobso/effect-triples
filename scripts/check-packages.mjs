@@ -12,7 +12,20 @@ const packageNames = [
   "@bjacobso/triplex-cloudflare",
   "@bjacobso/triplex-foundationdb",
   "@bjacobso/triplex-testkit",
+  "@bjacobso/triplex-cli",
 ];
+const publishPackageNames = new Set([
+  "@bjacobso/triplex",
+  "@bjacobso/triplex-sql",
+  "@bjacobso/triplex-sqlite",
+  "@bjacobso/triplex-postgres",
+  "@bjacobso/triplex-testkit",
+  "@bjacobso/triplex-cli",
+]);
+const heldPackageNames = new Set([
+  "@bjacobso/triplex-cloudflare",
+  "@bjacobso/triplex-foundationdb",
+]);
 
 const workDir = mkdtempSync(join(tmpdir(), "triplex-pack-"));
 const tarDir = join(workDir, "tarballs");
@@ -65,6 +78,28 @@ try {
 
     const manifest = JSON.parse(run("tar", ["-xOzf", tarball, "package/package.json"]));
     packedManifests.push(manifest);
+    if (publishPackageNames.has(manifest.name)) {
+      if (manifest.private === true) {
+        throw new Error(`${manifest.name} is part of the release set but is private`);
+      }
+      if (manifest.publishConfig?.access !== "public") {
+        throw new Error(`${manifest.name} must publish with public access`);
+      }
+    }
+    if (heldPackageNames.has(manifest.name) && manifest.private !== true) {
+      throw new Error(`${manifest.name} must remain private until its backend is promoted`);
+    }
+    if (publishPackageNames.has(manifest.name)) {
+      for (const dependencyName of Object.keys({
+        ...manifest.dependencies,
+        ...manifest.optionalDependencies,
+        ...manifest.peerDependencies,
+      })) {
+        if (heldPackageNames.has(dependencyName)) {
+          throw new Error(`${manifest.name} must not depend on held package ${dependencyName}`);
+        }
+      }
+    }
     if (manifest.dependencies?.effect !== undefined) {
       throw new Error(`${manifest.name} must not install a private Effect runtime`);
     }
@@ -75,7 +110,9 @@ try {
 
   const dependencies = Object.fromEntries(
     packageNames.map((name) => {
-      const prefix = `${name.replace(/^@/, "").replaceAll("/", "-")}-0.1.0.tgz`;
+      const manifest = packedManifests.find((candidate) => candidate.name === name);
+      if (!manifest) throw new Error(`Could not locate packed manifest for ${name}`);
+      const prefix = `${name.replace(/^@/, "").replaceAll("/", "-")}-${manifest.version}.tgz`;
       const tarball = tarballs.find((file) => file.endsWith(prefix));
       if (!tarball) throw new Error(`Could not locate tarball for ${name}`);
       return [name, `file:${tarball}`];
@@ -278,6 +315,26 @@ if (
   run("npm", ["rebuild", "better-sqlite3"], consumerDir);
   run("npx", ["tsc", "--project", "tsconfig.json"], consumerDir);
   run("node", ["smoke.mjs"], consumerDir);
+
+  const cliManifest = packedManifests.find((manifest) => manifest.name === "@bjacobso/triplex-cli");
+  if (!cliManifest) throw new Error("Could not locate the packed CLI manifest");
+  if (cliManifest.bin?.triplex !== "./dist/cli.js") {
+    throw new Error("The packed CLI must expose dist/cli.js as the triplex executable");
+  }
+  const cli = join(consumerDir, "node_modules", ".bin", "triplex");
+  run(cli, ["--help"], consumerDir);
+  const version = run(cli, ["--version"], consumerDir);
+  if (!version.includes(cliManifest.version)) {
+    throw new Error(
+      `Packed CLI version mismatch: expected ${cliManifest.version}, received ${version.trim()}`,
+    );
+  }
+  const described = JSON.parse(
+    run(cli, ["--sqlite", join(consumerDir, "agent.sqlite"), "describe"], consumerDir),
+  );
+  if (described.ok !== true || described.command !== "describe") {
+    throw new Error(`Unexpected packed CLI description: ${JSON.stringify(described)}`);
+  }
 
   process.stdout.write(
     `Verified ${tarballs.length} package tarballs and a clean consumer install.\n`,

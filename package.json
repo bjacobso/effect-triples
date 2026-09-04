@@ -5,12 +5,15 @@
   "description": "An Effect-native fact database with Datalog and typed, content-addressed configuration.",
   "type": "module",
   "scripts": {
-    "build": "turbo run build",
+    "build": "turbo run build && pnpm docs:build",
     "changeset": "changeset",
     "clean": "turbo run clean",
     "check": "pnpm format:check && pnpm lint && pnpm typecheck && pnpm docs:check && pnpm test && pnpm build",
     "dev": "turbo watch build",
-    "docs:check": "node scripts/check-markdown-code.mjs",
+    "docs:build": "vitepress build docs",
+    "docs:check": "node scripts/check-markdown-code.mjs && tsc --noEmit -p docs/snippets/tsconfig.json",
+    "docs:dev": "vitepress dev docs",
+    "docs:preview": "vitepress preview docs",
     "dashboard": "pnpm --filter @bjacobso/triplex-dashboard dev",
     "triplex": "pnpm --filter @bjacobso/triplex-cli dev",
     "example:compliance-host": "pnpm --filter triplex-compliance-host start",
@@ -20,6 +23,7 @@
     "lint": "oxlint .",
     "pack:check": "node scripts/check-packages.mjs",
     "release:publish": "pnpm build && pnpm pack:check && changeset publish",
+    "release:canary": "changeset version --snapshot next && pnpm install --lockfile-only && pnpm build && pnpm pack:check && changeset publish --tag next --no-git-tag",
     "release:version": "changeset version && pnpm install --lockfile-only",
     "test": "turbo run test",
     "test:foundationdb:integration": "pnpm --filter @bjacobso/triplex-foundationdb test:integration",
@@ -29,14 +33,19 @@
   },
   "devDependencies": {
     "@changesets/cli": "catalog:",
+    "@fontsource-variable/ibm-plex-sans": "catalog:",
+    "@fontsource/ibm-plex-mono": "catalog:",
     "@types/node": "catalog:",
+    "effect": "catalog:",
     "oxfmt": "catalog:",
     "oxlint": "catalog:",
     "tsdown": "catalog:",
     "tsx": "catalog:",
     "turbo": "catalog:",
     "typescript": "catalog:",
-    "vitest": "catalog:"
+    "vitepress": "catalog:",
+    "vitest": "catalog:",
+    "vue": "catalog:"
   },
   "engines": {
     "node": ">=22"

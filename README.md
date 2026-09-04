@@ -69,6 +69,7 @@ pnpm add @bjacobso/triplex effect
 Until then, use the monorepo workspace or a reviewed package tarball produced by
 `pnpm pack:check`. Triplex is ESM-only, targets Node.js 22+, and is aligned to
 `effect@4.0.0-rc.112`. The browser-safe core also runs in modern browsers and edge runtimes.
+The coordinated package and canary process is documented in [Releasing Triplex](docs/releasing.md).
 
 ## Quick start
 

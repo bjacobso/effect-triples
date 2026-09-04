@@ -10,6 +10,6 @@ This package currently exposes the Durable Object `StorageAdapter` and database-
 uses the greenfield bitemporal schema, but it does not yet expose the same one-line `Triples` layer
 or pass the complete shared backend conformance corpus.
 
-Status: experimental and not yet published to npm.
+Status: private experimental workspace package, held from the first npm release.
 
 MIT © 2026 Ben Jacobson.

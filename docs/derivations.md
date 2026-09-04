@@ -161,5 +161,5 @@ wakeups, and pure diffs. The host remains responsible for:
 - timer delivery, integrations, retries, inboxes, and outboxes; and
 - interpreting candidate addition or removal as product behavior.
 
-The standalone [compliance host demo](../examples/compliance-host) composes those responsibilities
+The standalone [compliance host demo](https://github.com/bjacobso/triplex/tree/main/examples/compliance-host) composes those responsibilities
 end to end over the in-memory backend.

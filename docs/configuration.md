@@ -201,6 +201,6 @@ Applications normally resolve one pinned release, collect its rules, and pass bo
 
 ## Browser explorer
 
-The standalone [`examples/config-explorer`](../examples/config-explorer) workspace demonstrates
+The standalone [`examples/config-explorer`](https://github.com/bjacobso/triplex/tree/main/examples/config-explorer) workspace demonstrates
 typed nodes, releases, refs, impact analysis, evaluation, and proof tamper detection without
 importing source files from another package.

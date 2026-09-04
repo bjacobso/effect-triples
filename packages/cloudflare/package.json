@@ -1,6 +1,7 @@
 {
   "name": "@bjacobso/triplex-cloudflare",
   "version": "0.1.0",
+  "private": true,
   "description": "Cloudflare Durable Object SQLite backend for Triplex",
   "keywords": [
     "cloudflare",

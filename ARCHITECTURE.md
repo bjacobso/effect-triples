@@ -120,10 +120,10 @@ hosts typed configuration as a modular layer over the same core.
   a schema-bound client and `Triples`; this belongs in the backend package so core remains
   independent of SQL.
 - Backend maturity is explicit rather than inferred from package existence. In-memory KV and
-  SQLite are the supported baseline. PostgreSQL passes the opt-in shared conformance and isolation
-  integration suite but remains a production candidate until that suite runs in CI. Cloudflare and
-  FoundationDB are experimental; shared core changes must keep them compiling, but their semantics
-  are not part of the default conformance claim.
+  SQLite are the supported baseline. PostgreSQL passes the shared conformance and isolation
+  integration suite in CI but remains a pre-1.0 production candidate. Cloudflare and FoundationDB
+  are private experimental workspace packages; shared core changes must keep them compiling, but
+  their semantics are not part of the default conformance claim.
 - `@bjacobso/triplex-testkit` is the public home for reusable backend conformance helpers.
 - `test/integration` owns tests that intentionally compose multiple publishable packages.
 - `test/stress` owns opt-in performance and scale tests.
@@ -137,6 +137,6 @@ and SHA-256 live in `content`, so both entity snapshots and typed configuration 
 content-addressing semantics in Node.js, browsers, and edge runtimes.
 
 Repository and release maturity are tracked separately in
-[`docs/current-state.md`](docs/current-state.md). Package manifests already describe the future
-`bjacobso/triplex` identity, but the npm publication and GitHub remote cutover are not architectural
-guarantees and have not happened yet.
+[`docs/current-state.md`](docs/current-state.md). The GitHub repository has moved to
+`bjacobso/triplex`; npm publication is still pending and is governed by
+[`docs/releasing.md`](docs/releasing.md).

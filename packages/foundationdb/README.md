@@ -23,6 +23,6 @@ An isolated disposable cluster can opt into root access with
 The package exposes `FdbTriples.layer(config)` and FoundationDB watch helpers. Native integration
 tests are opt-in and the backend is not in the default shared conformance matrix.
 
-Status: experimental and not yet published to npm.
+Status: private experimental workspace package, held from the first npm release.
 
 MIT © 2026 Ben Jacobson.

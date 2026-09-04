@@ -36,9 +36,9 @@ roadmap tracks work that is not complete.
 - An Effect v4 agent CLI with schema-decoded commands and stable JSON output for SQLite and
   PostgreSQL. It explores entities, bitemporal facts, Datalog, causal history, configuration
   revisions/releases/refs/impact, applies attributed idempotent transactions, and moves refs.
-- One greenfield SQL v1 migration, host-owned migration entrypoints, Changesets configuration,
-  dist-only exports, package tarball checks, and Effect dependencies aligned through the root pnpm
-  catalog.
+- One greenfield SQL v1 migration, host-owned migration entrypoints, Changesets configuration and
+  release automation, dist-only exports, package tarball checks (including the installed CLI), and
+  Effect dependencies aligned through the root pnpm catalog.
 - PostgreSQL layers for standalone pools, an ambient host-owned `SqlClient`, and validated
   database-scoped pools. Ambient composition shares Effect SQL's fiber-local transaction so host
   rows, Triplex facts/journal, command claims, commit positions, and host outbox rows commit or roll
@@ -50,16 +50,15 @@ roadmap tracks work that is not complete.
 | ------------- | -------------------- | ------------------ | ---------- | ------------------------------ |
 | In-memory KV  | Yes                  | Yes                | Yes        | Tests, browser, ephemeral data |
 | SQLite        | Yes                  | Yes                | Yes        | Supported local persistence    |
-| PostgreSQL    | Yes                  | Yes, opt-in        | No         | Production candidate           |
+| PostgreSQL    | Yes                  | Yes                | Yes        | Pre-1.0 production candidate   |
 | Cloudflare DO | Partial product API  | No                 | Build/unit | Experimental                   |
 | FoundationDB  | Yes                  | Native opt-in      | No         | Experimental                   |
 
 PostgreSQL includes validated logical database IDs, deterministic safely quoted schema names, and
 per-pool-connection schema binding. Its host-owned-client and database-scoped paths are covered by
-Docker integration tests, including rollback and concurrent multi-connection isolation. It should
-not be called production-supported until the
-multi-connection isolation and shared conformance suite run in CI against a maintained PostgreSQL
-service.
+Docker integration tests in CI, including rollback and concurrent multi-connection isolation. It
+remains a pre-1.0 production candidate until operational use establishes its backup, migration,
+observability, and scale characteristics.
 
 Cloudflare has the current temporal SQL columns and adapter contract but does not expose the same
 one-line `Triples` composition or pass the shared backend corpus. FoundationDB requires a non-empty
@@ -68,8 +67,8 @@ normal test matrix.
 
 ## Honest limitations
 
-- Packages have not been published to npm. The repository metadata targets `bjacobso/triplex`, but
-  the remote repository cutover is still pending.
+- Packages have not been published to npm. The GitHub repository is `bjacobso/triplex`; the local
+  clone may still use the old redirecting remote URL until it is updated.
 - `SubscriptionManager` discovers dependencies and reports possible invalidations. It does not
   push result deltas or automatically re-run queries.
 - Entity snapshots, validation results, and derivation materializations are projections. Callers
@@ -88,13 +87,16 @@ normal test matrix.
 
 ## First-release gates
 
-1. Run PostgreSQL isolation and the shared conformance corpus in CI.
-2. Add a GitHub/Changesets release workflow and verify a canary install in an external consumer.
-3. Decide whether Cloudflare and FoundationDB are included as explicitly experimental packages in
-   the first release or held back until they pass the same corpus.
-4. Perform the GitHub remote/repository cutover to `bjacobso/triplex`.
-5. Publish the scoped packages together and verify their peer dependency and exports behavior from
-   the registry.
+1. Configure the protected `npm-publish` GitHub environment and npm authentication described in
+   [`releasing.md`](releasing.md).
+2. Merge the initial Changesets version PR, which advances the six public packages from `0.0.0` to
+   `0.1.0`.
+3. Publish and install a `next` snapshot in a clean external consumer.
+4. Publish the scoped stable packages together and verify their peer dependency, provenance, CLI,
+   and exports behavior from the registry.
+
+Cloudflare and FoundationDB are private for the first release. Their source stays in the monorepo
+and continues to compile, but Changesets cannot publish them accidentally.
 
 No npm deprecations are required today because none of the new `@bjacobso/triplex*` package names
 has been published.

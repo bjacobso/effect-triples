@@ -1,0 +1,420 @@
+:root {
+  --vp-font-family-base: "IBM Plex Sans Variable", sans-serif;
+  --vp-font-family-mono: "IBM Plex Mono", monospace;
+  --vp-c-brand-1: #3457f1;
+  --vp-c-brand-2: #2545d5;
+  --vp-c-brand-3: #1c36af;
+  --vp-c-brand-soft: rgba(52, 87, 241, 0.12);
+  --vp-c-bg: #f7f8fb;
+  --vp-c-bg-alt: #eff1f7;
+  --vp-c-bg-elv: #ffffff;
+  --vp-c-divider: rgba(13, 20, 43, 0.13);
+  --vp-c-text-1: #0d142b;
+  --vp-c-text-2: #4f586f;
+  --vp-code-block-bg: #10162a;
+  --vp-nav-height: 72px;
+}
+
+.dark {
+  --vp-c-brand-1: #7f96ff;
+  --vp-c-brand-2: #9b79ff;
+  --vp-c-brand-3: #b39aff;
+  --vp-c-brand-soft: rgba(127, 150, 255, 0.14);
+  --vp-c-bg: #090e1d;
+  --vp-c-bg-alt: #0f1528;
+  --vp-c-bg-elv: #131a30;
+  --vp-c-divider: rgba(220, 226, 255, 0.13);
+  --vp-c-text-1: #f3f5ff;
+  --vp-c-text-2: #aeb8d2;
+  --vp-code-block-bg: #080d1b;
+}
+
+body {
+  font-size: 16px;
+  letter-spacing: -0.008em;
+}
+
+.VPNavBar {
+  border-bottom: 1px solid var(--vp-c-divider);
+  background: color-mix(in srgb, var(--vp-c-bg) 86%, transparent) !important;
+  backdrop-filter: blur(16px);
+}
+
+.VPNavBarTitle .logo {
+  width: 25px;
+  height: 29px;
+}
+
+.VPNavBarTitle .title {
+  font-weight: 620;
+  letter-spacing: -0.035em;
+}
+
+.VPNavBarMenuLink,
+.VPNavBarMenuGroup .text {
+  font-size: 14px;
+}
+
+.triplex-index {
+  background-image:
+    linear-gradient(var(--vp-c-divider) 1px, transparent 1px),
+    linear-gradient(90deg, var(--vp-c-divider) 1px, transparent 1px);
+  background-size: 64px 64px;
+  background-position: center -1px;
+}
+
+.triplex-index .VPNav,
+.triplex-index .VPContent {
+  position: relative;
+}
+
+.triplex-index .VPContent::before {
+  position: fixed;
+  z-index: -1;
+  inset: var(--vp-nav-height) 0 auto;
+  height: 480px;
+  background: radial-gradient(circle at 50% 0%, rgba(72, 102, 255, 0.13), transparent 68%);
+  content: "";
+  pointer-events: none;
+}
+
+.triplex-index .VPContent.is-home {
+  padding-bottom: 0;
+}
+
+.triplex-index .VPHome {
+  margin-bottom: 0;
+  padding: 0;
+}
+
+.triplex-index .vp-doc.container {
+  max-width: none;
+  padding: 0;
+}
+
+.triplex-home {
+  max-width: 1184px;
+  margin: 0 auto;
+  padding: 108px 32px 0;
+}
+
+.triplex-home__intro {
+  max-width: 990px;
+}
+
+.triplex-home__eyebrow,
+.triplex-home__label {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 0 0 28px;
+  color: var(--vp-c-text-2);
+  font-family: var(--vp-font-family-mono);
+  font-size: 12px;
+  font-weight: 500;
+  letter-spacing: 0.12em;
+}
+
+.triplex-home__eyebrow span {
+  width: 8px;
+  height: 8px;
+  border-radius: 2px;
+  background: var(--vp-c-brand-1);
+  box-shadow: 0 0 0 5px var(--vp-c-brand-soft);
+}
+
+.triplex-home__intro h1 {
+  max-width: 980px;
+  margin: 0;
+  color: var(--vp-c-text-1);
+  font-size: clamp(3.25rem, 8vw, 6.8rem);
+  font-weight: 570;
+  letter-spacing: -0.072em;
+  line-height: 0.91;
+}
+
+.triplex-home__intro h1 em {
+  color: var(--vp-c-brand-1);
+  font-style: normal;
+}
+
+.triplex-home__intro > p {
+  max-width: 730px;
+  margin: 38px 0 0;
+  color: var(--vp-c-text-2);
+  font-size: clamp(1.08rem, 2vw, 1.35rem);
+  line-height: 1.55;
+}
+
+.triplex-home__actions {
+  display: flex;
+  align-items: center;
+  gap: 26px;
+  margin-top: 34px;
+}
+
+.triplex-home__actions a {
+  color: var(--vp-c-text-1);
+  font-size: 14px;
+  font-weight: 560;
+  text-decoration: none;
+}
+
+.triplex-home__actions .triplex-home__primary {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  padding: 0 19px;
+  border-radius: 8px;
+  background: var(--vp-c-text-1);
+  color: var(--vp-c-bg);
+  transition:
+    transform 160ms ease,
+    opacity 160ms ease;
+}
+
+.triplex-home__actions .triplex-home__primary:hover {
+  opacity: 0.88;
+  transform: translateY(-1px);
+}
+
+.triplex-home__coordinates {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  max-width: 790px;
+  margin-top: 72px;
+  border-top: 1px solid var(--vp-c-divider);
+  border-bottom: 1px solid var(--vp-c-divider);
+}
+
+.triplex-home__coordinates span {
+  padding: 15px 18px 15px 0;
+  color: var(--vp-c-text-1);
+  font-family: var(--vp-font-family-mono);
+  font-size: 12px;
+  text-transform: uppercase;
+}
+
+.triplex-home__coordinates span + span {
+  padding-left: 18px;
+  border-left: 1px solid var(--vp-c-divider);
+}
+
+.triplex-home__coordinates b {
+  margin-right: 10px;
+  color: var(--vp-c-brand-1);
+  font-weight: 500;
+}
+
+.triplex-home__code {
+  margin: 88px 0 0;
+  border: 1px solid rgba(225, 230, 255, 0.13);
+  border-radius: 12px;
+  background: #10162a;
+  box-shadow: 0 32px 80px rgba(10, 18, 52, 0.18);
+  overflow: hidden;
+}
+
+.triplex-home__code .vp-code-group {
+  margin: 0;
+}
+
+.triplex-home__code .tabs {
+  border-bottom: 1px solid rgba(225, 230, 255, 0.12);
+  background: #0c1224;
+}
+
+.triplex-home__code .tabs label {
+  color: #8591ad;
+  font-family: var(--vp-font-family-mono);
+  font-size: 12px;
+}
+
+.triplex-home__code .tabs label::after {
+  background-color: #7f96ff;
+}
+
+.triplex-home__code div[class*="language-"] {
+  margin: 0;
+  border-radius: 0;
+}
+
+.triplex-home__code pre {
+  min-height: 430px;
+  padding: 30px 32px;
+}
+
+.triplex-home__code code {
+  font-size: 14px;
+  line-height: 1.75;
+}
+
+.triplex-home__statement {
+  display: grid;
+  grid-template-columns: 0.72fr 1.5fr 1fr;
+  gap: 46px;
+  margin-top: 130px;
+  padding: 72px 0 82px;
+  border-top: 1px solid var(--vp-c-divider);
+}
+
+.triplex-home__statement h2 {
+  margin: 0;
+  color: var(--vp-c-text-1);
+  font-size: clamp(2rem, 4vw, 3.3rem);
+  font-weight: 570;
+  letter-spacing: -0.055em;
+  line-height: 1.05;
+}
+
+.triplex-home__statement > p:last-child {
+  margin: 4px 0 0;
+  color: var(--vp-c-text-2);
+  font-size: 16px;
+  line-height: 1.7;
+}
+
+.triplex-home__primitives {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  border-top: 1px solid var(--vp-c-divider);
+  border-left: 1px solid var(--vp-c-divider);
+}
+
+.triplex-home__primitives a {
+  display: grid;
+  grid-template-columns: 36px 1fr;
+  min-height: 190px;
+  padding: 28px;
+  border-right: 1px solid var(--vp-c-divider);
+  border-bottom: 1px solid var(--vp-c-divider);
+  color: var(--vp-c-text-1);
+  text-decoration: none;
+  transition: background-color 160ms ease;
+}
+
+.triplex-home__primitives a:hover {
+  background: var(--vp-c-bg-elv);
+}
+
+.triplex-home__primitives span {
+  color: var(--vp-c-brand-1);
+  font-family: var(--vp-font-family-mono);
+  font-size: 12px;
+}
+
+.triplex-home__primitives strong {
+  font-size: 22px;
+  font-weight: 560;
+  letter-spacing: -0.035em;
+}
+
+.triplex-home__primitives small {
+  grid-column: 2;
+  max-width: 400px;
+  margin-top: 14px;
+  color: var(--vp-c-text-2);
+  font-size: 15px;
+  line-height: 1.6;
+}
+
+.triplex-home__footer {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 96px;
+  padding: 26px 0 34px;
+  border-top: 1px solid var(--vp-c-divider);
+  color: var(--vp-c-text-2);
+  font-family: var(--vp-font-family-mono);
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.vp-doc:not(.triplex-home) h1 {
+  letter-spacing: -0.045em;
+}
+
+.vp-doc:not(.triplex-home) h2 {
+  letter-spacing: -0.025em;
+}
+
+@media (max-width: 760px) {
+  :root {
+    --vp-nav-height: 64px;
+  }
+
+  .triplex-index {
+    background-size: 40px 40px;
+  }
+
+  .triplex-home {
+    padding: 72px 20px 0;
+  }
+
+  .triplex-home__intro h1 {
+    font-size: clamp(3.1rem, 15vw, 5rem);
+  }
+
+  .triplex-home__intro > p {
+    margin-top: 28px;
+  }
+
+  .triplex-home__actions {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 18px;
+  }
+
+  .triplex-home__coordinates {
+    grid-template-columns: 1fr;
+    margin-top: 54px;
+  }
+
+  .triplex-home__coordinates span + span {
+    padding-left: 0;
+    border-top: 1px solid var(--vp-c-divider);
+    border-left: 0;
+  }
+
+  .triplex-home__code {
+    margin-top: 58px;
+    margin-right: -20px;
+    margin-left: -20px;
+    border-right: 0;
+    border-left: 0;
+    border-radius: 0;
+  }
+
+  .triplex-home__code pre {
+    min-height: 470px;
+    padding: 24px 20px;
+  }
+
+  .triplex-home__statement {
+    grid-template-columns: 1fr;
+    gap: 22px;
+    margin-top: 82px;
+    padding: 54px 0 62px;
+  }
+
+  .triplex-home__statement .triplex-home__label {
+    margin-bottom: 0;
+  }
+
+  .triplex-home__primitives {
+    grid-template-columns: 1fr;
+  }
+
+  .triplex-home__primitives a {
+    min-height: 165px;
+    padding: 24px 20px;
+  }
+
+  .triplex-home__footer {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 8px;
+    margin-top: 68px;
+  }
+}

@@ -28,6 +28,8 @@ import {
 import { Argument, Command, Flag } from "effect/unstable/cli";
 import { execute, type ExecuteOptions } from "./operations.js";
 
+declare const __TRIPLEX_CLI_VERSION__: string;
+
 const pretty = Flag.boolean("pretty").pipe(
   Flag.withDescription("Pretty-print JSON output"),
   Flag.withDefault(false),
@@ -491,7 +493,7 @@ export const command = rootCommand.pipe(
   Command.withSubcommands([status, describe, entity, fact, query, transaction, journal, config]),
 );
 
-export const run = Command.run(command, { version: "0.1.0" });
+export const run = Command.run(command, { version: __TRIPLEX_CLI_VERSION__ });
 
 export const reportFailure = (cause: Cause.Cause<unknown>) =>
   Console.error(

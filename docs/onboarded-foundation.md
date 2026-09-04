@@ -5,7 +5,7 @@ without importing application concepts into the database. Onboarded should retai
 `EntityStore`, authorization, command handlers, durable requirement occurrences, Threads,
 Routines, forms, and HTTP contracts as adapters over these primitives.
 
-The executable companion is [`examples/compliance-host`](../examples/compliance-host/README.md).
+The executable companion is [`examples/compliance-host`](https://github.com/bjacobso/triplex/tree/main/examples/compliance-host).
 It publishes generic configuration, writes facts pinned to that release, evaluates a Datalog
 derivation with provenance, reconciles candidates into durable host-owned work, previews a
 hypothetical submission, and reopens work at an evidence-expiry boundary.

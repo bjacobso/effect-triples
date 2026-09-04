@@ -1,6 +1,6 @@
 {
   "name": "@bjacobso/triplex",
-  "version": "0.1.0",
+  "version": "0.0.0",
   "description": "An Effect-native fact database with Datalog and typed, content-addressed configuration.",
   "keywords": [
     "configuration",
@@ -71,6 +71,9 @@
       "import": "./dist/internal.js",
       "default": "./dist/internal.js"
     }
+  },
+  "publishConfig": {
+    "access": "public"
   },
   "scripts": {
     "build": "tsdown",

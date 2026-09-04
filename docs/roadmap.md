@@ -23,15 +23,15 @@ host rows, Triplex facts/journal, and outbox writes can share one Effect SQL tra
 
 ## Immediate release gate
 
-- Add a Changesets-driven GitHub release workflow and test a canary package in a clean external
-  consumer. Changesets, package metadata, peer dependencies, dist-only exports, and pack checks are
-  already present; registry publication is not.
-- Run the PostgreSQL multi-connection isolation and full shared conformance suite in CI. Until then,
-  PostgreSQL is a production candidate, not a supported default.
-- Keep Cloudflare and FoundationDB explicitly experimental or hold their packages from the first
-  release until they pass the same behavioral contract.
-- Complete the GitHub repository/remote cutover to `bjacobso/triplex` only after the release branch
-  and package tarballs are verified.
+- Delivered: a Changesets v3 GitHub workflow maintains the version PR, publishes stable releases,
+  and can manually publish `next` snapshots without committing snapshot versions.
+- Delivered: package checks install all tarballs and exercise the CLI as an external consumer.
+- Delivered: the PostgreSQL multi-connection isolation and shared conformance suite run in CI.
+- Delivered: Cloudflare and FoundationDB are private experimental workspace packages and cannot be
+  included in the first release accidentally.
+- Delivered: the GitHub repository cutover to `bjacobso/triplex`.
+- Remaining: configure the protected GitHub environment, bootstrap npm package ownership, publish
+  and test the `next` snapshot externally, then merge and approve the initial `0.1.0` release.
 
 ## Immediate correctness gate: backend parity
 
@@ -66,8 +66,9 @@ host rows, Triplex facts/journal, and outbox writes can share one Effect SQL tra
   are parameterized; validated rule names are quoted identifiers. The portable recursive shape is
   binary and identity-only. Same-named definitions union, repeated variables unify, and unsupported
   recursion fails during typed preflight.
-- Promote PostgreSQL from production candidate only after its suite runs in CI. Keep FoundationDB
-  and Cloudflare experimental until each passes the shared conformance and differential suites.
+- Keep PostgreSQL labelled as a pre-1.0 production candidate while its now-required CI corpus gains
+  operational history. Keep FoundationDB and Cloudflare private and experimental until each passes
+  the shared conformance and differential suites.
 
 ## 1. Schema-Aware Constraints & Enforcement
 

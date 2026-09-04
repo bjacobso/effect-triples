@@ -1,6 +1,6 @@
 {
   "name": "@bjacobso/triplex-sql",
-  "version": "0.1.0",
+  "version": "0.0.0",
   "description": "Shared SQL layers and query execution for Triplex",
   "keywords": [
     "database",
@@ -33,6 +33,9 @@
       "import": "./dist/index.js",
       "default": "./dist/index.js"
     }
+  },
+  "publishConfig": {
+    "access": "public"
   },
   "scripts": {
     "build": "tsdown && tsc --declaration --emitDeclarationOnly --rootDir src --outDir dist",

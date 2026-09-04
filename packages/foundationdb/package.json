@@ -1,6 +1,7 @@
 {
   "name": "@bjacobso/triplex-foundationdb",
   "version": "0.1.0",
+  "private": true,
   "description": "FoundationDB backend for Triplex",
   "keywords": [
     "database",
