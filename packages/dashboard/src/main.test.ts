@@ -52,7 +52,7 @@ describe("Triplex dashboard", () => {
 
     scene(
       { update, view },
-      given({ ...initialModel, busy: false, data: loaded.data }),
+      given({ ...initialModel, page: "overview", busy: false, data: loaded.data }),
       expectScene(role("heading", { name: "See the database think" })).toExist(),
       expectScene(role("button", { name: "Refresh data" })).toBeEnabled(),
       expectScene(text("?studentName = Mina Patel")).toExist(),

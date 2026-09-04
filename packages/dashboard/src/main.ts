@@ -46,7 +46,7 @@ export const Message = defineMessageUnion({
 export type Message = typeof Message.Type;
 
 export const initialModel: Model = {
-  page: "overview",
+  page: "entities",
   data: null,
   selectedEntityId: null,
   selectedEntityType: null,
@@ -294,7 +294,9 @@ type IconName =
   | "refresh"
   | "arrow"
   | "database"
-  | "spark";
+  | "spark"
+  | "folder"
+  | "terminal";
 
 const iconPaths: Readonly<Record<IconName, string>> = {
   overview: "M4 13h6V4H4v9Zm0 7h6v-4H4v4Zm10 0h6v-9h-6v9Zm0-16v4h6V4h-6Z",
@@ -309,6 +311,8 @@ const iconPaths: Readonly<Record<IconName, string>> = {
     "M20 6c0 1.7-3.6 3-8 3S4 7.7 4 6s3.6-3 8-3 8 1.3 8 3ZM4 6v6c0 1.7 3.6 3 8 3s8-1.3 8-3V6M4 12v6c0 1.7 3.6 3 8 3s8-1.3 8-3v-6",
   spark:
     "m12 3 1.2 4.8L18 9l-4.8 1.2L12 15l-1.2-4.8L6 9l4.8-1.2L12 3Zm6 11 .7 2.3L21 17l-2.3.7L18 20l-.7-2.3L15 17l2.3-.7L18 14Z",
+  folder: "M3 6.5h6l2 2h10v9.5a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V6.5Zm0 3h18",
+  terminal: "m5 7 4 4-4 4m6 0h8",
 };
 
 const icon = (name: IconName, h: HtmlBuilder<Message>): Html =>
@@ -339,10 +343,10 @@ const uiButton = (
   const kind = options.kind ?? "secondary";
   const styles =
     kind === "primary"
-      ? "bg-[#1769ff] text-white shadow-[0_8px_20px_rgba(23,105,255,0.2)] hover:bg-[#0f5ce8]"
+      ? "border border-[#1558d6] bg-[#1769ff] text-white hover:bg-[#0f5ce8]"
       : kind === "quiet"
         ? "bg-transparent text-slate-500 hover:bg-slate-100 hover:text-slate-900"
-        : "border border-slate-200 bg-white text-slate-700 shadow-sm hover:border-slate-300 hover:bg-slate-50";
+        : "border border-[#cfd3dc] bg-[#fafbfc] text-slate-700 hover:border-slate-400 hover:bg-white";
   return Button.view(
     {
       onClick,
@@ -352,7 +356,7 @@ const uiButton = (
           [
             ...button,
             h.Class(
-              `inline-flex min-h-10 items-center justify-center gap-2 rounded-xl px-3.5 text-sm font-semibold transition focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-blue-100 disabled:cursor-wait disabled:opacity-55 ${styles}`,
+              `inline-flex h-8 items-center justify-center gap-1.5 rounded-md px-3 text-xs font-medium transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-200 disabled:cursor-wait disabled:opacity-55 ${styles}`,
             ),
           ],
           [...(options.icon === undefined ? [] : [icon(options.icon, h)]), label],
@@ -379,45 +383,35 @@ const sidebar = (model: Model, h: HtmlBuilder<Message>): Html =>
   h.aside(
     [
       h.Class(
-        "border-white/8 bg-[#101827] text-white lg:fixed lg:inset-y-0 lg:left-0 lg:flex lg:w-68 lg:flex-col lg:border-r",
+        "console-sidebar border-console fixed inset-x-0 top-11 z-20 flex h-11 border-b bg-[#eef0f4] lg:inset-y-0 lg:top-11 lg:right-auto lg:h-auto lg:w-60 lg:flex-col lg:border-r lg:border-b-0",
       ),
     ],
     [
       h.div(
+        [h.Class("hidden border-b border-[#d5d8df] px-4 py-3 lg:block")],
+        [
+          h.div(
+            [h.Class("flex items-center gap-2 text-xs font-semibold text-slate-700")],
+            [icon("database", h), "demo-learning"],
+          ),
+          h.p([h.Class("mt-1 pl-7 font-mono text-[11px] text-slate-500")], ["memory://local"]),
+        ],
+      ),
+      h.p(
         [
           h.Class(
-            "flex items-center justify-between border-b border-white/8 px-5 py-5 lg:block lg:border-0 lg:px-7 lg:pt-8 lg:pb-5",
+            "hidden px-4 pt-4 pb-1.5 text-[11px] font-semibold tracking-[0.08em] text-slate-500 uppercase lg:block",
           ),
         ],
-        [
-          h.img([h.Src(logoUrl), h.Alt("Triplex"), h.Class("h-auto w-31 lg:w-36")]),
-          h.div(
-            [
-              h.Class(
-                "hidden items-center gap-2 text-[11px] font-medium text-slate-400 lg:mt-4 lg:flex",
-              ),
-            ],
-            [
-              h.span(
-                [
-                  h.Class(
-                    "h-2 w-2 rounded-full bg-emerald-400 shadow-[0_0_0_4px_rgba(52,211,153,0.1)]",
-                  ),
-                ],
-                [],
-              ),
-              "In-memory database online",
-            ],
-          ),
-        ],
+        ["Database"],
       ),
       h.nav(
         [
           h.Class(
-            "no-scrollbar flex gap-1 overflow-x-auto px-3 py-3 lg:flex-1 lg:flex-col lg:overflow-visible lg:px-4 lg:py-5",
+            "no-scrollbar flex flex-1 gap-0.5 overflow-x-auto px-2 py-1.5 lg:flex-none lg:flex-col lg:overflow-visible lg:px-2 lg:py-1",
           ),
         ],
-        navItems.map((item) =>
+        navItems.slice(0, 2).map((item) =>
           Button.view(
             {
               onClick: Message.SelectedPage({ page: item.page }),
@@ -427,8 +421,40 @@ const sidebar = (model: Model, h: HtmlBuilder<Message>): Html =>
                     ...button,
                     h.Class(
                       item.page === model.page
-                        ? "flex shrink-0 items-center gap-3 rounded-xl bg-white/10 px-3.5 py-3 text-sm font-semibold text-white shadow-[inset_0_0_0_1px_rgba(255,255,255,0.06)] lg:w-full"
-                        : "flex shrink-0 items-center gap-3 rounded-xl px-3.5 py-3 text-sm font-medium text-slate-400 transition hover:bg-white/6 hover:text-white lg:w-full",
+                        ? "flex h-8 shrink-0 items-center gap-2 rounded-md bg-[#d8e4ff] px-2.5 text-sm font-medium text-[#174ea6] lg:w-full"
+                        : "flex h-8 shrink-0 items-center gap-2 rounded-md px-2.5 text-sm font-medium text-slate-700 transition hover:bg-black/5 lg:w-full",
+                    ),
+                  ],
+                  [icon(item.icon, h), item.label],
+                ),
+            },
+            h,
+          ),
+        ),
+      ),
+      h.div([h.Class("hidden border-t border-[#d5d8df] lg:block")], []),
+      h.p(
+        [
+          h.Class(
+            "hidden px-4 pt-4 pb-1.5 text-[11px] font-semibold tracking-[0.08em] text-slate-500 uppercase lg:block",
+          ),
+        ],
+        ["Tools"],
+      ),
+      h.nav(
+        [h.Class("hidden flex-1 px-2 lg:block")],
+        navItems.slice(2).map((item) =>
+          Button.view(
+            {
+              onClick: Message.SelectedPage({ page: item.page }),
+              toView: ({ button }) =>
+                h.button(
+                  [
+                    ...button,
+                    h.Class(
+                      item.page === model.page
+                        ? "mb-0.5 flex h-8 w-full items-center gap-2 rounded-md bg-[#d8e4ff] px-2.5 text-sm font-medium text-[#174ea6]"
+                        : "mb-0.5 flex h-8 w-full items-center gap-2 rounded-md px-2.5 text-sm font-medium text-slate-700 transition hover:bg-black/5",
                     ),
                   ],
                   [icon(item.icon, h), item.label],
@@ -439,19 +465,16 @@ const sidebar = (model: Model, h: HtmlBuilder<Message>): Html =>
         ),
       ),
       h.div(
-        [h.Class("hidden border-t border-white/8 p-5 lg:block")],
+        [h.Class("hidden border-t border-[#d5d8df] px-4 py-3 lg:block")],
         [
           h.div(
-            [h.Class("rounded-2xl bg-[#17233a] p-4")],
+            [h.Class("flex items-center justify-between")],
             [
               h.div(
-                [h.Class("mb-2 flex items-center gap-2 text-xs font-semibold text-blue-300")],
-                [icon("spark", h), "Built on Effect"],
+                [h.Class("flex items-center gap-2 text-xs text-slate-600")],
+                [h.span([h.Class("h-2 w-2 rounded-full bg-emerald-500")], []), "Connected"],
               ),
-              h.p(
-                [h.Class("text-xs leading-5 text-slate-400")],
-                ["Every interaction is a typed Foldkit message and every read is an Effect."],
-              ),
+              h.span([h.Class("font-mono text-[10px] text-slate-400")], ["Effect 4"]),
             ],
           ),
         ],
@@ -467,20 +490,21 @@ const pageHeader = (
   h: HtmlBuilder<Message>,
 ): Html =>
   h.header(
-    [h.Class("mb-7 flex flex-col gap-5 sm:flex-row sm:items-end sm:justify-between")],
+    [
+      h.Class(
+        "mb-3 flex min-h-14 flex-col gap-3 border-b border-[#d9dce3] pb-3 sm:flex-row sm:items-end sm:justify-between",
+      ),
+    ],
     [
       h.div(
         [],
         [
           h.p(
-            [h.Class("mb-2 text-xs font-bold tracking-[0.18em] text-[#1769ff] uppercase")],
-            [eyebrow],
+            [h.Class("mb-1 font-mono text-[11px] text-slate-500")],
+            [`triplex / ${eyebrow.toLowerCase()}`],
           ),
-          h.h1(
-            [h.Class("text-3xl font-bold tracking-[-0.035em] text-slate-950 sm:text-[2.15rem]")],
-            [title],
-          ),
-          h.p([h.Class("mt-2 max-w-2xl text-sm leading-6 text-slate-500")], [description]),
+          h.h1([h.Class("text-xl font-semibold tracking-[-0.025em] text-slate-950")], [title]),
+          h.p([h.Class("mt-1 max-w-3xl text-sm leading-5 text-slate-500")], [description]),
         ],
       ),
       uiButton(model.busy ? "Refreshing…" : "Refresh data", Message.RequestedRefresh(), h, {
@@ -1090,37 +1114,36 @@ const entitiesView = (model: Model, h: HtmlBuilder<Message>): Html => {
   const data = model.data!;
   const page = model.entityTypePage;
   const selectedType = model.selectedEntityType;
+  const selectedEntity =
+    page?.entities.find((entity) => entity.id === model.selectedEntityId) ?? page?.entities[0];
 
   return h.div(
     [],
     [
       pageHeader(
-        "Reflected schema",
-        "Browse entity types",
-        "Choose a type discovered from stored facts, then page through a temporal-basis-pinned table of its entities and attributes.",
+        "Data",
+        "Entities",
+        "Browse reflected types and inspect a stable, cursor-paginated view of their current facts.",
         model,
         h,
       ),
       h.div(
         [
           h.Class(
-            "grid min-h-[620px] overflow-hidden rounded-2xl border border-slate-200/80 bg-white shadow-[0_1px_2px_rgba(15,23,42,0.03)] xl:grid-cols-[280px_minmax(0,1fr)]",
+            "console-window grid min-h-[calc(100vh-190px)] overflow-hidden border border-[#cfd3dc] bg-white lg:grid-cols-[230px_minmax(0,1fr)] 2xl:grid-cols-[230px_minmax(0,1fr)_280px]",
           ),
         ],
         [
           h.aside(
-            [h.Class("border-b border-slate-200 bg-slate-50/70 p-3 xl:border-r xl:border-b-0")],
+            [h.Class("border-b border-[#d8dbe2] bg-[#f2f3f6] p-2 lg:border-r lg:border-b-0")],
             [
               h.div(
-                [h.Class("px-3 pt-2 pb-3")],
+                [h.Class("px-2 pt-1 pb-2")],
                 [
+                  h.p([h.Class("text-xs font-semibold text-slate-700")], ["Entity types"]),
                   h.p(
-                    [h.Class("text-[10px] font-bold tracking-[0.14em] text-slate-400 uppercase")],
-                    ["Entity types"],
-                  ),
-                  h.p(
-                    [h.Class("mt-1 text-xs text-slate-500")],
-                    [`${data.entityTypes.length} discovered from the current database`],
+                    [h.Class("mt-0.5 text-[11px] text-slate-500")],
+                    [`${data.entityTypes.length} in this database`],
                   ),
                 ],
               ),
@@ -1134,8 +1157,8 @@ const entitiesView = (model: Model, h: HtmlBuilder<Message>): Html => {
                           ...button,
                           h.Class(
                             entityType.name === selectedType
-                              ? "mb-1 flex w-full items-center justify-between rounded-xl bg-white px-3.5 py-3 text-left shadow-sm ring-1 ring-slate-200"
-                              : "mb-1 flex w-full items-center justify-between rounded-xl px-3.5 py-3 text-left transition hover:bg-white",
+                              ? "mb-0.5 flex h-9 w-full items-center justify-between rounded-md bg-[#d8e4ff] px-2 text-left text-[#174ea6]"
+                              : "mb-0.5 flex h-9 w-full items-center justify-between rounded-md px-2 text-left transition hover:bg-black/5",
                           ),
                         ],
                         [
@@ -1143,19 +1166,15 @@ const entitiesView = (model: Model, h: HtmlBuilder<Message>): Html => {
                             [h.Class("min-w-0")],
                             [
                               h.p(
-                                [h.Class("truncate text-sm font-semibold text-slate-900")],
-                                [entityType.name],
-                              ),
-                              h.p(
-                                [h.Class("mt-0.5 text-[10px] text-slate-400")],
-                                [`${entityType.attributeCount} attributes`],
+                                [h.Class("flex items-center gap-2 truncate text-sm font-medium")],
+                                [icon("folder", h), entityType.name],
                               ),
                             ],
                           ),
                           h.span(
                             [
                               h.Class(
-                                "rounded-lg bg-blue-50 px-2 py-1 text-xs font-bold text-blue-700",
+                                "min-w-6 rounded-full bg-white/70 px-1.5 py-0.5 text-center font-mono text-[10px] text-slate-600",
                               ),
                             ],
                             [String(entityType.entityCount)],
@@ -1174,7 +1193,7 @@ const entitiesView = (model: Model, h: HtmlBuilder<Message>): Html => {
               h.div(
                 [
                   h.Class(
-                    "flex items-center justify-between gap-4 border-b border-slate-100 px-5 py-4",
+                    "flex h-12 items-center justify-between gap-4 border-b border-[#d8dbe2] bg-[#f8f9fb] px-3",
                   ),
                 ],
                 [
@@ -1182,11 +1201,11 @@ const entitiesView = (model: Model, h: HtmlBuilder<Message>): Html => {
                     [],
                     [
                       h.h2(
-                        [h.Class("text-lg font-bold text-slate-950")],
+                        [h.Class("text-sm font-semibold text-slate-900")],
                         [selectedType ?? "No type selected"],
                       ),
                       h.p(
-                        [h.Class("mt-0.5 text-xs text-slate-500")],
+                        [h.Class("mt-0.5 text-[11px] text-slate-500")],
                         [
                           page === null
                             ? "Loading entity page…"
@@ -1200,7 +1219,7 @@ const entitiesView = (model: Model, h: HtmlBuilder<Message>): Html => {
                     : h.span(
                         [
                           h.Class(
-                            "rounded-lg bg-slate-100 px-2.5 py-1 font-mono text-[10px] text-slate-500",
+                            "rounded border border-[#d4d7df] bg-white px-2 py-1 font-mono text-[10px] text-slate-500",
                           ),
                         ],
                         [`page ${model.entityTypeBackStack.length + 1}`],
@@ -1221,10 +1240,14 @@ const entitiesView = (model: Model, h: HtmlBuilder<Message>): Html => {
                       [h.Class("overflow-x-auto")],
                       [
                         h.table(
-                          [h.Class("w-full min-w-max text-left text-sm")],
+                          [
+                            h.Class(
+                              "console-grid w-full min-w-max border-separate border-spacing-0 text-left text-sm",
+                            ),
+                          ],
                           [
                             h.thead(
-                              [h.Class("border-b border-slate-100 bg-slate-50/60")],
+                              [h.Class("bg-[#f1f3f6]")],
                               [
                                 h.tr(
                                   [],
@@ -1232,19 +1255,27 @@ const entitiesView = (model: Model, h: HtmlBuilder<Message>): Html => {
                                     h.th(
                                       [
                                         h.Class(
-                                          "sticky left-0 bg-slate-50 px-5 py-3 text-[10px] font-bold tracking-wide text-slate-400 uppercase",
+                                          "sticky top-0 left-0 z-30 w-10 border-r border-b border-[#cfd3dc] bg-[#e8eaee] px-2 py-1.5 text-center font-mono text-[10px] font-normal text-slate-500",
                                         ),
                                       ],
-                                      ["Entity"],
+                                      ["#"],
                                     ),
-                                    ...page.columns.map((column) =>
+                                    h.th(
+                                      [
+                                        h.Class(
+                                          "sticky top-0 left-10 z-20 min-w-52 border-r border-b border-[#cfd3dc] bg-[#eef0f4] px-3 py-2 text-[11px] font-semibold text-slate-600",
+                                        ),
+                                      ],
+                                      ["A  Entity"],
+                                    ),
+                                    ...page.columns.map((column, index) =>
                                       h.th(
                                         [
                                           h.Class(
-                                            "px-4 py-3 font-mono text-[10px] font-semibold whitespace-nowrap text-slate-500",
+                                            "sticky top-0 z-10 min-w-44 border-r border-b border-[#cfd3dc] bg-[#eef0f4] px-3 py-2 font-mono text-[10px] font-medium whitespace-nowrap text-slate-600",
                                           ),
                                         ],
-                                        [column],
+                                        [`${String.fromCharCode(66 + index)}  ${column}`],
                                       ),
                                     ),
                                   ],
@@ -1252,29 +1283,60 @@ const entitiesView = (model: Model, h: HtmlBuilder<Message>): Html => {
                               ],
                             ),
                             h.tbody(
-                              [h.Class("divide-y divide-slate-100")],
-                              page.entities.map((entity) =>
+                              [],
+                              page.entities.map((entity, rowIndex) =>
                                 h.tr(
-                                  [h.Class("align-top hover:bg-blue-50/30")],
+                                  [h.Class("group align-top hover:bg-[#edf4ff]")],
                                   [
                                     h.td(
-                                      [h.Class("sticky left-0 bg-white px-5 py-4")],
                                       [
-                                        h.p(
-                                          [
-                                            h.Class(
-                                              "max-w-52 truncate font-semibold text-slate-900",
-                                            ),
-                                          ],
-                                          [entity.name],
+                                        h.Class(
+                                          "sticky left-0 z-20 border-r border-b border-[#d9dce3] bg-[#f1f3f6] px-2 py-2 text-center font-mono text-[10px] text-slate-500 group-hover:bg-[#dceaff]",
                                         ),
-                                        h.code(
-                                          [
-                                            h.Class(
-                                              "mt-1 block max-w-52 truncate text-[10px] text-slate-400",
-                                            ),
-                                          ],
-                                          [entity.id],
+                                      ],
+                                      [String(model.entityTypeBackStack.length * 5 + rowIndex + 1)],
+                                    ),
+                                    h.td(
+                                      [
+                                        h.Class(
+                                          "sticky left-10 z-10 border-r border-b border-[#d9dce3] bg-white px-3 py-2 group-hover:bg-[#edf4ff]",
+                                        ),
+                                      ],
+                                      [
+                                        Button.view(
+                                          {
+                                            onClick: Message.SelectedEntity({
+                                              entityId: entity.id,
+                                            }),
+                                            toView: ({ button }) =>
+                                              h.button(
+                                                [
+                                                  ...button,
+                                                  h.Class(
+                                                    "block w-full text-left outline-none focus-visible:ring-2 focus-visible:ring-[#1769ff]",
+                                                  ),
+                                                ],
+                                                [
+                                                  h.p(
+                                                    [
+                                                      h.Class(
+                                                        "max-w-52 truncate text-xs font-medium text-slate-900",
+                                                      ),
+                                                    ],
+                                                    [entity.name],
+                                                  ),
+                                                  h.code(
+                                                    [
+                                                      h.Class(
+                                                        "mt-0.5 block max-w-52 truncate text-[10px] text-slate-400",
+                                                      ),
+                                                    ],
+                                                    [entity.id],
+                                                  ),
+                                                ],
+                                              ),
+                                          },
+                                          h,
                                         ),
                                       ],
                                     ),
@@ -1283,7 +1345,11 @@ const entitiesView = (model: Model, h: HtmlBuilder<Message>): Html => {
                                         .filter((fact) => fact.attribute === column)
                                         .map((fact) => fact.value);
                                       return h.td(
-                                        [h.Class("max-w-72 px-4 py-4 text-xs text-slate-700")],
+                                        [
+                                          h.Class(
+                                            "max-w-72 border-r border-b border-[#e1e3e8] px-3 py-2 font-mono text-[11px] text-slate-700",
+                                          ),
+                                        ],
                                         [values.length === 0 ? "—" : values.join(", ")],
                                       );
                                     }),
@@ -1296,7 +1362,11 @@ const entitiesView = (model: Model, h: HtmlBuilder<Message>): Html => {
                       ],
                     ),
               h.div(
-                [h.Class("flex items-center justify-between border-t border-slate-100 px-5 py-4")],
+                [
+                  h.Class(
+                    "flex h-11 items-center justify-between border-t border-[#d8dbe2] bg-[#f8f9fb] px-3",
+                  ),
+                ],
                 [
                   h.p(
                     [h.Class("text-xs text-slate-400")],
@@ -1318,6 +1388,66 @@ const entitiesView = (model: Model, h: HtmlBuilder<Message>): Html => {
                 ],
               ),
             ],
+          ),
+          h.aside(
+            [h.Class("hidden border-l border-[#d8dbe2] bg-[#f8f9fb] 2xl:flex 2xl:flex-col")],
+            selectedEntity === undefined
+              ? [
+                  h.p(
+                    [h.Class("p-4 text-sm text-slate-500")],
+                    ["Select an entity to inspect its facts."],
+                  ),
+                ]
+              : [
+                  h.div(
+                    [h.Class("border-b border-[#d8dbe2] px-4 py-3")],
+                    [
+                      h.p([h.Class("text-xs font-semibold text-slate-900")], [selectedEntity.name]),
+                      h.code(
+                        [h.Class("mt-1 block break-all text-[10px] text-slate-500")],
+                        [selectedEntity.id],
+                      ),
+                    ],
+                  ),
+                  h.div(
+                    [h.Class("flex-1 overflow-y-auto")],
+                    selectedEntity.facts.map((fact) =>
+                      h.div(
+                        [h.Class("border-b border-[#e1e3e8] px-4 py-3")],
+                        [
+                          h.div(
+                            [h.Class("flex items-center justify-between gap-2")],
+                            [
+                              h.code(
+                                [h.Class("break-all text-[10px] text-[#174ea6]")],
+                                [fact.attribute],
+                              ),
+                              h.span(
+                                [
+                                  h.Class(
+                                    "rounded border border-[#d4d7df] bg-white px-1.5 py-0.5 font-mono text-[10px] text-slate-500",
+                                  ),
+                                ],
+                                [fact.valueType],
+                              ),
+                            ],
+                          ),
+                          h.p([h.Class("mt-2 break-words text-sm text-slate-800")], [fact.value]),
+                          h.p(
+                            [h.Class("mt-2 font-mono text-[10px] text-slate-400")],
+                            [
+                              `valid ${formatInstant(fact.validFrom)} → ${fact.validTo === null ? "open" : formatInstant(fact.validTo)}`,
+                            ],
+                          ),
+                          h.p(
+                            [h.Class("mt-0.5 font-mono text-[10px] text-slate-400")],
+                            [`recorded ${formatInstant(fact.recordedAt)}`],
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ],
           ),
         ],
       ),
@@ -2519,14 +2649,74 @@ export const view = (model: Model, h: HtmlBuilder<Message>): Document => ({
   title: `${navItems.find((item) => item.page === model.page)?.label ?? "Explorer"} | Triplex`,
   lang: "en",
   body: h.div(
-    [h.Class("min-h-screen bg-[#f4f7fb] text-slate-800")],
+    [h.Class("triplex-console min-h-screen bg-[#f7f8fa] text-slate-800")],
     [
-      sidebar(model, h),
-      h.main(
-        [h.Class("lg:pl-68")],
+      h.header(
+        [
+          h.Class(
+            "border-console fixed inset-x-0 top-0 z-30 flex h-11 items-center border-b bg-[#fafbfc] px-3",
+          ),
+        ],
         [
           h.div(
-            [h.Class("mx-auto max-w-[1480px] px-4 py-7 sm:px-7 lg:px-9 lg:py-9")],
+            [h.Class("mr-4 hidden items-center gap-1.5 sm:flex")],
+            [
+              h.span([h.Class("h-3 w-3 rounded-full bg-[#ff5f57]")], []),
+              h.span([h.Class("h-3 w-3 rounded-full bg-[#febc2e]")], []),
+              h.span([h.Class("h-3 w-3 rounded-full bg-[#28c840]")], []),
+            ],
+          ),
+          h.img([h.Src(logoUrl), h.Alt("Triplex"), h.Class("h-auto w-24")]),
+          h.div(
+            [h.Class("ml-4 flex min-w-0 items-center gap-2 text-xs text-slate-500")],
+            [
+              h.span([h.Class("text-slate-300")], ["/"]),
+              h.span([h.Class("truncate font-medium text-slate-700")], ["demo-learning"]),
+              h.span([h.Class("hidden text-slate-300 md:inline")], ["/"]),
+              h.span(
+                [h.Class("hidden truncate font-mono text-[11px] md:inline")],
+                [
+                  navItems.find((item) => item.page === model.page)?.label.toLowerCase() ??
+                    "explorer",
+                ],
+              ),
+            ],
+          ),
+          h.div(
+            [h.Class("ml-auto flex items-center gap-3")],
+            [
+              h.span(
+                [
+                  h.Class(
+                    "hidden rounded border border-[#d5d8df] bg-white px-2 py-1 font-mono text-[10px] text-slate-500 sm:inline",
+                  ),
+                ],
+                [model.data === null ? "loading" : `tx ${model.data.position}`],
+              ),
+              h.span(
+                [h.Class("flex items-center gap-1.5 text-[11px] text-slate-500")],
+                [
+                  h.span(
+                    [
+                      h.Class(
+                        `h-2 w-2 rounded-full ${model.error === null ? "bg-emerald-500" : "bg-rose-500"}`,
+                      ),
+                    ],
+                    [],
+                  ),
+                  model.busy ? "Reading" : "Ready",
+                ],
+              ),
+            ],
+          ),
+        ],
+      ),
+      sidebar(model, h),
+      h.main(
+        [h.Class("pt-22 pb-8 lg:pt-11 lg:pl-60")],
+        [
+          h.div(
+            [h.Class("mx-auto max-w-[1800px] px-3 py-3 sm:px-4 lg:px-5 lg:py-4")],
             [
               ...(model.error === null
                 ? []
@@ -2561,6 +2751,24 @@ export const view = (model: Model, h: HtmlBuilder<Message>): Document => ({
               content(model, h),
             ],
           ),
+        ],
+      ),
+      h.footer(
+        [
+          h.Class(
+            "border-console fixed inset-x-0 bottom-0 z-30 flex h-7 items-center justify-between border-t bg-[#f1f3f6] px-3 font-mono text-[10px] text-slate-500 lg:left-60",
+          ),
+        ],
+        [
+          h.span(
+            [],
+            [
+              model.data === null
+                ? "opening database…"
+                : `${model.data.entities.length} entities  ·  ${model.data.entityTypes.length} types  ·  ${model.data.transactions.length} journal entries`,
+            ],
+          ),
+          h.span([h.Class("hidden sm:inline")], ["valid now  ·  recorded latest"]),
         ],
       ),
     ],
