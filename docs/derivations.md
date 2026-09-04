@@ -10,9 +10,8 @@ projection, triggers an integration, or has no operational consequence.
 ```ts
 import * as Derivation from "@bjacobso/triplex/derivation";
 
-const openTraining =
-  yield *
-  Derivation.make({
+const program = Effect.gen(function* () {
+  const openTraining = yield* Derivation.make({
     name: "task.site-training",
     configSnapshot: deployedSnapshot.id,
     identity: ["?worker", "?site"],
@@ -26,11 +25,12 @@ const openTraining =
     },
   });
 
-const evaluation =
-  yield *
-  Derivation.evaluate(triples, openTraining, {
+  const evaluation = yield* Derivation.evaluate(triples, openTraining, {
     basis: { validAt: Date.now() },
   });
+
+  return { openTraining, evaluation };
+});
 ```
 
 A definition content-binds its name, complete query, optional result `TypeExpr`, declared identity
@@ -73,17 +73,17 @@ semantics.
 ## Materialization
 
 ```ts
-const run =
-  yield *
-  Derivation.Materialization.materialize(triples, openTraining, {
+const inspectMaterialization = Effect.gen(function* () {
+  const run = yield* Derivation.Materialization.materialize(triples, openTraining, {
     basis: { validAt: now },
   });
 
-const state =
-  yield *
-  Derivation.Materialization.current(triples, openTraining, {
+  const state = yield* Derivation.Materialization.current(triples, openTraining, {
     basis: { validAt: now },
   });
+
+  return { run, state };
+});
 ```
 
 Materialization persists immutable candidate revisions and a complete evaluation run as reserved
@@ -127,15 +127,17 @@ Triplex owns boundary discovery, not timer delivery or retry policy.
 ## Hypothetical overlays
 
 ```ts
-const preview =
-  yield *
-  Derivation.Overlay.evaluateOverlay(triples, openTraining, {
+const previewChange = Effect.gen(function* () {
+  const preview = yield* Derivation.Overlay.evaluateOverlay(triples, openTraining, {
     basis: { validAt: now },
     overlay: {
       assertions: [proposedPlacement, proposedTraining],
       retractions: [supersededFactId],
     },
   });
+
+  return preview;
+});
 ```
 
 Overlay evaluation copies only the definition's fixed dependency attributes at the requested basis

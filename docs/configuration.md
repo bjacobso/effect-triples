@@ -85,17 +85,18 @@ Commit application-defined node kinds together. Triplex does not prescribe what 
 routine, permission, integration, or view means; it preserves their typed graph and identity.
 
 ```ts
-const config = yield * ConfigStore.ConfigStore;
+const publish = Effect.gen(function* () {
+  const config = yield* ConfigStore.ConfigStore;
 
-const release =
-  yield *
-  config.commit({
+  const release = yield* config.commit({
     label: "2026.1",
-    objects: [...(yield * Employer.nodes), formNode, policyNode, routineNode],
+    objects: [...(yield* Employer.nodes), formNode, policyNode, routineNode],
     ref: "live",
   });
 
-yield * config.setRef("test", release.snapshot.id);
+  yield* config.setRef("test", release.snapshot.id);
+  return release;
+});
 ```
 
 Moving a ref copies no configuration. Ref movement uses compare-and-retract so a stale writer
@@ -107,12 +108,13 @@ not database queries.
 Operational transactions can pin the exact release that governed them:
 
 ```ts
-yield *
-  triples.transact(operations, {
+const write = Effect.gen(function* () {
+  yield* triples.transact(operations, {
     actor: "agent:worker-7",
     commandId: "command:123",
     configSnapshot: release.snapshot.id,
   });
+});
 ```
 
 ## Runtime evaluation and decision proofs
@@ -122,16 +124,16 @@ the current or historical Triple facts statically reachable by the rule, and eva
 pinned release:
 
 ```ts
-const decision =
-  yield *
-  ConfigRuntime.evaluate({
+const decide = Effect.gen(function* () {
+  const decision = yield* ConfigRuntime.evaluate({
     ref: "live",
     rule: "may-deploy",
     subject: "employee:alice",
     clock: { now: Date.now(), granularity: "day" },
   });
 
-const failures = ConfigRuntime.verify(decision);
+  return ConfigRuntime.verify(decision);
+});
 ```
 
 The decision ID binds the release root, subject, reason, and nested evaluation. Changing the config
@@ -149,12 +151,16 @@ the storage-to-proof bridge.
 config ref:
 
 ```ts
-const validation = yield * EntityValidation.EntityValidation;
-const run = yield * validation.revalidate({ ref: "live" });
+const inspectValidation = Effect.gen(function* () {
+  const validation = yield* EntityValidation.EntityValidation;
+  const run = yield* validation.revalidate({ ref: "live" });
 
-const state = yield * validation.currentInvalid("live");
-const everInvalid = yield * validation.everInvalid();
-const violations = yield * validation.violations({ subject: "employee:alice" });
+  const state = yield* validation.currentInvalid("live");
+  const everInvalid = yield* validation.everInvalid();
+  const violations = yield* validation.violations({ subject: "employee:alice" });
+
+  return { run, state, everInvalid, violations };
+});
 ```
 
 Results and individual violations are immutable, content-addressed reserved facts. They bind the
@@ -173,15 +179,16 @@ be composed with application queries.
 The same rules can guard an operational transaction:
 
 ```ts
-const snapshot = release.snapshot;
-const constraints = yield * GraphConstraint.collect(snapshot.root);
+const constrainedWrite = Effect.gen(function* () {
+  const snapshot = release.snapshot;
+  const constraints = yield* GraphConstraint.collect(snapshot.root);
 
-yield *
-  triples.transact(operations, {
+  yield* triples.transact(operations, {
     actor: "agent:worker-7",
     configSnapshot: snapshot.id,
     enforce: GraphConstraint.enforcement(constraints),
   });
+});
 ```
 
 Enforcement projects the complete post-state and checks every represented valid-time boundary,

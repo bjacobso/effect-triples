@@ -8,8 +8,7 @@ export default defineConfig({
   lang: "en-US",
   title: "Triplex",
   titleTemplate: ":title · Triplex",
-  description:
-    "An Effect-native fact database with Datalog and typed, content-addressed configuration.",
+  description: "A temporal fact database for TypeScript, built on Effect.",
   cleanUrls: true,
   lastUpdated: true,
   outDir: resolve(import.meta.dirname, "../../dist"),
@@ -52,10 +51,9 @@ export default defineConfig({
     logo: { src: "/mark.svg", alt: "Triplex" },
     siteTitle: "Triplex",
     nav: [
-      { text: "Configuration", link: "/configuration" },
-      { text: "Datalog", link: "/datalog" },
-      { text: "Derivations", link: "/derivations" },
       { text: "Current state", link: "/current-state" },
+      { text: "Datalog", link: "/datalog" },
+      { text: "Configuration", link: "/configuration" },
     ],
     sidebar: [
       {

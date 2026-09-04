@@ -41,7 +41,55 @@ const snippetsIn = async (path) => {
   return snippets;
 };
 
+const invalidYieldDelegationsIn = async (path) => {
+  const lines = (await readFile(path, "utf8")).split(/\r?\n/);
+  const failures = [];
+
+  for (let index = 0; index < lines.length; index++) {
+    if (!/^```(?:ts|typescript)(?:\s+.*)?$/.test(lines[index])) continue;
+    const start = index + 2;
+    const body = [];
+    index++;
+    while (index < lines.length && lines[index] !== "```") {
+      body.push(lines[index]);
+      index++;
+    }
+    if (index === lines.length) continue;
+
+    const source = ts.createSourceFile(
+      "markdown-fence.ts",
+      body.join("\n"),
+      ts.ScriptTarget.Latest,
+      true,
+      ts.ScriptKind.TS,
+    );
+    const visit = (node) => {
+      if (
+        ts.isBinaryExpression(node) &&
+        node.operatorToken.kind === ts.SyntaxKind.AsteriskToken &&
+        ts.isIdentifier(node.left) &&
+        node.left.text === "yield"
+      ) {
+        const location = source.getLineAndCharacterOfPosition(node.getStart(source));
+        failures.push(`${relative(root, path)}:${start + location.line}`);
+      }
+      ts.forEachChild(node, visit);
+    };
+    visit(source);
+  }
+
+  return failures;
+};
+
 const files = await markdownFiles(root);
+const invalidYieldDelegations = (await Promise.all(files.map(invalidYieldDelegationsIn))).flat();
+if (invalidYieldDelegations.length > 0) {
+  throw new Error(
+    "Markdown TypeScript fences must place yield* inside a generator; " +
+      `invalid delegated yields found at:\n${invalidYieldDelegations.join("\n")}`,
+  );
+}
+
 const snippets = (await Promise.all(files.map(snippetsIn))).flat();
 if (snippets.length === 0) {
   throw new Error(

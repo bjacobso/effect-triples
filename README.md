@@ -409,16 +409,19 @@ For one entity's audit timeline, use the indexed journal view rather than filter
 feed:
 
 ```ts
-const first = yield * triples.transactionsForEntity(workerId, { limit: 50 });
-const next =
-  first.nextBeforePosition === undefined
-    ? undefined
-    : yield *
-      triples.transactionsForEntity(workerId, {
-        limit: 50,
-        snapshotPosition: first.snapshotPosition,
-        beforePosition: first.nextBeforePosition,
-      });
+const timeline = Effect.gen(function* () {
+  const first = yield* triples.transactionsForEntity(workerId, { limit: 50 });
+  const next =
+    first.nextBeforePosition === undefined
+      ? undefined
+      : yield* triples.transactionsForEntity(workerId, {
+          limit: 50,
+          snapshotPosition: first.snapshotPosition,
+          beforePosition: first.nextBeforePosition,
+        });
+
+  return { first, next };
+});
 ```
 
 Each page contains complete `TransactionRecord` values, newest first. The first page's commit

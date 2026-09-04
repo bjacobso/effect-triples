@@ -1,32 +1,33 @@
 import { Effect } from "effect";
-import { EntityId, KvTriples, Triples, ref, string } from "@bjacobso/triplex";
+import { EntityId, KvTriples, Triples, ref } from "@bjacobso/triplex";
 
 const student = EntityId.make("student:ada");
-const course = EntityId.make("course:logic");
+const quiz = EntityId.make("quiz:logic-1");
+const submission = EntityId.make("submission:ada:logic-1");
 
-export const enrollment = Effect.gen(function* () {
+export const submitQuiz = Effect.gen(function* () {
   const triples = yield* Triples;
 
   return yield* triples.transact(
     [
       {
         op: "assert",
-        entityId: student,
-        entityType: "Student",
-        attribute: ":student/name",
-        value: string("Ada Lovelace"),
+        entityId: submission,
+        entityType: "Submission",
+        attribute: ":submission/student",
+        value: ref(student),
       },
       {
         op: "assert",
-        entityId: student,
-        entityType: "Student",
-        attribute: ":student/course",
-        value: ref(course),
+        entityId: submission,
+        entityType: "Submission",
+        attribute: ":submission/quiz",
+        value: ref(quiz),
       },
     ],
     {
       actor: "teacher:grace",
-      commandId: "enroll:ada:logic",
+      commandId: "submit:ada:logic-1",
       configSnapshot: "config:learning-2026.1",
     },
   );

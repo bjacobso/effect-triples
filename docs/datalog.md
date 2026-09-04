@@ -7,9 +7,9 @@ identity, ordering contract, and bitemporal basis.
 ## Query shape
 
 ```ts
-const { results } =
-  yield *
-  triples.query({
+const program = Effect.gen(function* () {
+  const triples = yield* Triples;
+  const { results } = yield* triples.query({
     find: ["?name", "?age"],
     where: [
       ["?person", ":person/name", "?name"],
@@ -17,21 +17,27 @@ const { results } =
       [">=", "?age", 30],
     ],
   });
+
+  return results;
+});
 ```
 
 `results` is an array of binding objects whose keys retain the `?` prefix. A three-element pattern
 is `[entity, attribute, value]`. An optional fourth element binds the assertion transaction:
 
 ```ts
-const { results } =
-  yield *
-  triples.query({
+const program = Effect.gen(function* () {
+  const triples = yield* Triples;
+  const { results } = yield* triples.query({
     find: ["?name", "?actor"],
     where: [
       ["?person", ":person/name", "?name", "?tx"],
       ["?tx", ":_tx/actor", "?actor"],
     ],
   });
+
+  return results;
+});
 ```
 
 The `?` prefix is reserved for variables. Entity, attribute, transaction, and rule identity
@@ -70,14 +76,16 @@ distinctness, and pagination.
 Pass a basis as query options:
 
 ```ts
-const answer =
-  yield *
-  triples.query(query, {
+const historicalQuery = Effect.gen(function* () {
+  const answer = yield* triples.query(query, {
     basis: {
       recordedAt: auditInstant,
       validAt: businessInstant,
     },
   });
+
+  return answer;
+});
 ```
 
 Omitted recorded time means the latest recorded state. Omitted valid time means the runtime's
@@ -135,9 +143,8 @@ Aggregate clauses are `[operation, source, target]`. Supported operations are `c
 `avg`, `min`, and `max`:
 
 ```ts
-const result =
-  yield *
-  triples.query({
+const countTasks = Effect.gen(function* () {
+  const result = yield* triples.query({
     find: ["?status", "?count"],
     where: [
       ["?task", ":task/status", "?status"],
@@ -148,6 +155,9 @@ const result =
     orderBy: [{ variable: "?count", direction: "desc" }],
     limit: 20,
   });
+
+  return result;
+});
 ```
 
 Grouping is implicit over non-aggregate projected variables. `count` counts distinct public source
@@ -170,10 +180,14 @@ const request = {
   limit: 50,
 } as const;
 
-const first = yield * triples.queryPage(request);
-const second = first.nextCursor
-  ? yield * triples.queryPage({ ...request, cursor: first.nextCursor })
-  : undefined;
+const pages = Effect.gen(function* () {
+  const first = yield* triples.queryPage(request);
+  const second = first.nextCursor
+    ? yield* triples.queryPage({ ...request, cursor: first.nextCursor })
+    : undefined;
+
+  return { first, second };
+});
 ```
 
 Triplex completes the requested order with deterministic tie-breakers and pins the first page's
@@ -191,9 +205,8 @@ edit them.
 Triplex supports a deliberately bounded binary recursive form:
 
 ```ts
-const { results } =
-  yield *
-  triples.query({
+const ancestors = Effect.gen(function* () {
+  const { results } = yield* triples.query({
     find: ["?ancestor"],
     where: [["ancestor", "person:alice", "?ancestor"]],
     rules: [
@@ -207,6 +220,9 @@ const { results } =
       },
     ],
   });
+
+  return results;
+});
 ```
 
 Same-named definitions union. SQL compiles them to recursive CTEs; KV evaluates them to a

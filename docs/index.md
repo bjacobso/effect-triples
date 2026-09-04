@@ -2,7 +2,7 @@
 layout: home
 title: Triplex
 titleTemplate: false
-description: An Effect-native fact database with Datalog and typed, content-addressed configuration.
+description: A temporal fact database for TypeScript, built on Effect.
 sidebar: false
 aside: false
 pageClass: triplex-index
@@ -11,22 +11,39 @@ pageClass: triplex-index
 <div class="triplex-home">
   <header class="triplex-home__intro">
     <h1>Triplex</h1>
-    <p>
+    <p class="triplex-home__tagline">A temporal fact database for TypeScript.</p>
+    <p class="triplex-home__detail">
+      Store facts. Query relationships. Derive state. Keep the complete history.<br>
       Bitemporal facts, Datalog, and typed, content-addressed configuration—built on Effect.
     </p>
     <div class="triplex-home__actions">
-      <a href="/current-state">Get started →</a>
-      <a href="/configuration">Configuration →</a>
+      <a class="triplex-home__primary" href="/current-state">Get started →</a>
+      <a class="triplex-home__secondary" href="https://github.com/bjacobso/triplex">GitHub ↗</a>
     </div>
   </header>
 
   <section class="triplex-home__code" aria-label="Triplex code examples">
 
+  <div class="triplex-home__flow" aria-label="Facts flow through Datalog into derived state">
+    <div>
+      <span>01 · Facts</span>
+      <strong>student → submitted → quiz</strong>
+    </div>
+    <div>
+      <span>02 · Datalog</span>
+      <strong>submission without a grade</strong>
+    </div>
+    <div>
+      <span>03 · Current state</span>
+      <strong>grading task · open</strong>
+    </div>
+  </div>
+
 ::: code-group
 
-<<< @/snippets/home/facts.ts{ts twoslash}
-
 <<< @/snippets/home/query.ts{ts twoslash}
+
+<<< @/snippets/home/facts.ts{ts twoslash}
 
 <<< @/snippets/home/ontology.ts{ts twoslash}
 
@@ -39,6 +56,5 @@ pageClass: triplex-index
     <a href="/configuration">Typed configuration →</a>
     <a href="/derivations">Derived facts →</a>
     <a href="/operational-primitives">Operations →</a>
-    <a href="https://github.com/bjacobso/triplex">GitHub ↗</a>
   </nav>
 </div>

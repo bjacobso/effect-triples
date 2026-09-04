@@ -56,14 +56,6 @@ body {
   font-size: 14px;
 }
 
-.triplex-index {
-  background-image:
-    linear-gradient(var(--vp-c-divider) 1px, transparent 1px),
-    linear-gradient(90deg, var(--vp-c-divider) 1px, transparent 1px);
-  background-size: 56px 56px;
-  background-position: center -1px;
-}
-
 .triplex-index .VPHome {
   margin-bottom: 0;
   padding-bottom: 0;
@@ -75,7 +67,7 @@ body {
 }
 
 .triplex-home {
-  padding: 64px 0;
+  padding: 48px 0 56px;
 }
 
 .triplex-home__intro h1 {
@@ -86,38 +78,113 @@ body {
   line-height: 1.15;
 }
 
-.triplex-home__intro > p {
-  margin: 16px 0 0;
+.triplex-home__intro .triplex-home__tagline {
+  margin: 14px 0 0;
+  color: var(--vp-c-text-1);
+  font-size: clamp(1.35rem, 3vw, 1.75rem);
+  font-weight: 480;
+  letter-spacing: -0.025em;
+  line-height: 1.35;
+}
+
+.triplex-home__intro .triplex-home__detail {
+  max-width: 760px;
+  margin: 10px 0 0;
   color: var(--vp-c-text-2);
-  font-size: 1.2rem;
-  line-height: 1.6;
+  font-size: 1.05rem;
+  line-height: 1.65;
 }
 
 .triplex-home__actions {
   display: flex;
   flex-wrap: wrap;
-  gap: 12px 24px;
-  margin-top: 24px;
+  align-items: center;
+  gap: 12px 20px;
+  margin-top: 22px;
 }
 
 .triplex-home__actions a {
+  display: inline-flex;
+  align-items: center;
+  font-weight: 520;
+  text-decoration: none;
+}
+
+.triplex-home__actions .triplex-home__primary {
+  border-radius: 5px;
+  background: var(--vp-c-text-1);
+  color: var(--vp-c-bg);
+  padding: 9px 14px;
+}
+
+.triplex-home__actions .triplex-home__primary:hover {
+  background: var(--vp-c-brand-1);
+}
+
+.triplex-home__actions .triplex-home__secondary {
+  color: var(--vp-c-text-2);
+}
+
+.triplex-home__actions .triplex-home__secondary:hover {
   color: var(--vp-c-brand-1);
 }
 
 .triplex-home__code {
-  margin-top: 40px;
+  margin-top: 28px;
+}
+
+.triplex-home__flow {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  border: 1px solid var(--vp-c-divider);
+  border-bottom: 0;
+  border-radius: 7px 7px 0 0;
+  background: color-mix(in srgb, var(--vp-c-bg-elv) 72%, var(--vp-c-bg));
+}
+
+.triplex-home__flow > div {
+  min-width: 0;
+  padding: 13px 16px 14px;
+}
+
+.triplex-home__flow > div + div {
+  border-left: 1px solid var(--vp-c-divider);
+}
+
+.triplex-home__flow span,
+.triplex-home__flow strong {
+  display: block;
+}
+
+.triplex-home__flow span {
+  color: var(--vp-c-brand-1);
+  font-family: var(--vp-font-family-mono);
+  font-size: 0.66rem;
+  letter-spacing: 0.075em;
+  text-transform: uppercase;
+}
+
+.triplex-home__flow strong {
+  margin-top: 5px;
+  overflow: hidden;
+  color: var(--vp-c-text-1);
+  font-family: var(--vp-font-family-mono);
+  font-size: 0.77rem;
+  font-weight: 400;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .triplex-home__code .vp-code-group {
   margin: 0;
   border: 1px solid var(--vp-c-divider);
-  border-radius: 7px;
+  border-radius: 0 0 7px 7px;
   overflow: hidden;
 }
 
 .triplex-home__code .tabs {
   margin: 0;
-  border-radius: 7px 7px 0 0;
+  border-radius: 0;
 }
 
 .triplex-home__code div[class*="language-"] {
@@ -152,15 +219,20 @@ body {
 }
 
 @media (max-width: 640px) {
-  .triplex-index {
-    background-size: 40px 40px;
-  }
-
   .triplex-index .VPHome > .vp-doc {
     padding: 0 24px;
   }
 
   .triplex-home {
-    padding: 40px 0;
+    padding: 36px 0 44px;
+  }
+
+  .triplex-home__flow {
+    grid-template-columns: 1fr;
+  }
+
+  .triplex-home__flow > div + div {
+    border-top: 1px solid var(--vp-c-divider);
+    border-left: 0;
   }
 }
