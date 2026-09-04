@@ -3,7 +3,14 @@ import { Effect, Exit } from "effect";
 import { expect as expectScene, given, role, scene, text } from "foldkit/scene";
 import { describe, expect, it } from "vitest";
 
-import { initialQueryText, loadEntityTypePage } from "./data.js";
+import {
+  initialQueryText,
+  loadDashboard,
+  loadEntityHistory,
+  loadEntityTypePage,
+  saveEntity,
+  updateConfigObject,
+} from "./data.js";
 import { DashboardDemoLayer } from "./demo/layer.js";
 import { LoadDashboard, Message, RunQuery, init, initialModel, update, view } from "./main.js";
 
@@ -83,6 +90,7 @@ describe("Triplex dashboard", () => {
       }),
       expectScene(role("heading", { name: "Revision history" })).toExist(),
       expectScene(text("learning-2026.fall-beta")).toExist(),
+      expectScene(role("button", { name: "Edit & publish" })).toBeEnabled(),
     );
   });
 
@@ -138,5 +146,74 @@ describe("Triplex dashboard", () => {
     const running = update(next.model, Message.RequestedQuery());
     expect(running.model.busy).toBe(true);
     expect(running.commands?.[0]?.name).toBe("RunQuery");
+  });
+
+  it("creates and edits entities through attributed transactions with entity-scoped history", async () => {
+    const result = await Effect.runPromise(
+      Effect.gen(function* () {
+        const created = yield* saveEntity({
+          mode: "create",
+          entityId: "student:dashboard-editor",
+          entityType: "Student",
+          facts: JSON.stringify([
+            { attribute: ":person/name", value: { type: "string", value: "Dashboard Editor" } },
+            { attribute: ":student/status", value: { type: "string", value: "active" } },
+          ]),
+        });
+        const updated = yield* saveEntity({
+          mode: "edit",
+          entityId: "student:dashboard-editor",
+          entityType: "Student",
+          facts: JSON.stringify([
+            { attribute: ":person/name", value: { type: "string", value: "Dashboard Editor" } },
+            { attribute: ":student/status", value: { type: "string", value: "graduated" } },
+          ]),
+        });
+        const history = yield* loadEntityHistory("student:dashboard-editor");
+        const triples = yield* Triples;
+        const current = yield* triples.entity(EntityId.make("student:dashboard-editor"));
+        return { created, updated, history, current };
+      }).pipe(Effect.provide(DashboardDemoLayer)),
+    );
+
+    expect(result.created).toContain("Created student:dashboard-editor");
+    expect(result.updated).toContain("Updated student:dashboard-editor");
+    expect(result.history).toHaveLength(2);
+    expect(result.history[0]?.changes.some((change) => change.op === "retract")).toBe(true);
+    expect(result.history[0]?.changes.some((change) => change.value === "graduated")).toBe(true);
+    expect(
+      result.current.some(
+        (fact) => fact.value.type === "string" && fact.value.value === "graduated",
+      ),
+    ).toBe(true);
+  });
+
+  it("publishes edited config as a new immutable revision and moves live", async () => {
+    const result = await Effect.runPromise(
+      Effect.gen(function* () {
+        const before = yield* loadDashboard;
+        const form = before.config.objects.find(
+          (object) => object.kind === "form" && object.key === "quiz/bitemporal-facts",
+        )!;
+        const body = JSON.parse(form.history[0]!.body) as { attrs: Record<string, unknown> };
+        const notice = yield* updateConfigObject({
+          identity: "form\u0000quiz/bitemporal-facts",
+          attrs: JSON.stringify({ ...body.attrs, title: "Bitemporal Facts Lab" }),
+          label: "learning-2026.fall-dashboard-edit",
+        });
+        const after = yield* loadDashboard;
+        return { before, after, notice };
+      }).pipe(Effect.provide(DashboardDemoLayer)),
+    );
+
+    expect(result.notice).toContain("moved live");
+    expect(result.after.config.releaseCount).toBe(result.before.config.releaseCount + 1);
+    expect(result.after.config.label).toBe("learning-2026.fall-dashboard-edit");
+    const updated = result.after.config.objects.find(
+      (object) => object.kind === "form" && object.key === "quiz/bitemporal-facts",
+    );
+    expect(updated?.history).toHaveLength(3);
+    expect(updated?.history[0]?.body).toContain("Bitemporal Facts Lab");
+    expect(result.after.forms[0]?.title).toBe("Bitemporal Facts Lab");
   });
 });

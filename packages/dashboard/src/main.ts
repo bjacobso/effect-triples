@@ -11,16 +11,20 @@ import {
   executeQueryText,
   initialQueryText,
   loadDashboard,
+  loadEntityHistory,
   loadEntityTypePage,
   queryPresets,
+  saveEntity,
+  updateConfigObject,
 } from "./data.js";
 import {
   DashboardData,
+  type EntityView,
   EntityTypePageView,
   Model,
   Page,
   QueryView,
-  type TransactionView,
+  TransactionView,
 } from "./model.js";
 
 export const Message = defineMessageUnion({
@@ -30,6 +34,19 @@ export const Message = defineMessageUnion({
   ChangedFormField: { field: Schema.String, value: Schema.String },
   RequestedValidateForm: {},
   SelectedConfigObject: { object: Schema.String },
+  SelectedConfigRevision: { revisionId: Schema.String },
+  RequestedCreateEntity: {},
+  RequestedEditEntity: {},
+  ClosedEntityEditor: {},
+  ChangedEntityDraftId: { value: Schema.String },
+  ChangedEntityDraftType: { value: Schema.String },
+  ChangedEntityDraftFacts: { value: Schema.String },
+  RequestedSaveEntity: {},
+  RequestedEditConfig: {},
+  ClosedConfigEditor: {},
+  ChangedConfigDraftAttrs: { value: Schema.String },
+  ChangedConfigDraftLabel: { value: Schema.String },
+  RequestedSaveConfig: {},
   RequestedNextEntityTypePage: {},
   RequestedPreviousEntityTypePage: {},
   ChangedEntitySearch: { value: Schema.String },
@@ -40,6 +57,8 @@ export const Message = defineMessageUnion({
   RequestedRefresh: {},
   SucceededLoadDashboard: { data: DashboardData },
   SucceededLoadEntityTypePage: { page: EntityTypePageView },
+  SucceededLoadEntityHistory: { transactions: Schema.Array(TransactionView) },
+  SucceededMutation: { notice: Schema.String },
   SucceededRunQuery: { result: QueryView },
   FailedDashboardCommand: { message: Schema.String },
 });
@@ -49,6 +68,11 @@ export const initialModel: Model = {
   page: "entities",
   data: null,
   selectedEntityId: null,
+  selectedEntityHistory: [],
+  entityEditor: "closed",
+  entityDraftId: "",
+  entityDraftType: "",
+  entityDraftFacts: "[]",
   selectedEntityType: null,
   entityTypePage: null,
   entityTypeCursor: null,
@@ -56,6 +80,10 @@ export const initialModel: Model = {
   selectedFormKey: null,
   formValues: {},
   selectedConfigObject: null,
+  selectedConfigRevisionId: null,
+  configEditorOpen: false,
+  configDraftAttrs: "{}",
+  configDraftLabel: "",
   entitySearch: "",
   queryPreset: queryPresets[0].id,
   queryText: initialQueryText,
@@ -111,12 +139,76 @@ export const LoadEntityTypePage = Command.define("LoadEntityTypePage", {
     ),
 });
 
+export const LoadEntityHistory = Command.define("LoadEntityHistory", {
+  args: { entityId: Schema.String },
+  messages: [Message.SucceededLoadEntityHistory, Message.FailedDashboardCommand],
+  execute: ({ entityId }) =>
+    loadEntityHistory(entityId).pipe(
+      Effect.map((transactions) =>
+        Message.SucceededLoadEntityHistory({ transactions: [...transactions] }),
+      ),
+      Effect.catch((error) =>
+        Effect.succeed(Message.FailedDashboardCommand({ message: errorMessage(error) })),
+      ),
+    ),
+});
+
+export const SaveEntity = Command.define("SaveEntity", {
+  args: {
+    mode: Schema.Literals(["create", "edit"]),
+    entityId: Schema.String,
+    entityType: Schema.String,
+    facts: Schema.String,
+  },
+  messages: [Message.SucceededMutation, Message.FailedDashboardCommand],
+  execute: (input) =>
+    saveEntity(input).pipe(
+      Effect.map((notice) => Message.SucceededMutation({ notice })),
+      Effect.catch((error) =>
+        Effect.succeed(Message.FailedDashboardCommand({ message: errorMessage(error) })),
+      ),
+    ),
+});
+
+export const SaveConfig = Command.define("SaveConfig", {
+  args: { identity: Schema.String, attrs: Schema.String, label: Schema.String },
+  messages: [Message.SucceededMutation, Message.FailedDashboardCommand],
+  execute: (input) =>
+    updateConfigObject(input).pipe(
+      Effect.map((notice) => Message.SucceededMutation({ notice })),
+      Effect.catch((error) =>
+        Effect.succeed(Message.FailedDashboardCommand({ message: errorMessage(error) })),
+      ),
+    ),
+});
+
 type Resources = Triples | ConfigStore.ConfigStore;
 
 export const init: Runtime.ApplicationInit<Model, Message, void, Resources> = () => ({
   model: initialModel,
   commands: [LoadDashboard()],
 });
+
+const entityFactsDraft = (entity: EntityView) =>
+  JSON.stringify(
+    entity.facts.map((fact) => ({
+      attribute: fact.attribute,
+      value: JSON.parse(fact.rawValue) as unknown,
+      validFrom: fact.validFrom,
+      ...(fact.validTo === null ? {} : { validTo: fact.validTo }),
+    })),
+    null,
+    2,
+  );
+
+const configAttrs = (body: string): string => {
+  try {
+    const parsed = JSON.parse(body) as { readonly attrs?: unknown };
+    return JSON.stringify(parsed.attrs ?? {}, null, 2);
+  } catch {
+    return "{}";
+  }
+};
 
 export const update = (model: Model, message: Message) =>
   Message.match<Update.Return<Model, Message, Resources>>(message, {
@@ -167,8 +259,105 @@ export const update = (model: Model, message: Message) =>
           };
     },
     SelectedConfigObject: ({ object }) => ({
-      model: { ...model, selectedConfigObject: object, notice: null },
+      model: {
+        ...model,
+        selectedConfigObject: object,
+        selectedConfigRevisionId: null,
+        configEditorOpen: false,
+        notice: null,
+      },
     }),
+    SelectedConfigRevision: ({ revisionId }) => ({
+      model: { ...model, selectedConfigRevisionId: revisionId, configEditorOpen: false },
+    }),
+    RequestedCreateEntity: () => ({
+      model: {
+        ...model,
+        entityEditor: "create",
+        entityDraftId: "",
+        entityDraftType: model.selectedEntityType ?? "",
+        entityDraftFacts: JSON.stringify(
+          [{ attribute: ":example/name", value: { type: "string", value: "" } }],
+          null,
+          2,
+        ),
+        error: null,
+        notice: null,
+      },
+    }),
+    RequestedEditEntity: () => {
+      const entity = model.entityTypePage?.entities.find(
+        (candidate) => candidate.id === model.selectedEntityId,
+      );
+      return entity === undefined
+        ? { model }
+        : {
+            model: {
+              ...model,
+              entityEditor: "edit" as const,
+              entityDraftId: entity.id,
+              entityDraftType: entity.type,
+              entityDraftFacts: entityFactsDraft(entity),
+              error: null,
+              notice: null,
+            },
+          };
+    },
+    ClosedEntityEditor: () => ({ model: { ...model, entityEditor: "closed" } }),
+    ChangedEntityDraftId: ({ value }) => ({ model: { ...model, entityDraftId: value } }),
+    ChangedEntityDraftType: ({ value }) => ({ model: { ...model, entityDraftType: value } }),
+    ChangedEntityDraftFacts: ({ value }) => ({ model: { ...model, entityDraftFacts: value } }),
+    RequestedSaveEntity: () =>
+      model.entityEditor === "closed"
+        ? { model }
+        : {
+            model: { ...model, busy: true, error: null, notice: null },
+            commands: [
+              SaveEntity({
+                mode: model.entityEditor,
+                entityId: model.entityDraftId,
+                entityType: model.entityDraftType,
+                facts: model.entityDraftFacts,
+              }),
+            ],
+          },
+    RequestedEditConfig: () => {
+      const object = model.data?.config.objects.find(
+        (candidate) => `${candidate.kind}\u0000${candidate.key}` === model.selectedConfigObject,
+      );
+      const revision =
+        object?.history.find(
+          (candidate) => candidate.revisionId === model.selectedConfigRevisionId,
+        ) ?? object?.history.find((candidate) => candidate.revisionId === object.revisionId);
+      return object === undefined || revision === undefined || !object.active
+        ? { model }
+        : {
+            model: {
+              ...model,
+              configEditorOpen: true,
+              configDraftAttrs: configAttrs(revision.body),
+              configDraftLabel: `${model.data?.config.label ?? "release"}-edit`,
+              error: null,
+              notice: null,
+            },
+          };
+    },
+    ClosedConfigEditor: () => ({ model: { ...model, configEditorOpen: false } }),
+    ChangedConfigDraftAttrs: ({ value }) => ({ model: { ...model, configDraftAttrs: value } }),
+    ChangedConfigDraftLabel: ({ value }) => ({ model: { ...model, configDraftLabel: value } }),
+    RequestedSaveConfig: () =>
+      model.selectedConfigObject === null
+        ? { model }
+        : {
+            model: { ...model, busy: true, error: null, notice: null },
+            commands: [
+              SaveConfig({
+                identity: model.selectedConfigObject,
+                attrs: model.configDraftAttrs,
+                label: model.configDraftLabel,
+              }),
+            ],
+          },
     RequestedNextEntityTypePage: () => {
       const cursor = model.entityTypePage?.nextCursor;
       if (model.selectedEntityType === null || cursor === null || cursor === undefined) {
@@ -205,7 +394,8 @@ export const update = (model: Model, message: Message) =>
       model: { ...model, entitySearch: value, notice: null },
     }),
     SelectedEntity: ({ entityId }) => ({
-      model: { ...model, selectedEntityId: entityId, notice: null },
+      model: { ...model, selectedEntityId: entityId, selectedEntityHistory: [], notice: null },
+      commands: [LoadEntityHistory({ entityId })],
     }),
     SelectedQueryPreset: ({ preset }) => {
       const selected = queryPresets.find((item) => item.id === preset);
@@ -275,7 +465,40 @@ export const update = (model: Model, message: Message) =>
       ],
     }),
     SucceededLoadEntityTypePage: ({ page }) => ({
-      model: { ...model, entityTypePage: page, busy: false, error: null },
+      model: {
+        ...model,
+        entityTypePage: page,
+        selectedEntityId: page.entities.some((entity) => entity.id === model.selectedEntityId)
+          ? model.selectedEntityId
+          : (page.entities[0]?.id ?? null),
+        selectedEntityHistory: [],
+        busy: page.entities.length > 0,
+        error: null,
+      },
+      commands:
+        page.entities.length === 0
+          ? []
+          : [
+              LoadEntityHistory({
+                entityId:
+                  page.entities.find((entity) => entity.id === model.selectedEntityId)?.id ??
+                  page.entities[0]!.id,
+              }),
+            ],
+    }),
+    SucceededLoadEntityHistory: ({ transactions }) => ({
+      model: { ...model, selectedEntityHistory: transactions, busy: false, error: null },
+    }),
+    SucceededMutation: ({ notice }) => ({
+      model: {
+        ...model,
+        entityEditor: "closed",
+        configEditorOpen: false,
+        busy: true,
+        notice,
+        error: null,
+      },
+      commands: [LoadDashboard()],
     }),
     SucceededRunQuery: ({ result }) => ({
       model: { ...model, queryResult: result, busy: false, error: null },
@@ -379,107 +602,34 @@ const navItems: ReadonlyArray<{
   { page: "config", label: "Configuration", icon: "config" },
 ];
 
-const sidebar = (model: Model, h: HtmlBuilder<Message>): Html =>
-  h.aside(
+const toolTabs = (model: Model, h: HtmlBuilder<Message>): Html =>
+  h.nav(
     [
       h.Class(
-        "console-sidebar border-console fixed inset-x-0 top-11 z-20 flex h-11 border-b bg-[#eef0f4] lg:inset-y-0 lg:top-11 lg:right-auto lg:h-auto lg:w-60 lg:flex-col lg:border-r lg:border-b-0",
+        "fixed inset-x-0 top-12 z-20 flex h-10 items-end gap-1 overflow-x-auto border-b border-[#273147] bg-[#111827] px-3",
       ),
+      h.AriaLabel("Triplex tools"),
     ],
-    [
-      h.div(
-        [h.Class("hidden border-b border-[#d5d8df] px-4 py-3 lg:block")],
-        [
-          h.div(
-            [h.Class("flex items-center gap-2 text-xs font-semibold text-slate-700")],
-            [icon("database", h), "demo-learning"],
-          ),
-          h.p([h.Class("mt-1 pl-7 font-mono text-[11px] text-slate-500")], ["memory://local"]),
-        ],
-      ),
-      h.p(
-        [
-          h.Class(
-            "hidden px-4 pt-4 pb-1.5 text-[11px] font-semibold tracking-[0.08em] text-slate-500 uppercase lg:block",
-          ),
-        ],
-        ["Database"],
-      ),
-      h.nav(
-        [
-          h.Class(
-            "no-scrollbar flex flex-1 gap-0.5 overflow-x-auto px-2 py-1.5 lg:flex-none lg:flex-col lg:overflow-visible lg:px-2 lg:py-1",
-          ),
-        ],
-        navItems.slice(0, 2).map((item) =>
-          Button.view(
-            {
-              onClick: Message.SelectedPage({ page: item.page }),
-              toView: ({ button }) =>
-                h.button(
-                  [
-                    ...button,
-                    h.Class(
-                      item.page === model.page
-                        ? "flex h-8 shrink-0 items-center gap-2 rounded-md bg-[#d8e4ff] px-2.5 text-sm font-medium text-[#174ea6] lg:w-full"
-                        : "flex h-8 shrink-0 items-center gap-2 rounded-md px-2.5 text-sm font-medium text-slate-700 transition hover:bg-black/5 lg:w-full",
-                    ),
-                  ],
-                  [icon(item.icon, h), item.label],
+    navItems.map((item) =>
+      Button.view(
+        {
+          onClick: Message.SelectedPage({ page: item.page }),
+          toView: ({ button }) =>
+            h.button(
+              [
+                ...button,
+                h.Class(
+                  item.page === model.page
+                    ? "flex h-9 shrink-0 items-center gap-2 border-b-2 border-blue-400 bg-white/7 px-3 text-xs font-semibold text-white"
+                    : "flex h-9 shrink-0 items-center gap-2 border-b-2 border-transparent px-3 text-xs font-medium text-slate-400 hover:bg-white/5 hover:text-white",
                 ),
-            },
-            h,
-          ),
-        ),
+              ],
+              [icon(item.icon, h), item.label],
+            ),
+        },
+        h,
       ),
-      h.div([h.Class("hidden border-t border-[#d5d8df] lg:block")], []),
-      h.p(
-        [
-          h.Class(
-            "hidden px-4 pt-4 pb-1.5 text-[11px] font-semibold tracking-[0.08em] text-slate-500 uppercase lg:block",
-          ),
-        ],
-        ["Tools"],
-      ),
-      h.nav(
-        [h.Class("hidden flex-1 px-2 lg:block")],
-        navItems.slice(2).map((item) =>
-          Button.view(
-            {
-              onClick: Message.SelectedPage({ page: item.page }),
-              toView: ({ button }) =>
-                h.button(
-                  [
-                    ...button,
-                    h.Class(
-                      item.page === model.page
-                        ? "mb-0.5 flex h-8 w-full items-center gap-2 rounded-md bg-[#d8e4ff] px-2.5 text-sm font-medium text-[#174ea6]"
-                        : "mb-0.5 flex h-8 w-full items-center gap-2 rounded-md px-2.5 text-sm font-medium text-slate-700 transition hover:bg-black/5",
-                    ),
-                  ],
-                  [icon(item.icon, h), item.label],
-                ),
-            },
-            h,
-          ),
-        ),
-      ),
-      h.div(
-        [h.Class("hidden border-t border-[#d5d8df] px-4 py-3 lg:block")],
-        [
-          h.div(
-            [h.Class("flex items-center justify-between")],
-            [
-              h.div(
-                [h.Class("flex items-center gap-2 text-xs text-slate-600")],
-                [h.span([h.Class("h-2 w-2 rounded-full bg-emerald-500")], []), "Connected"],
-              ),
-              h.span([h.Class("font-mono text-[10px] text-slate-400")], ["Effect 4"]),
-            ],
-          ),
-        ],
-      ),
-    ],
+    ),
   );
 
 const pageHeader = (
@@ -1110,6 +1260,151 @@ export const entityFactExplorer = (model: Model, h: HtmlBuilder<Message>): Html 
   );
 };
 
+const entityEditorView = (model: Model, h: HtmlBuilder<Message>): Html =>
+  model.entityEditor === "closed"
+    ? h.empty
+    : h.div(
+        [h.Class("fixed inset-0 z-50 flex justify-end bg-slate-950/45")],
+        [
+          h.section(
+            [
+              h.Class(
+                "flex h-full w-full max-w-2xl flex-col border-l border-slate-700 bg-[#0f1725] text-slate-100 shadow-2xl",
+              ),
+            ],
+            [
+              h.header(
+                [h.Class("flex items-start justify-between border-b border-white/10 px-6 py-5")],
+                [
+                  h.div(
+                    [],
+                    [
+                      h.p(
+                        [h.Class("font-mono text-[10px] tracking-widest text-blue-400 uppercase")],
+                        ["Transaction editor"],
+                      ),
+                      h.h2(
+                        [h.Class("mt-1 text-lg font-semibold")],
+                        [model.entityEditor === "create" ? "Create entity" : "Edit entity"],
+                      ),
+                      h.p(
+                        [h.Class("mt-1 text-xs text-slate-400")],
+                        ["Writes are committed as one attributed Triplex transaction."],
+                      ),
+                    ],
+                  ),
+                  uiButton("Close", Message.ClosedEntityEditor(), h, { kind: "quiet" }),
+                ],
+              ),
+              h.div(
+                [h.Class("flex-1 space-y-5 overflow-y-auto p-6")],
+                [
+                  h.label(
+                    [h.Class("block")],
+                    [
+                      h.span(
+                        [h.Class("mb-2 block text-xs font-semibold text-slate-300")],
+                        ["Entity ID"],
+                      ),
+                      Input.view(
+                        {
+                          id: "entity-id",
+                          value: model.entityDraftId,
+                          onInput: (value) => Message.ChangedEntityDraftId({ value }),
+                          toView: ({ input }) =>
+                            h.input([
+                              ...input,
+                              ...(model.entityEditor === "edit" ? [h.Disabled(true)] : []),
+                              h.Class(
+                                "h-10 w-full rounded border border-white/15 bg-black/20 px-3 font-mono text-sm text-white outline-none focus:border-blue-400",
+                              ),
+                            ]),
+                        },
+                        h,
+                      ),
+                    ],
+                  ),
+                  h.label(
+                    [h.Class("block")],
+                    [
+                      h.span(
+                        [h.Class("mb-2 block text-xs font-semibold text-slate-300")],
+                        ["Entity type"],
+                      ),
+                      Input.view(
+                        {
+                          id: "entity-type",
+                          value: model.entityDraftType,
+                          onInput: (value) => Message.ChangedEntityDraftType({ value }),
+                          toView: ({ input }) =>
+                            h.input([
+                              ...input,
+                              h.Class(
+                                "h-10 w-full rounded border border-white/15 bg-black/20 px-3 font-mono text-sm text-white outline-none focus:border-blue-400",
+                              ),
+                            ]),
+                        },
+                        h,
+                      ),
+                    ],
+                  ),
+                  h.label(
+                    [h.Class("block")],
+                    [
+                      h.span(
+                        [h.Class("mb-2 block text-xs font-semibold text-slate-300")],
+                        ["Facts (typed JSON)"],
+                      ),
+                      h.p(
+                        [h.Class("mb-2 text-xs leading-5 text-slate-500")],
+                        [
+                          "Each fact declares an attribute and a Triplex value. Optional validFrom and validTo control business time.",
+                        ],
+                      ),
+                      Textarea.view(
+                        {
+                          id: "entity-facts",
+                          value: model.entityDraftFacts,
+                          rows: 20,
+                          onInput: (value) => Message.ChangedEntityDraftFacts({ value }),
+                          toView: ({ textarea }) =>
+                            h.textarea([
+                              ...textarea,
+                              h.Class(
+                                "block w-full resize-y rounded border border-white/15 bg-black/30 p-4 font-mono text-xs leading-5 text-slate-200 outline-none focus:border-blue-400",
+                              ),
+                            ]),
+                        },
+                        h,
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+              h.footer(
+                [h.Class("flex items-center justify-between border-t border-white/10 px-6 py-4")],
+                [
+                  h.p(
+                    [h.Class("text-xs text-slate-500")],
+                    [
+                      model.entityEditor === "edit"
+                        ? "Current facts are retracted; replacements are asserted atomically."
+                        : "The ID must be new in this database.",
+                    ],
+                  ),
+                  uiButton(
+                    model.busy ? "Committing…" : "Commit transaction",
+                    Message.RequestedSaveEntity(),
+                    h,
+                    { kind: "primary", disabled: model.busy },
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ],
+      );
+
 const entitiesView = (model: Model, h: HtmlBuilder<Message>): Html => {
   const data = model.data!;
   const page = model.entityTypePage;
@@ -1130,7 +1425,7 @@ const entitiesView = (model: Model, h: HtmlBuilder<Message>): Html => {
       h.div(
         [
           h.Class(
-            "console-window grid min-h-[calc(100vh-190px)] overflow-hidden border border-[#cfd3dc] bg-white lg:grid-cols-[230px_minmax(0,1fr)] 2xl:grid-cols-[230px_minmax(0,1fr)_280px]",
+            "console-window grid min-h-[calc(100vh-190px)] overflow-hidden border border-[#cfd3dc] bg-white lg:grid-cols-[230px_minmax(0,1fr)] 2xl:grid-cols-[230px_minmax(0,1fr)_360px]",
           ),
         ],
         [
@@ -1167,7 +1462,7 @@ const entitiesView = (model: Model, h: HtmlBuilder<Message>): Html => {
                             [
                               h.p(
                                 [h.Class("flex items-center gap-2 truncate text-sm font-medium")],
-                                [icon("folder", h), entityType.name],
+                                [entityType.name],
                               ),
                             ],
                           ),
@@ -1214,16 +1509,26 @@ const entitiesView = (model: Model, h: HtmlBuilder<Message>): Html => {
                       ),
                     ],
                   ),
-                  page === null
-                    ? h.empty
-                    : h.span(
-                        [
-                          h.Class(
-                            "rounded border border-[#d4d7df] bg-white px-2 py-1 font-mono text-[10px] text-slate-500",
-                          ),
-                        ],
-                        [`page ${model.entityTypeBackStack.length + 1}`],
-                      ),
+                  h.div(
+                    [h.Class("flex items-center gap-2")],
+                    [
+                      ...(page === null
+                        ? []
+                        : [
+                            h.span(
+                              [
+                                h.Class(
+                                  "rounded border border-[#d4d7df] bg-white px-2 py-1 font-mono text-[10px] text-slate-500",
+                                ),
+                              ],
+                              [`page ${model.entityTypeBackStack.length + 1}`],
+                            ),
+                          ]),
+                      uiButton("New entity", Message.RequestedCreateEntity(), h, {
+                        kind: "primary",
+                      }),
+                    ],
+                  ),
                 ],
               ),
               page === null
@@ -1402,7 +1707,16 @@ const entitiesView = (model: Model, h: HtmlBuilder<Message>): Html => {
                   h.div(
                     [h.Class("border-b border-[#d8dbe2] px-4 py-3")],
                     [
-                      h.p([h.Class("text-xs font-semibold text-slate-900")], [selectedEntity.name]),
+                      h.div(
+                        [h.Class("flex items-center justify-between gap-3")],
+                        [
+                          h.p(
+                            [h.Class("text-xs font-semibold text-slate-900")],
+                            [selectedEntity.name],
+                          ),
+                          uiButton("Edit", Message.RequestedEditEntity(), h, { kind: "secondary" }),
+                        ],
+                      ),
                       h.code(
                         [h.Class("mt-1 block break-all text-[10px] text-slate-500")],
                         [selectedEntity.id],
@@ -1411,46 +1725,148 @@ const entitiesView = (model: Model, h: HtmlBuilder<Message>): Html => {
                   ),
                   h.div(
                     [h.Class("flex-1 overflow-y-auto")],
-                    selectedEntity.facts.map((fact) =>
-                      h.div(
-                        [h.Class("border-b border-[#e1e3e8] px-4 py-3")],
+                    [
+                      h.p(
                         [
-                          h.div(
-                            [h.Class("flex items-center justify-between gap-2")],
-                            [
-                              h.code(
-                                [h.Class("break-all text-[10px] text-[#174ea6]")],
-                                [fact.attribute],
-                              ),
-                              h.span(
-                                [
-                                  h.Class(
-                                    "rounded border border-[#d4d7df] bg-white px-1.5 py-0.5 font-mono text-[10px] text-slate-500",
-                                  ),
-                                ],
-                                [fact.valueType],
-                              ),
-                            ],
-                          ),
-                          h.p([h.Class("mt-2 break-words text-sm text-slate-800")], [fact.value]),
-                          h.p(
-                            [h.Class("mt-2 font-mono text-[10px] text-slate-400")],
-                            [
-                              `valid ${formatInstant(fact.validFrom)} → ${fact.validTo === null ? "open" : formatInstant(fact.validTo)}`,
-                            ],
-                          ),
-                          h.p(
-                            [h.Class("mt-0.5 font-mono text-[10px] text-slate-400")],
-                            [`recorded ${formatInstant(fact.recordedAt)}`],
+                          h.Class(
+                            "border-b border-[#e1e3e8] bg-[#eef1f5] px-4 py-2 text-[10px] font-semibold tracking-wider text-slate-500 uppercase",
                           ),
                         ],
+                        ["Current facts"],
                       ),
-                    ),
+                      ...selectedEntity.facts.map((fact) =>
+                        h.div(
+                          [h.Class("border-b border-[#e1e3e8] px-4 py-3")],
+                          [
+                            h.div(
+                              [h.Class("flex items-center justify-between gap-2")],
+                              [
+                                h.code(
+                                  [h.Class("break-all text-[10px] text-[#174ea6]")],
+                                  [fact.attribute],
+                                ),
+                                h.span(
+                                  [
+                                    h.Class(
+                                      "rounded border border-[#d4d7df] bg-white px-1.5 py-0.5 font-mono text-[10px] text-slate-500",
+                                    ),
+                                  ],
+                                  [fact.valueType],
+                                ),
+                              ],
+                            ),
+                            h.p([h.Class("mt-2 break-words text-sm text-slate-800")], [fact.value]),
+                            h.p(
+                              [h.Class("mt-2 font-mono text-[10px] text-slate-400")],
+                              [
+                                `valid ${formatInstant(fact.validFrom)} → ${fact.validTo === null ? "open" : formatInstant(fact.validTo)}`,
+                              ],
+                            ),
+                            h.p(
+                              [h.Class("mt-0.5 font-mono text-[10px] text-slate-400")],
+                              [`recorded ${formatInstant(fact.recordedAt)}`],
+                            ),
+                          ],
+                        ),
+                      ),
+                      h.p(
+                        [
+                          h.Class(
+                            "border-y border-[#e1e3e8] bg-[#eef1f5] px-4 py-2 text-[10px] font-semibold tracking-wider text-slate-500 uppercase",
+                          ),
+                        ],
+                        [`Version history · ${model.selectedEntityHistory.length}`],
+                      ),
+                      ...(model.selectedEntityHistory.length === 0
+                        ? [
+                            h.p(
+                              [h.Class("p-4 text-xs text-slate-400")],
+                              [
+                                model.busy
+                                  ? "Loading entity timeline…"
+                                  : "No journal history found.",
+                              ],
+                            ),
+                          ]
+                        : model.selectedEntityHistory.map((transaction) =>
+                            h.article(
+                              [h.Class("border-b border-[#e1e3e8] px-4 py-3")],
+                              [
+                                h.div(
+                                  [h.Class("flex items-center justify-between gap-2")],
+                                  [
+                                    h.span(
+                                      [
+                                        h.Class(
+                                          "font-mono text-[10px] font-semibold text-blue-700",
+                                        ),
+                                      ],
+                                      [`tx ${transaction.position}`],
+                                    ),
+                                    h.time(
+                                      [h.Class("text-[10px] text-slate-400")],
+                                      [formatInstant(transaction.instant)],
+                                    ),
+                                  ],
+                                ),
+                                h.p(
+                                  [h.Class("mt-1 text-xs font-medium text-slate-700")],
+                                  [transaction.actor ?? "unknown actor"],
+                                ),
+                                ...transaction.changes
+                                  .filter((change) => change.entityId === selectedEntity.id)
+                                  .map((change) =>
+                                    h.div(
+                                      [
+                                        h.Class(
+                                          "mt-2 grid grid-cols-[52px_1fr] gap-2 font-mono text-[10px]",
+                                        ),
+                                      ],
+                                      [
+                                        h.span(
+                                          [
+                                            h.Class(
+                                              change.op === "assert"
+                                                ? "text-emerald-700"
+                                                : "text-rose-700",
+                                            ),
+                                          ],
+                                          [change.op],
+                                        ),
+                                        h.span(
+                                          [h.Class("min-w-0")],
+                                          [
+                                            h.code(
+                                              [h.Class("block truncate text-blue-700")],
+                                              [change.attribute],
+                                            ),
+                                            h.code(
+                                              [h.Class("block truncate text-slate-500")],
+                                              [change.value],
+                                            ),
+                                          ],
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                ...(transaction.configSnapshot === null
+                                  ? []
+                                  : [
+                                      h.code(
+                                        [h.Class("mt-2 block truncate text-[9px] text-violet-500")],
+                                        [`config ${transaction.configSnapshot}`],
+                                      ),
+                                    ]),
+                              ],
+                            ),
+                          )),
+                    ],
                   ),
                 ],
           ),
         ],
       ),
+      entityEditorView(model, h),
     ],
   );
 };
@@ -2066,6 +2482,125 @@ const journalView = (model: Model, h: HtmlBuilder<Message>): Html => {
   );
 };
 
+const configEditorView = (model: Model, h: HtmlBuilder<Message>): Html =>
+  !model.configEditorOpen
+    ? h.empty
+    : h.div(
+        [h.Class("fixed inset-0 z-50 flex justify-end bg-slate-950/45")],
+        [
+          h.section(
+            [
+              h.Class(
+                "flex h-full w-full max-w-2xl flex-col border-l border-slate-700 bg-[#0f1725] text-slate-100 shadow-2xl",
+              ),
+            ],
+            [
+              h.header(
+                [h.Class("flex items-start justify-between border-b border-white/10 px-6 py-5")],
+                [
+                  h.div(
+                    [],
+                    [
+                      h.p(
+                        [
+                          h.Class(
+                            "font-mono text-[10px] tracking-widest text-violet-400 uppercase",
+                          ),
+                        ],
+                        ["Immutable configuration"],
+                      ),
+                      h.h2([h.Class("mt-1 text-lg font-semibold")], ["Publish a new revision"]),
+                      h.p(
+                        [h.Class("mt-1 text-xs text-slate-400")],
+                        [
+                          "The old revision remains addressable; live moves to the new release atomically.",
+                        ],
+                      ),
+                    ],
+                  ),
+                  uiButton("Close", Message.ClosedConfigEditor(), h, { kind: "quiet" }),
+                ],
+              ),
+              h.div(
+                [h.Class("flex-1 space-y-5 overflow-y-auto p-6")],
+                [
+                  h.label(
+                    [h.Class("block")],
+                    [
+                      h.span(
+                        [h.Class("mb-2 block text-xs font-semibold text-slate-300")],
+                        ["Release label"],
+                      ),
+                      Input.view(
+                        {
+                          id: "config-label",
+                          value: model.configDraftLabel,
+                          onInput: (value) => Message.ChangedConfigDraftLabel({ value }),
+                          toView: ({ input }) =>
+                            h.input([
+                              ...input,
+                              h.Class(
+                                "h-10 w-full rounded border border-white/15 bg-black/20 px-3 font-mono text-sm text-white outline-none focus:border-violet-400",
+                              ),
+                            ]),
+                        },
+                        h,
+                      ),
+                    ],
+                  ),
+                  h.label(
+                    [h.Class("block")],
+                    [
+                      h.span(
+                        [h.Class("mb-2 block text-xs font-semibold text-slate-300")],
+                        ["Object attributes (JSON)"],
+                      ),
+                      h.p(
+                        [h.Class("mb-2 text-xs leading-5 text-slate-500")],
+                        [
+                          "Children, references, key, and kind remain structurally intact. Typed objects are revalidated before commit.",
+                        ],
+                      ),
+                      Textarea.view(
+                        {
+                          id: "config-attrs",
+                          value: model.configDraftAttrs,
+                          rows: 22,
+                          onInput: (value) => Message.ChangedConfigDraftAttrs({ value }),
+                          toView: ({ textarea }) =>
+                            h.textarea([
+                              ...textarea,
+                              h.Class(
+                                "block w-full resize-y rounded border border-white/15 bg-black/30 p-4 font-mono text-xs leading-5 text-slate-200 outline-none focus:border-violet-400",
+                              ),
+                            ]),
+                        },
+                        h,
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+              h.footer(
+                [h.Class("flex items-center justify-between border-t border-white/10 px-6 py-4")],
+                [
+                  h.p(
+                    [h.Class("text-xs text-slate-500")],
+                    ["Writes a release snapshot and moves the live ref."],
+                  ),
+                  uiButton(
+                    model.busy ? "Publishing…" : "Publish release",
+                    Message.RequestedSaveConfig(),
+                    h,
+                    { kind: "primary", disabled: model.busy },
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ],
+      );
+
 const configView = (model: Model, h: HtmlBuilder<Message>): Html => {
   const config = model.data!.config;
   const selected =
@@ -2332,14 +2867,23 @@ const configView = (model: Model, h: HtmlBuilder<Message>): Html => {
                               ),
                             ],
                           ),
-                          h.span(
+                          h.div(
+                            [h.Class("flex items-center gap-2")],
                             [
-                              h.Class(
-                                "rounded-full bg-violet-50 px-3 py-1 text-xs font-semibold text-violet-700",
+                              h.span(
+                                [
+                                  h.Class(
+                                    "rounded-full bg-violet-50 px-3 py-1 text-xs font-semibold text-violet-700",
+                                  ),
+                                ],
+                                [
+                                  `${selected.history.length} immutable version${selected.history.length === 1 ? "" : "s"}`,
+                                ],
                               ),
-                            ],
-                            [
-                              `${selected.history.length} immutable version${selected.history.length === 1 ? "" : "s"}`,
+                              uiButton("Edit & publish", Message.RequestedEditConfig(), h, {
+                                kind: "primary",
+                                disabled: !selected.active,
+                              }),
                             ],
                           ),
                         ],
@@ -2446,17 +2990,29 @@ const configView = (model: Model, h: HtmlBuilder<Message>): Html => {
                                     ],
                                   ),
                                   h.div(
-                                    [h.Class("flex flex-wrap gap-1.5")],
-                                    revision.releases.map((release) =>
-                                      h.span(
-                                        [
-                                          h.Class(
-                                            "rounded-full bg-slate-100 px-2 py-1 text-[9px] font-semibold text-slate-600",
-                                          ),
-                                        ],
-                                        [release],
+                                    [h.Class("flex flex-wrap items-center gap-1.5")],
+                                    [
+                                      ...revision.releases.map((release) =>
+                                        h.span(
+                                          [
+                                            h.Class(
+                                              "rounded-full bg-slate-100 px-2 py-1 text-[9px] font-semibold text-slate-600",
+                                            ),
+                                          ],
+                                          [release],
+                                        ),
                                       ),
-                                    ),
+                                      uiButton(
+                                        model.selectedConfigRevisionId === revision.revisionId
+                                          ? "Selected"
+                                          : "Inspect",
+                                        Message.SelectedConfigRevision({
+                                          revisionId: revision.revisionId,
+                                        }),
+                                        h,
+                                        { kind: "quiet" },
+                                      ),
+                                    ],
                                   ),
                                 ],
                               ),
@@ -2602,6 +3158,7 @@ const configView = (model: Model, h: HtmlBuilder<Message>): Html => {
           ),
         ],
       ),
+      configEditorView(model, h),
     ],
   );
 };
@@ -2649,36 +3206,34 @@ export const view = (model: Model, h: HtmlBuilder<Message>): Document => ({
   title: `${navItems.find((item) => item.page === model.page)?.label ?? "Explorer"} | Triplex`,
   lang: "en",
   body: h.div(
-    [h.Class("triplex-console min-h-screen bg-[#f7f8fa] text-slate-800")],
+    [h.Class("triplex-console min-h-screen bg-[#f4f6f9] text-slate-800")],
     [
       h.header(
         [
           h.Class(
-            "border-console fixed inset-x-0 top-0 z-30 flex h-11 items-center border-b bg-[#fafbfc] px-3",
+            "fixed inset-x-0 top-0 z-30 flex h-12 items-center border-b border-[#273147] bg-[#0b1220] px-4 text-white",
           ),
         ],
         [
           h.div(
-            [h.Class("mr-4 hidden items-center gap-1.5 sm:flex")],
-            [
-              h.span([h.Class("h-3 w-3 rounded-full bg-[#ff5f57]")], []),
-              h.span([h.Class("h-3 w-3 rounded-full bg-[#febc2e]")], []),
-              h.span([h.Class("h-3 w-3 rounded-full bg-[#28c840]")], []),
-            ],
+            [h.Class("mr-3 flex h-7 items-center border-r border-white/15 pr-3")],
+            [h.img([h.Src(logoUrl), h.Alt("Triplex"), h.Class("h-auto w-24 brightness-0 invert")])],
           ),
-          h.img([h.Src(logoUrl), h.Alt("Triplex"), h.Class("h-auto w-24")]),
-          h.div(
-            [h.Class("ml-4 flex min-w-0 items-center gap-2 text-xs text-slate-500")],
+          h.span(
             [
-              h.span([h.Class("text-slate-300")], ["/"]),
-              h.span([h.Class("truncate font-medium text-slate-700")], ["demo-learning"]),
-              h.span([h.Class("hidden text-slate-300 md:inline")], ["/"]),
+              h.Class(
+                "hidden rounded bg-blue-500/15 px-2 py-1 font-mono text-[10px] tracking-wide text-blue-300 sm:inline",
+              ),
+            ],
+            ["DATA EXPLORER"],
+          ),
+          h.div(
+            [h.Class("ml-4 flex min-w-0 items-center gap-2 text-xs text-slate-400")],
+            [
+              icon("database", h),
               h.span(
-                [h.Class("hidden truncate font-mono text-[11px] md:inline")],
-                [
-                  navItems.find((item) => item.page === model.page)?.label.toLowerCase() ??
-                    "explorer",
-                ],
+                [h.Class("truncate font-mono text-[11px] text-slate-200")],
+                ["memory://demo-learning"],
               ),
             ],
           ),
@@ -2688,13 +3243,13 @@ export const view = (model: Model, h: HtmlBuilder<Message>): Document => ({
               h.span(
                 [
                   h.Class(
-                    "hidden rounded border border-[#d5d8df] bg-white px-2 py-1 font-mono text-[10px] text-slate-500 sm:inline",
+                    "hidden rounded border border-white/10 bg-white/5 px-2 py-1 font-mono text-[10px] text-slate-300 sm:inline",
                   ),
                 ],
                 [model.data === null ? "loading" : `tx ${model.data.position}`],
               ),
               h.span(
-                [h.Class("flex items-center gap-1.5 text-[11px] text-slate-500")],
+                [h.Class("flex items-center gap-1.5 text-[11px] text-slate-300")],
                 [
                   h.span(
                     [
@@ -2711,9 +3266,9 @@ export const view = (model: Model, h: HtmlBuilder<Message>): Document => ({
           ),
         ],
       ),
-      sidebar(model, h),
+      toolTabs(model, h),
       h.main(
-        [h.Class("pt-22 pb-8 lg:pt-11 lg:pl-60")],
+        [h.Class("pt-22 pb-8")],
         [
           h.div(
             [h.Class("mx-auto max-w-[1800px] px-3 py-3 sm:px-4 lg:px-5 lg:py-4")],

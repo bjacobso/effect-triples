@@ -15,6 +15,7 @@ export const FactView = Schema.Struct({
   attribute: Schema.String,
   value: Schema.String,
   valueType: Schema.String,
+  rawValue: Schema.String,
   validFrom: Schema.Number,
   validTo: Schema.NullOr(Schema.Number),
   recordedAt: Schema.Number,
@@ -48,9 +49,14 @@ export type EntityTypePageView = typeof EntityTypePageView.Type;
 
 export const ChangeView = Schema.Struct({
   op: Schema.Literals(["assert", "retract"]),
+  tripleId: Schema.String,
   entityId: Schema.String,
+  entityType: Schema.NullOr(Schema.String),
   attribute: Schema.String,
   value: Schema.String,
+  valueType: Schema.NullOr(Schema.String),
+  validFrom: Schema.NullOr(Schema.Number),
+  validTo: Schema.NullOr(Schema.Number),
 });
 export type ChangeView = typeof ChangeView.Type;
 
@@ -189,6 +195,11 @@ export const Model = Schema.Struct({
   page: Page,
   data: Schema.NullOr(DashboardData),
   selectedEntityId: Schema.NullOr(Schema.String),
+  selectedEntityHistory: Schema.Array(TransactionView),
+  entityEditor: Schema.Literals(["closed", "create", "edit"]),
+  entityDraftId: Schema.String,
+  entityDraftType: Schema.String,
+  entityDraftFacts: Schema.String,
   selectedEntityType: Schema.NullOr(Schema.String),
   entityTypePage: Schema.NullOr(EntityTypePageView),
   entityTypeCursor: Schema.NullOr(Schema.String),
@@ -196,6 +207,10 @@ export const Model = Schema.Struct({
   selectedFormKey: Schema.NullOr(Schema.String),
   formValues: Schema.Record(Schema.String, Schema.String),
   selectedConfigObject: Schema.NullOr(Schema.String),
+  selectedConfigRevisionId: Schema.NullOr(Schema.String),
+  configEditorOpen: Schema.Boolean,
+  configDraftAttrs: Schema.String,
+  configDraftLabel: Schema.String,
   entitySearch: Schema.String,
   queryPreset: Schema.String,
   queryText: Schema.String,

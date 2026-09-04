@@ -1,12 +1,13 @@
 import {
   DatalogQuery,
+  EntityId,
   Triples,
   type DatalogQuery as DatalogQueryType,
   type TransactionRecord,
   type Triple,
   type TripleValue,
 } from "@bjacobso/triplex";
-import { ConfigStore, InMemoryConfigStore } from "@bjacobso/triplex/config";
+import { ConfigNode, ConfigStore, InMemoryConfigStore } from "@bjacobso/triplex/config";
 import * as Derivation from "@bjacobso/triplex/derivation";
 import { Effect, Option, Schema } from "effect";
 import type {
@@ -133,6 +134,7 @@ const entitiesFrom = (facts: readonly Triple[]): readonly EntityView[] => {
           attribute: fact.attribute,
           value: valueText(fact.value),
           valueType: fact.value.type,
+          rawValue: JSON.stringify(fact.value),
           validFrom: fact.validFrom,
           validTo: optionOrNull(fact.validTo),
           recordedAt: fact.recordedAt,
@@ -195,11 +197,138 @@ const transactionView = (transaction: TransactionRecord): TransactionView => ({
   configSnapshot: transaction.configSnapshot ?? null,
   changes: transaction.changes.map((change) => ({
     op: change.op,
+    tripleId: change.tripleId,
     entityId: change.entityId,
+    entityType: change.entityType ?? null,
     attribute: change.attribute,
     value: valueText(change.value),
+    valueType: change.value?.type ?? null,
+    validFrom: change.validFrom ?? null,
+    validTo: change.validTo ?? null,
   })),
 });
+
+export const loadEntityHistory = (
+  entityId: string,
+): Effect.Effect<readonly TransactionView[], unknown, Triples> =>
+  Effect.gen(function* () {
+    const triples = yield* Triples;
+    const id = yield* EntityId.decode(entityId);
+    const page = yield* triples.transactionsForEntity(id, { limit: 100 });
+    return page.transactions.map(transactionView);
+  });
+
+const EntityFactDraft = Schema.Struct({
+  attribute: Schema.String,
+  value: Schema.Unknown,
+  validFrom: Schema.optional(Schema.Number),
+  validTo: Schema.optional(Schema.Number),
+});
+
+const decodeDraftValue = (value: unknown) =>
+  Schema.decodeUnknownEffect(
+    Schema.Union([
+      Schema.Struct({ type: Schema.Literal("string"), value: Schema.String }),
+      Schema.Struct({ type: Schema.Literal("number"), value: Schema.Number }),
+      Schema.Struct({ type: Schema.Literal("boolean"), value: Schema.Boolean }),
+      Schema.Struct({ type: Schema.Literal("datetime"), value: Schema.Number }),
+      Schema.Struct({ type: Schema.Literal("ref"), value: EntityId }),
+      Schema.Struct({ type: Schema.Literal("json"), value: Schema.Unknown }),
+    ]),
+  )(value);
+
+export const saveEntity = (input: {
+  readonly mode: "create" | "edit";
+  readonly entityId: string;
+  readonly entityType: string;
+  readonly facts: string;
+}): Effect.Effect<string, unknown, Triples> =>
+  Effect.gen(function* () {
+    const triples = yield* Triples;
+    const entityId = yield* EntityId.decode(input.entityId.trim());
+    if (input.entityType.trim() === "")
+      return yield* Effect.fail(new Error("Entity type is required"));
+    const parsed = yield* Effect.try({
+      try: () => JSON.parse(input.facts) as unknown,
+      catch: (cause) => new Error(`Facts must be valid JSON: ${String(cause)}`),
+    });
+    const drafts = yield* Schema.decodeUnknownEffect(Schema.Array(EntityFactDraft))(parsed);
+    if (drafts.length === 0) return yield* Effect.fail(new Error("Add at least one fact"));
+    const values = yield* Effect.forEach(drafts, (draft) => decodeDraftValue(draft.value));
+    const existing = yield* triples.entity(entityId);
+    if (input.mode === "create" && existing.length > 0) {
+      return yield* Effect.fail(new Error(`Entity ${entityId} already exists`));
+    }
+    const now = Date.now();
+    const result = yield* triples.transact(
+      [
+        ...(input.mode === "edit"
+          ? existing.map((fact) => ({ op: "retract" as const, id: fact.id }))
+          : []),
+        ...drafts.map((draft, index) => ({
+          op: "assert" as const,
+          entityId,
+          entityType: input.entityType.trim(),
+          attribute: draft.attribute,
+          value: values[index]!,
+          ...(draft.validFrom === undefined ? {} : { validFrom: draft.validFrom }),
+          ...(draft.validTo === undefined ? {} : { validTo: draft.validTo }),
+        })),
+      ],
+      {
+        actor: "triplex/dashboard",
+        commandId: `dashboard.entity.${now}.${Math.random().toString(36).slice(2)}`,
+      },
+    );
+    return `${input.mode === "create" ? "Created" : "Updated"} ${entityId} in transaction ${result.txId}`;
+  });
+
+export const updateConfigObject = (input: {
+  readonly identity: string;
+  readonly attrs: string;
+  readonly label: string;
+}): Effect.Effect<string, unknown, ConfigStore.ConfigStore> =>
+  Effect.gen(function* () {
+    const config = yield* ConfigStore.ConfigStore;
+    const snapshot = yield* config.resolveRef("live");
+    if (snapshot === undefined) return yield* Effect.fail(new Error("The live ref is not set"));
+    const [kind, key] = input.identity.split("\u0000");
+    const target = snapshot.root.children.find(
+      (child) => child.node.kind === kind && child.node.key === key,
+    )?.node;
+    if (target === undefined)
+      return yield* Effect.fail(new Error("Config object is not active in live"));
+    const attrs = yield* Effect.try({
+      try: () => JSON.parse(input.attrs) as unknown,
+      catch: (cause) => new Error(`Attributes must be valid JSON: ${String(cause)}`),
+    });
+    const replacement = target.type
+      ? yield* ConfigNode.makeTyped({
+          kind: target.kind,
+          key: target.key,
+          type: target.type,
+          attrs,
+          children: target.children,
+          refs: target.refs,
+        })
+      : yield* ConfigNode.make({
+          kind: target.kind,
+          key: target.key,
+          attrs: attrs as import("@bjacobso/triplex/config").CanonicalJson.CanonicalValue,
+          children: target.children,
+          refs: target.refs,
+        });
+    const label = input.label.trim();
+    if (label === "") return yield* Effect.fail(new Error("Release label is required"));
+    const committed = yield* config.commit({
+      label,
+      ref: "live",
+      objects: snapshot.root.children.map((child) =>
+        child.node.kind === target.kind && child.node.key === target.key ? replacement : child.node,
+      ),
+    });
+    return `Published ${label} and moved live to ${committed.snapshot.id}`;
+  });
 
 const configObjectViews = (
   store: InMemoryConfigStore.InMemoryConfigStore,
