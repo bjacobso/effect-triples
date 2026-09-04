@@ -13,9 +13,10 @@ import {
   loadDashboard,
   loadEntityHistory,
   loadEntityTypePage,
+  moveConfigRef,
+  publishConfigChange,
   queryPresets,
   saveEntity,
-  updateConfigObject,
 } from "./data.js";
 import {
   DashboardData,
@@ -43,10 +44,17 @@ export const Message = defineMessageUnion({
   ChangedEntityDraftFacts: { value: Schema.String },
   RequestedSaveEntity: {},
   RequestedEditConfig: {},
+  RequestedCreateConfig: {},
+  RequestedRemoveConfig: {},
   ClosedConfigEditor: {},
+  ChangedConfigDraftKind: { value: Schema.String },
+  ChangedConfigDraftKey: { value: Schema.String },
   ChangedConfigDraftAttrs: { value: Schema.String },
+  ChangedConfigDraftRefs: { value: Schema.String },
   ChangedConfigDraftLabel: { value: Schema.String },
+  ChangedConfigTargetRef: { value: Schema.String },
   RequestedSaveConfig: {},
+  RequestedMoveConfigRef: { name: Schema.String, snapshotId: Schema.String },
   RequestedNextEntityTypePage: {},
   RequestedPreviousEntityTypePage: {},
   ChangedEntitySearch: { value: Schema.String },
@@ -81,9 +89,13 @@ export const initialModel: Model = {
   formValues: {},
   selectedConfigObject: null,
   selectedConfigRevisionId: null,
-  configEditorOpen: false,
+  configEditor: "closed",
+  configDraftKind: "",
+  configDraftKey: "",
   configDraftAttrs: "{}",
+  configDraftRefs: "[]",
   configDraftLabel: "",
+  configTargetRef: "live",
   entitySearch: "",
   queryPreset: queryPresets[0].id,
   queryText: initialQueryText,
@@ -171,10 +183,31 @@ export const SaveEntity = Command.define("SaveEntity", {
 });
 
 export const SaveConfig = Command.define("SaveConfig", {
-  args: { identity: Schema.String, attrs: Schema.String, label: Schema.String },
+  args: {
+    operation: Schema.Literals(["create", "edit", "remove"]),
+    identity: Schema.optional(Schema.String),
+    kind: Schema.String,
+    key: Schema.String,
+    attrs: Schema.String,
+    refs: Schema.String,
+    label: Schema.String,
+    targetRef: Schema.String,
+  },
   messages: [Message.SucceededMutation, Message.FailedDashboardCommand],
-  execute: (input) =>
-    updateConfigObject(input).pipe(
+  execute: ({ identity, ...input }) =>
+    publishConfigChange({ ...input, ...(identity === undefined ? {} : { identity }) }).pipe(
+      Effect.map((notice) => Message.SucceededMutation({ notice })),
+      Effect.catch((error) =>
+        Effect.succeed(Message.FailedDashboardCommand({ message: errorMessage(error) })),
+      ),
+    ),
+});
+
+export const MoveConfigRef = Command.define("MoveConfigRef", {
+  args: { name: Schema.String, snapshotId: Schema.String },
+  messages: [Message.SucceededMutation, Message.FailedDashboardCommand],
+  execute: ({ name, snapshotId }) =>
+    moveConfigRef(name, snapshotId).pipe(
       Effect.map((notice) => Message.SucceededMutation({ notice })),
       Effect.catch((error) =>
         Effect.succeed(Message.FailedDashboardCommand({ message: errorMessage(error) })),
@@ -207,6 +240,15 @@ const configAttrs = (body: string): string => {
     return JSON.stringify(parsed.attrs ?? {}, null, 2);
   } catch {
     return "{}";
+  }
+};
+
+const configRefs = (body: string): string => {
+  try {
+    const parsed = JSON.parse(body) as { readonly refs?: unknown };
+    return JSON.stringify(parsed.refs ?? [], null, 2);
+  } catch {
+    return "[]";
   }
 };
 
@@ -263,12 +305,12 @@ export const update = (model: Model, message: Message) =>
         ...model,
         selectedConfigObject: object,
         selectedConfigRevisionId: null,
-        configEditorOpen: false,
+        configEditor: "closed",
         notice: null,
       },
     }),
     SelectedConfigRevision: ({ revisionId }) => ({
-      model: { ...model, selectedConfigRevisionId: revisionId, configEditorOpen: false },
+      model: { ...model, selectedConfigRevisionId: revisionId, configEditor: "closed" },
     }),
     RequestedCreateEntity: () => ({
       model: {
@@ -334,30 +376,85 @@ export const update = (model: Model, message: Message) =>
         : {
             model: {
               ...model,
-              configEditorOpen: true,
+              configEditor: "edit" as const,
+              configDraftKind: object.kind,
+              configDraftKey: object.key,
               configDraftAttrs: configAttrs(revision.body),
+              configDraftRefs: configRefs(revision.body),
               configDraftLabel: `${model.data?.config.label ?? "release"}-edit`,
+              configTargetRef: "live",
               error: null,
               notice: null,
             },
           };
     },
-    ClosedConfigEditor: () => ({ model: { ...model, configEditorOpen: false } }),
+    RequestedCreateConfig: () => ({
+      model: {
+        ...model,
+        configEditor: "create",
+        configDraftKind: "",
+        configDraftKey: "",
+        configDraftAttrs: "{}",
+        configDraftRefs: "[]",
+        configDraftLabel: `${model.data?.config.label ?? "release"}-new-object`,
+        configTargetRef: "none",
+        error: null,
+        notice: null,
+      },
+    }),
+    RequestedRemoveConfig: () => {
+      const object = model.data?.config.objects.find(
+        (candidate) => `${candidate.kind}\u0000${candidate.key}` === model.selectedConfigObject,
+      );
+      return object === undefined || !object.active
+        ? { model }
+        : {
+            model: {
+              ...model,
+              configEditor: "remove" as const,
+              configDraftKind: object.kind,
+              configDraftKey: object.key,
+              configDraftAttrs: "{}",
+              configDraftRefs: "[]",
+              configDraftLabel: `${model.data?.config.label ?? "release"}-remove-${object.key.replaceAll("/", "-")}`,
+              configTargetRef: "none",
+              error: null,
+              notice: null,
+            },
+          };
+    },
+    ClosedConfigEditor: () => ({ model: { ...model, configEditor: "closed" } }),
+    ChangedConfigDraftKind: ({ value }) => ({ model: { ...model, configDraftKind: value } }),
+    ChangedConfigDraftKey: ({ value }) => ({ model: { ...model, configDraftKey: value } }),
     ChangedConfigDraftAttrs: ({ value }) => ({ model: { ...model, configDraftAttrs: value } }),
+    ChangedConfigDraftRefs: ({ value }) => ({ model: { ...model, configDraftRefs: value } }),
     ChangedConfigDraftLabel: ({ value }) => ({ model: { ...model, configDraftLabel: value } }),
+    ChangedConfigTargetRef: ({ value }) => ({ model: { ...model, configTargetRef: value } }),
     RequestedSaveConfig: () =>
-      model.selectedConfigObject === null
+      model.configEditor === "closed" ||
+      (model.configEditor !== "create" && model.selectedConfigObject === null)
         ? { model }
         : {
             model: { ...model, busy: true, error: null, notice: null },
             commands: [
               SaveConfig({
-                identity: model.selectedConfigObject,
+                operation: model.configEditor,
+                ...(model.selectedConfigObject === null
+                  ? {}
+                  : { identity: model.selectedConfigObject }),
+                kind: model.configDraftKind,
+                key: model.configDraftKey,
                 attrs: model.configDraftAttrs,
+                refs: model.configDraftRefs,
                 label: model.configDraftLabel,
+                targetRef: model.configTargetRef,
               }),
             ],
           },
+    RequestedMoveConfigRef: ({ name, snapshotId }) => ({
+      model: { ...model, busy: true, error: null, notice: null },
+      commands: [MoveConfigRef({ name, snapshotId })],
+    }),
     RequestedNextEntityTypePage: () => {
       const cursor = model.entityTypePage?.nextCursor;
       if (model.selectedEntityType === null || cursor === null || cursor === undefined) {
@@ -493,7 +590,7 @@ export const update = (model: Model, message: Message) =>
       model: {
         ...model,
         entityEditor: "closed",
-        configEditorOpen: false,
+        configEditor: "closed",
         busy: true,
         notice,
         error: null,
@@ -2482,8 +2579,72 @@ const journalView = (model: Model, h: HtmlBuilder<Message>): Html => {
   );
 };
 
+const configTextInput = (
+  label: string,
+  id: string,
+  value: string,
+  onInput: (value: string) => Message,
+  disabled: boolean,
+  h: HtmlBuilder<Message>,
+): Html =>
+  h.label(
+    [h.Class("block")],
+    [
+      h.span([h.Class("mb-2 block text-xs font-semibold text-slate-300")], [label]),
+      Input.view(
+        {
+          id,
+          value,
+          onInput,
+          toView: ({ input }) =>
+            h.input([
+              ...input,
+              ...(disabled ? [h.Disabled(true)] : []),
+              h.Class(
+                "h-10 w-full rounded border border-white/15 bg-black/20 px-3 font-mono text-sm text-white outline-none focus:border-violet-400 disabled:text-slate-500",
+              ),
+            ]),
+        },
+        h,
+      ),
+    ],
+  );
+
+const configJsonInput = (
+  label: string,
+  description: string,
+  id: string,
+  value: string,
+  rows: number,
+  onInput: (value: string) => Message,
+  h: HtmlBuilder<Message>,
+): Html =>
+  h.label(
+    [h.Class("block")],
+    [
+      h.span([h.Class("mb-2 block text-xs font-semibold text-slate-300")], [label]),
+      h.p([h.Class("mb-2 text-xs leading-5 text-slate-500")], [description]),
+      Textarea.view(
+        {
+          id,
+          value,
+          rows,
+          onInput,
+          toView: ({ textarea }) =>
+            h.textarea([
+              ...textarea,
+              h.Class(
+                "block w-full resize-y rounded border border-white/15 bg-black/30 p-4 font-mono text-xs leading-5 text-slate-200 outline-none focus:border-violet-400",
+              ),
+            ]),
+        },
+        h,
+      ),
+    ],
+  );
+
 const configEditorView = (model: Model, h: HtmlBuilder<Message>): Html =>
-  !model.configEditorOpen
+  model.configEditor === "closed"
     ? h.empty
     : h.div(
         [h.Class("fixed inset-0 z-50 flex justify-end bg-slate-950/45")],
@@ -2507,13 +2668,24 @@ const configEditorView = (model: Model, h: HtmlBuilder<Message>): Html =>
                             "font-mono text-[10px] tracking-widest text-violet-400 uppercase",
                           ),
                         ],
-                        ["Immutable configuration"],
+                        ["Release composer"],
                       ),
-                      h.h2([h.Class("mt-1 text-lg font-semibold")], ["Publish a new revision"]),
+                      h.h2(
+                        [h.Class("mt-1 text-lg font-semibold")],
+                        [
+                          model.configEditor === "create"
+                            ? "Create configuration object"
+                            : model.configEditor === "remove"
+                              ? "Remove object from release"
+                              : "Edit configuration object",
+                        ],
+                      ),
                       h.p(
                         [h.Class("mt-1 text-xs text-slate-400")],
                         [
-                          "The old revision remains addressable; live moves to the new release atomically.",
+                          model.configEditor === "remove"
+                            ? "Existing revisions remain immutable and addressable."
+                            : "Publish a new immutable snapshot, then choose whether an environment moves.",
                         ],
                       ),
                     ],
@@ -2524,61 +2696,99 @@ const configEditorView = (model: Model, h: HtmlBuilder<Message>): Html =>
               h.div(
                 [h.Class("flex-1 space-y-5 overflow-y-auto p-6")],
                 [
-                  h.label(
-                    [h.Class("block")],
+                  h.div(
+                    [h.Class("grid gap-4 sm:grid-cols-2")],
                     [
-                      h.span(
-                        [h.Class("mb-2 block text-xs font-semibold text-slate-300")],
-                        ["Release label"],
+                      configTextInput(
+                        "Kind",
+                        "config-kind",
+                        model.configDraftKind,
+                        (value) => Message.ChangedConfigDraftKind({ value }),
+                        model.configEditor !== "create",
+                        h,
                       ),
-                      Input.view(
-                        {
-                          id: "config-label",
-                          value: model.configDraftLabel,
-                          onInput: (value) => Message.ChangedConfigDraftLabel({ value }),
-                          toView: ({ input }) =>
-                            h.input([
-                              ...input,
-                              h.Class(
-                                "h-10 w-full rounded border border-white/15 bg-black/20 px-3 font-mono text-sm text-white outline-none focus:border-violet-400",
-                              ),
-                            ]),
-                        },
+                      configTextInput(
+                        "Logical key",
+                        "config-key",
+                        model.configDraftKey,
+                        (value) => Message.ChangedConfigDraftKey({ value }),
+                        model.configEditor !== "create",
                         h,
                       ),
                     ],
+                  ),
+                  configTextInput(
+                    "Release label",
+                    "config-label",
+                    model.configDraftLabel,
+                    (value) => Message.ChangedConfigDraftLabel({ value }),
+                    false,
+                    h,
                   ),
                   h.label(
                     [h.Class("block")],
                     [
                       h.span(
                         [h.Class("mb-2 block text-xs font-semibold text-slate-300")],
-                        ["Object attributes (JSON)"],
+                        ["Move ref on publish"],
                       ),
-                      h.p(
-                        [h.Class("mb-2 text-xs leading-5 text-slate-500")],
-                        [
-                          "Children, references, key, and kind remain structurally intact. Typed objects are revalidated before commit.",
-                        ],
-                      ),
-                      Textarea.view(
+                      Select.view(
                         {
-                          id: "config-attrs",
-                          value: model.configDraftAttrs,
-                          rows: 22,
-                          onInput: (value) => Message.ChangedConfigDraftAttrs({ value }),
-                          toView: ({ textarea }) =>
-                            h.textarea([
-                              ...textarea,
-                              h.Class(
-                                "block w-full resize-y rounded border border-white/15 bg-black/30 p-4 font-mono text-xs leading-5 text-slate-200 outline-none focus:border-violet-400",
-                              ),
-                            ]),
+                          id: "config-target-ref",
+                          value: model.configTargetRef,
+                          onChange: (value) => Message.ChangedConfigTargetRef({ value }),
+                          toView: ({ select }) =>
+                            h.select(
+                              [
+                                ...select,
+                                h.Class(
+                                  "h-10 w-full rounded border border-white/15 bg-[#111b2b] px-3 text-sm text-white outline-none focus:border-violet-400",
+                                ),
+                              ],
+                              [
+                                h.option([h.Value("none")], ["Publish only — move no ref"]),
+                                h.option([h.Value("test")], ["Move test"]),
+                                h.option([h.Value("live")], ["Move live"]),
+                              ],
+                            ),
                         },
                         h,
                       ),
                     ],
                   ),
+                  ...(model.configEditor === "remove"
+                    ? [
+                        h.div(
+                          [
+                            h.Class(
+                              "rounded border border-amber-400/25 bg-amber-400/10 p-4 text-sm leading-6 text-amber-200",
+                            ),
+                          ],
+                          [
+                            `The next release will omit ${model.configDraftKind} ${model.configDraftKey}. Dangling references will block publication.`,
+                          ],
+                        ),
+                      ]
+                    : [
+                        configJsonInput(
+                          "Object attributes",
+                          "Typed objects are revalidated before commit. Nested children are preserved during edits.",
+                          "config-attrs",
+                          model.configDraftAttrs,
+                          15,
+                          (value) => Message.ChangedConfigDraftAttrs({ value }),
+                          h,
+                        ),
+                        configJsonInput(
+                          "References",
+                          'Use [{ "rel": "uses", "kind": "attribute", "key": "course/title" }]. Every target must exist.',
+                          "config-refs",
+                          model.configDraftRefs,
+                          7,
+                          (value) => Message.ChangedConfigDraftRefs({ value }),
+                          h,
+                        ),
+                      ]),
                 ],
               ),
               h.footer(
@@ -2586,10 +2796,18 @@ const configEditorView = (model: Model, h: HtmlBuilder<Message>): Html =>
                 [
                   h.p(
                     [h.Class("text-xs text-slate-500")],
-                    ["Writes a release snapshot and moves the live ref."],
+                    [
+                      model.configTargetRef === "none"
+                        ? "No environment will move."
+                        : `${model.configTargetRef} moves atomically with publication.`,
+                    ],
                   ),
                   uiButton(
-                    model.busy ? "Publishing…" : "Publish release",
+                    model.busy
+                      ? "Publishing…"
+                      : model.configEditor === "remove"
+                        ? "Publish removal"
+                        : "Publish release",
                     Message.RequestedSaveConfig(),
                     h,
                     { kind: "primary", disabled: model.busy },
@@ -2616,6 +2834,20 @@ const configView = (model: Model, h: HtmlBuilder<Message>): Html => {
         "A release pins immutable typed nodes and their dependency closures. Only refs move.",
         model,
         h,
+      ),
+      h.div(
+        [
+          h.Class(
+            "mb-3 flex items-center justify-between rounded border border-[#cfd3dc] bg-white px-3 py-2",
+          ),
+        ],
+        [
+          h.p(
+            [h.Class("text-xs text-slate-500")],
+            ["Compose immutable releases, then move environment refs explicitly."],
+          ),
+          uiButton("New config object", Message.RequestedCreateConfig(), h, { kind: "primary" }),
+        ],
       ),
       h.section(
         [
@@ -2884,6 +3116,10 @@ const configView = (model: Model, h: HtmlBuilder<Message>): Html => {
                                 kind: "primary",
                                 disabled: !selected.active,
                               }),
+                              uiButton("Remove", Message.RequestedRemoveConfig(), h, {
+                                kind: "secondary",
+                                disabled: !selected.active,
+                              }),
                             ],
                           ),
                         ],
@@ -3141,16 +3377,42 @@ const configView = (model: Model, h: HtmlBuilder<Message>): Html => {
                   ),
                   h.div(
                     [h.Class("flex flex-wrap items-start justify-end gap-2")],
-                    release.refs.map((refName) =>
-                      h.span(
-                        [
-                          h.Class(
-                            "rounded-full bg-emerald-50 px-2.5 py-1 text-[10px] font-bold text-emerald-700",
-                          ),
-                        ],
-                        [refName],
+                    [
+                      ...release.refs.map((refName) =>
+                        h.span(
+                          [
+                            h.Class(
+                              "rounded-full bg-emerald-50 px-2.5 py-1 text-[10px] font-bold text-emerald-700",
+                            ),
+                          ],
+                          [refName],
+                        ),
                       ),
-                    ),
+                      uiButton(
+                        "Set test",
+                        Message.RequestedMoveConfigRef({
+                          name: "test",
+                          snapshotId: release.snapshotId,
+                        }),
+                        h,
+                        {
+                          kind: "quiet",
+                          disabled: model.busy || release.refs.includes("test"),
+                        },
+                      ),
+                      uiButton(
+                        "Set live",
+                        Message.RequestedMoveConfigRef({
+                          name: "live",
+                          snapshotId: release.snapshotId,
+                        }),
+                        h,
+                        {
+                          kind: "secondary",
+                          disabled: model.busy || release.refs.includes("live"),
+                        },
+                      ),
+                    ],
                   ),
                 ],
               ),

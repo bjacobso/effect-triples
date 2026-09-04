@@ -1,4 +1,5 @@
 import { EntityId, Triples, string } from "@bjacobso/triplex";
+import { ConfigStore } from "@bjacobso/triplex/config";
 import { Effect, Exit } from "effect";
 import { expect as expectScene, given, role, scene, text } from "foldkit/scene";
 import { describe, expect, it } from "vitest";
@@ -8,8 +9,9 @@ import {
   loadDashboard,
   loadEntityHistory,
   loadEntityTypePage,
+  moveConfigRef,
+  publishConfigChange,
   saveEntity,
-  updateConfigObject,
 } from "./data.js";
 import { DashboardDemoLayer } from "./demo/layer.js";
 import { LoadDashboard, Message, RunQuery, init, initialModel, update, view } from "./main.js";
@@ -196,10 +198,15 @@ describe("Triplex dashboard", () => {
           (object) => object.kind === "form" && object.key === "quiz/bitemporal-facts",
         )!;
         const body = JSON.parse(form.history[0]!.body) as { attrs: Record<string, unknown> };
-        const notice = yield* updateConfigObject({
+        const notice = yield* publishConfigChange({
+          operation: "edit",
           identity: "form\u0000quiz/bitemporal-facts",
+          kind: "form",
+          key: "quiz/bitemporal-facts",
           attrs: JSON.stringify({ ...body.attrs, title: "Bitemporal Facts Lab" }),
+          refs: JSON.stringify((body as { refs?: unknown }).refs ?? []),
           label: "learning-2026.fall-dashboard-edit",
+          targetRef: "live",
         });
         const after = yield* loadDashboard;
         return { before, after, notice };
@@ -215,5 +222,50 @@ describe("Triplex dashboard", () => {
     expect(updated?.history).toHaveLength(3);
     expect(updated?.history[0]?.body).toContain("Bitemporal Facts Lab");
     expect(result.after.forms[0]?.title).toBe("Bitemporal Facts Lab");
+  });
+
+  it("creates and removes config objects through releases and can promote refs", async () => {
+    const result = await Effect.runPromise(
+      Effect.gen(function* () {
+        const created = yield* publishConfigChange({
+          operation: "create",
+          kind: "grading-policy",
+          key: "grading/standard",
+          attrs: JSON.stringify({ passingScore: 70, scale: "percentage" }),
+          refs: "[]",
+          label: "learning-2026.grading-draft",
+          targetRef: "none",
+        });
+        const config = yield* ConfigStore.ConfigStore;
+        const afterCreate = yield* config.load();
+        const draft = afterCreate.snapshots.at(-1)!;
+        const promoted = yield* moveConfigRef("test", draft.id);
+        const testRef = yield* config.resolveRef("test");
+        const removed = yield* publishConfigChange({
+          operation: "remove",
+          identity: "form\u0000quiz/bitemporal-facts",
+          kind: "form",
+          key: "quiz/bitemporal-facts",
+          attrs: "{}",
+          refs: "[]",
+          label: "learning-2026.no-quiz",
+          targetRef: "none",
+        });
+        const afterRemove = yield* config.load();
+        return { created, promoted, removed, draft, testRef, afterRemove };
+      }).pipe(Effect.provide(DashboardDemoLayer)),
+    );
+
+    expect(result.created).toContain("Published learning-2026.grading-draft");
+    expect(result.promoted).toBe("Moved test to learning-2026.grading-draft");
+    expect(result.testRef?.id).toBe(result.draft.id);
+    expect(result.removed).toContain("Published learning-2026.no-quiz");
+    expect(
+      result.afterRemove.snapshots
+        .at(-1)
+        ?.root.children.some(
+          (child) => child.node.kind === "form" && child.node.key === "quiz/bitemporal-facts",
+        ),
+    ).toBe(false);
   });
 });

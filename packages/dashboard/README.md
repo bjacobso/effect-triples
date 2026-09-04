@@ -21,9 +21,12 @@ resulting database through six domain-independent views:
   dependency closures, and canonical stored bodies.
 
 The entity workbench can create and edit typed facts as one attributed transaction.
-The configuration workbench can edit an active object's attributes and publish a new
-content-addressed release; earlier revisions remain immutable and browseable. The demo
-database is browser-local, so these writes reset when the runtime restarts.
+The configuration workbench can create, edit, or remove top-level logical objects;
+validate typed attributes and cross-object references; publish without changing an
+environment; and explicitly promote or roll back `live` and `test` to any release.
+Earlier revisions remain immutable and browseable. Nested children are preserved when
+editing an object but are read-only in this dashboard. The demo database is
+browser-local, so these writes reset when the runtime restarts.
 
 The data path is real: Foldkit commands require `Triples` and `ConfigStore` from
 an app-lifetime Effect layer. The dashboard renderer contains no knowledge of

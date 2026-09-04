@@ -283,51 +283,106 @@ export const saveEntity = (input: {
     return `${input.mode === "create" ? "Created" : "Updated"} ${entityId} in transaction ${result.txId}`;
   });
 
-export const updateConfigObject = (input: {
-  readonly identity: string;
+const ConfigRefDraft = Schema.Struct({
+  rel: Schema.String,
+  kind: Schema.String,
+  key: Schema.String,
+});
+
+export const publishConfigChange = (input: {
+  readonly operation: "create" | "edit" | "remove";
+  readonly identity?: string;
+  readonly kind: string;
+  readonly key: string;
   readonly attrs: string;
+  readonly refs: string;
   readonly label: string;
+  readonly targetRef: string;
 }): Effect.Effect<string, unknown, ConfigStore.ConfigStore> =>
   Effect.gen(function* () {
     const config = yield* ConfigStore.ConfigStore;
     const snapshot = yield* config.resolveRef("live");
     if (snapshot === undefined) return yield* Effect.fail(new Error("The live ref is not set"));
-    const [kind, key] = input.identity.split("\u0000");
+    const [identityKind, identityKey] = input.identity?.split("\u0000") ?? [];
     const target = snapshot.root.children.find(
-      (child) => child.node.kind === kind && child.node.key === key,
+      (child) => child.node.kind === identityKind && child.node.key === identityKey,
     )?.node;
-    if (target === undefined)
+    if (input.operation !== "create" && target === undefined) {
       return yield* Effect.fail(new Error("Config object is not active in live"));
+    }
+    const kind = input.kind.trim();
+    const key = input.key.trim();
+    if (kind === "" || key === "") {
+      return yield* Effect.fail(new Error("Config kind and key are required"));
+    }
+    if (
+      input.operation === "create" &&
+      snapshot.root.children.some((child) => child.node.kind === kind && child.node.key === key)
+    ) {
+      return yield* Effect.fail(new Error(`${kind} ${key} already exists in live`));
+    }
     const attrs = yield* Effect.try({
       try: () => JSON.parse(input.attrs) as unknown,
       catch: (cause) => new Error(`Attributes must be valid JSON: ${String(cause)}`),
     });
-    const replacement = target.type
-      ? yield* ConfigNode.makeTyped({
-          kind: target.kind,
-          key: target.key,
-          type: target.type,
-          attrs,
-          children: target.children,
-          refs: target.refs,
-        })
-      : yield* ConfigNode.make({
-          kind: target.kind,
-          key: target.key,
-          attrs: attrs as import("@bjacobso/triplex/config").CanonicalJson.CanonicalValue,
-          children: target.children,
-          refs: target.refs,
-        });
+    const parsedRefs = yield* Effect.try({
+      try: () => JSON.parse(input.refs) as unknown,
+      catch: (cause) => new Error(`References must be valid JSON: ${String(cause)}`),
+    });
+    const refs = yield* Schema.decodeUnknownEffect(Schema.Array(ConfigRefDraft))(parsedRefs);
+    const replacement =
+      input.operation === "remove"
+        ? undefined
+        : target?.type
+          ? yield* ConfigNode.makeTyped({
+              kind,
+              key,
+              type: target.type,
+              attrs,
+              children: target.children,
+              refs,
+            })
+          : yield* ConfigNode.make({
+              kind,
+              key,
+              attrs: attrs as import("@bjacobso/triplex/config").CanonicalJson.CanonicalValue,
+              children: target?.children ?? [],
+              refs,
+            });
     const label = input.label.trim();
     if (label === "") return yield* Effect.fail(new Error("Release label is required"));
+    const objects =
+      input.operation === "create"
+        ? [...snapshot.root.children.map((child) => child.node), replacement!]
+        : input.operation === "remove"
+          ? snapshot.root.children
+              .filter((child) => child.node.kind !== target!.kind || child.node.key !== target!.key)
+              .map((child) => child.node)
+          : snapshot.root.children.map((child) =>
+              child.node.kind === target!.kind && child.node.key === target!.key
+                ? replacement!
+                : child.node,
+            );
     const committed = yield* config.commit({
       label,
-      ref: "live",
-      objects: snapshot.root.children.map((child) =>
-        child.node.kind === target.kind && child.node.key === target.key ? replacement : child.node,
-      ),
+      ...(input.targetRef === "none" ? {} : { ref: input.targetRef }),
+      objects,
     });
-    return `Published ${label} and moved live to ${committed.snapshot.id}`;
+    return `Published ${label}${input.targetRef === "none" ? "" : ` and moved ${input.targetRef}`} to ${committed.snapshot.id}`;
+  });
+
+export const moveConfigRef = (
+  name: string,
+  snapshotId: string,
+): Effect.Effect<string, unknown, ConfigStore.ConfigStore> =>
+  Effect.gen(function* () {
+    if (name.trim() === "") return yield* Effect.fail(new Error("Ref name is required"));
+    const config = yield* ConfigStore.ConfigStore;
+    const snapshot = yield* config.setRef(
+      name.trim(),
+      snapshotId as import("@bjacobso/triplex/config").ContentId.ContentId,
+    );
+    return `Moved ${name.trim()} to ${snapshot.label}`;
   });
 
 const configObjectViews = (
