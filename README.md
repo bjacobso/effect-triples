@@ -546,7 +546,7 @@ for Triplex adapter packages. Public exports resolve only to built `dist` files.
 | [Operational primitives](docs/operational-primitives.md) | Transactions, journal, concurrency, projections     |
 | [Architecture](ARCHITECTURE.md)                          | Package boundaries and dependency direction         |
 | [Roadmap](docs/roadmap.md)                               | Release gates and future work                       |
-| [Onboarded foundation](docs/onboarded-foundation.md)     | Host integration and data-migration guidance        |
+| [Host integration](docs/host-integration.md)             | Runtime composition and data-migration guidance     |
 | [Source provenance](docs/provenance.md)                  | Imported repository history                         |
 
 The focused configuration explorer remains under [`examples/config-explorer`](examples/config-explorer),

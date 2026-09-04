@@ -79,7 +79,7 @@ export default defineConfig({
         text: "Operate",
         items: [
           { text: "Operational primitives", link: "/operational-primitives" },
-          { text: "Host integration", link: "/onboarded-foundation" },
+          { text: "Host integration", link: "/host-integration" },
           { text: "Releasing", link: "/releasing" },
           { text: "Roadmap", link: "/roadmap" },
         ],

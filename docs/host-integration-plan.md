@@ -1,8 +1,7 @@
-# Onboarded foundation completion record
+# Host integration completion record
 
-This record tracks the work completed to prepare Triplex to replace Onboarded's vendored
-fact store without weakening isolation, temporal, pagination, or audit
-semantics. Onboarded remains a read-only reference; all implementation lives in
+This record tracks the work completed to prepare Triplex for external host applications without
+weakening isolation, temporal, pagination, or audit semantics. All implementation lives in
 Triplex and stays application-independent.
 
 ## Baseline
@@ -11,8 +10,8 @@ Triplex and stays application-independent.
 - [x] Inspect the Triples service, storage SPI, KV hexastore, SQLite and
       PostgreSQL adapters, Datalog executors, transaction journal, snapshots,
       subscriptions, and configuration runtime.
-- [x] Inspect Onboarded's fact-store, entity DSL, query, batching, transaction,
-      and vendored storage implementations.
+- [x] Inspect production host requirements for fact storage, entity DSLs, queries, batching,
+      transactions, and relational composition.
 - [x] Establish a green baseline: `pnpm check`, `pnpm pack:check`, and the
       PostgreSQL integration suite pass at commit `9c7dd80`.
 
@@ -76,9 +75,8 @@ Triplex and stays application-independent.
       policy, routine/action, organization ref, operational transaction provenance,
       and later explanation from the pinned release.
 - [x] Document validation's current enforcement limits accurately.
-- [x] Add `docs/onboarded-foundation.md` with package/API mappings, data
-      migration, database-per-organization wrapping, DSL compilation, batching,
-      and journal consumption.
+- [x] Add `docs/host-integration.md` with public APIs, data migration,
+      database-scoped wrapping, DSL compilation, batching, and journal consumption.
 - [x] Update architecture and roadmap documents.
 
 ## Local implementation gates
@@ -97,8 +95,8 @@ content-addressed graph constraints with opt-in atomic enforcement, portable der
 freshness-aware materialization runs, temporal wakeups, hypothetical overlays, and a substantially
 stronger cross-backend Datalog contract.
 
-This does not mean the application cutover is complete. Registry canaries and PostgreSQL CI are
-green, but stable `0.1.0` remains unreleased and an Onboarded database copy still needs a rehearsed
-migration plus shadow comparisons. Current release and backend maturity is maintained in
-[`current-state.md`](current-state.md); application integration guidance lives in
-[`onboarded-foundation.md`](onboarded-foundation.md).
+This does not mean an application cutover is automatically complete. Registry canaries and
+PostgreSQL CI are green, but stable `0.1.0` remains unreleased and any existing database still
+needs a rehearsed migration plus shadow comparisons. Current release and backend maturity is
+maintained in [`current-state.md`](current-state.md); application integration guidance lives in
+[`host-integration.md`](host-integration.md).

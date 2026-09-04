@@ -1,8 +1,8 @@
 # Operational Primitives
 
-Triplex is the durable substrate beneath applications such as Onboarded. This specification
-separates database/runtime guarantees that belong in Triplex from workflow and product concepts
-that belong in an application.
+Triplex is a durable substrate for applications that need temporal facts, derivations, and audit.
+This specification separates database/runtime guarantees that belong in Triplex from workflow and
+product concepts that belong in a host application.
 
 ## Implemented foundation
 
