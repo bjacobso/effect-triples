@@ -317,4 +317,71 @@ describe("Triplex dashboard", () => {
     expect(result.current.some((fact) => fact.attribute === ":submission/status")).toBe(false);
     expect(result.current.some((fact) => fact.attribute === ":submission/student")).toBe(true);
   });
+
+  it("finds and selects a correctly typed entity for reference attributes", async () => {
+    const result = await Effect.runPromise(
+      Effect.gen(function* () {
+        const triples = yield* Triples;
+        yield* triples.assert({
+          entityId: EntityId.make("teacher:grace-hopper"),
+          entityType: "Teacher",
+          attribute: ":person/name",
+          value: string("Grace Hopper"),
+        });
+        const data = yield* loadDashboard;
+        const page = yield* loadEntityTypePage("Course", null, 20);
+        const base = {
+          ...initialModel,
+          data,
+          busy: false,
+          selectedEntityType: "Course" as const,
+          selectedEntityId: "course:data-systems-201",
+          entityTypePage: page,
+        };
+        const editing = update(base, Message.RequestedEditEntity());
+        const searched = update(
+          editing.model,
+          Message.ChangedEntityReferenceSearch({
+            attribute: ":course/teacher",
+            search: "grace",
+          }),
+        );
+        const selected = update(
+          searched.model,
+          Message.SelectedEntityReference({
+            attribute: ":course/teacher",
+            entityId: "teacher:grace-hopper",
+          }),
+        );
+        const saving = update(selected.model, Message.RequestedSaveEntity());
+        const completed = yield* saving.commands![0]!.effect;
+        const current = yield* triples.entity(EntityId.make("course:data-systems-201"));
+        return { editing, searched, selected, completed, current, page };
+      }).pipe(Effect.provide(DashboardDemoLayer)),
+    );
+
+    const teacherAttribute = result.page.attributes.find(
+      (attribute) => attribute.attribute === ":course/teacher",
+    );
+    expect(teacherAttribute).toMatchObject({
+      valueType: "ref",
+      referenceTarget: "Teacher",
+    });
+    scene(
+      { update, view },
+      given(result.searched.model),
+      expectScene(text("Find Teacher")).toExist(),
+      expectScene(text("Grace Hopper")).toExist(),
+    );
+    expect(
+      result.selected.model.entityAttributeDrafts.find(
+        (draft) => draft.attribute === ":course/teacher",
+      ),
+    ).toMatchObject({ value: "teacher:grace-hopper", referenceSearch: "" });
+    expect(result.completed._tag).toBe("SucceededMutation");
+    expect(result.current.find((fact) => fact.attribute === ":course/teacher")?.value).toEqual({
+      type: "ref",
+      value: "teacher:grace-hopper",
+    });
+  });
 });

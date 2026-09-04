@@ -43,6 +43,7 @@ export const EntityAttributeView = Schema.Struct({
   label: Schema.String,
   valueType: Schema.String,
   valueCount: Schema.Number,
+  referenceTarget: Schema.NullOr(Schema.String),
 });
 export type EntityAttributeView = typeof EntityAttributeView.Type;
 
@@ -64,6 +65,8 @@ export const EntityAttributeDraft = Schema.Struct({
   cleared: Schema.Boolean,
   touched: Schema.Boolean,
   multiple: Schema.Boolean,
+  referenceTarget: Schema.NullOr(Schema.String),
+  referenceSearch: Schema.String,
 });
 export type EntityAttributeDraft = typeof EntityAttributeDraft.Type;
 

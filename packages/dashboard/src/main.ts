@@ -46,6 +46,8 @@ export const Message = defineMessageUnion({
   SelectedEntityEditorFormat: { format: Schema.Literals(["form", "json"]) },
   ChangedEntityAttributeValue: { attribute: Schema.String, value: Schema.String },
   ChangedEntityAttributeType: { attribute: Schema.String, valueType: Schema.String },
+  ChangedEntityReferenceSearch: { attribute: Schema.String, search: Schema.String },
+  SelectedEntityReference: { attribute: Schema.String, entityId: Schema.String },
   ClearedEntityAttribute: { attribute: Schema.String },
   RestoredEntityAttribute: { attribute: Schema.String },
   RequestedSaveEntity: {},
@@ -273,6 +275,7 @@ const entityAttributeDrafts = (
         label: fact.attribute.split("/").at(-1) ?? fact.attribute,
         valueType: fact.valueType,
         valueCount: 1,
+        referenceTarget: null,
       });
     }
   }
@@ -289,6 +292,8 @@ const entityAttributeDrafts = (
         cleared: first === undefined,
         touched: false,
         multiple: current.length > 1,
+        referenceTarget: attribute.referenceTarget,
+        referenceSearch: "",
       };
     });
 };
@@ -481,6 +486,31 @@ export const update = (model: Model, message: Message) =>
         entityAttributeDrafts: model.entityAttributeDrafts.map((draft) =>
           draft.attribute === attribute
             ? { ...draft, valueType, cleared: false, touched: true }
+            : draft,
+        ),
+        error: null,
+      },
+    }),
+    ChangedEntityReferenceSearch: ({ attribute, search }) => ({
+      model: {
+        ...model,
+        entityAttributeDrafts: model.entityAttributeDrafts.map((draft) =>
+          draft.attribute === attribute ? { ...draft, referenceSearch: search } : draft,
+        ),
+      },
+    }),
+    SelectedEntityReference: ({ attribute, entityId }) => ({
+      model: {
+        ...model,
+        entityAttributeDrafts: model.entityAttributeDrafts.map((draft) =>
+          draft.attribute === attribute
+            ? {
+                ...draft,
+                value: entityId,
+                cleared: false,
+                touched: true,
+                referenceSearch: "",
+              }
             : draft,
         ),
         error: null,
@@ -1520,6 +1550,147 @@ export const entityFactExplorer = (model: Model, h: HtmlBuilder<Message>): Html 
   );
 };
 
+const referenceEditorView = (
+  model: Model,
+  draft: EntityAttributeDraft,
+  h: HtmlBuilder<Message>,
+): Html => {
+  const search = draft.referenceSearch.trim().toLowerCase();
+  const selected = model.data?.entities.find((entity) => entity.id === draft.value);
+  const candidates = (model.data?.entities ?? [])
+    .filter((entity) => draft.referenceTarget === null || entity.type === draft.referenceTarget)
+    .filter(
+      (entity) =>
+        search.length === 0 ||
+        entity.name.toLowerCase().includes(search) ||
+        entity.id.toLowerCase().includes(search) ||
+        entity.type.toLowerCase().includes(search),
+    )
+    .sort((left, right) => left.name.localeCompare(right.name) || left.id.localeCompare(right.id))
+    .slice(0, 8);
+  const targetLabel = draft.referenceTarget ?? "entity";
+
+  return h.div(
+    [h.Class("mt-3 space-y-3")],
+    [
+      h.div(
+        [h.Class("rounded border border-blue-400/20 bg-blue-400/[0.06] p-3")],
+        [
+          h.p(
+            [h.Class("text-[10px] font-semibold tracking-wide text-blue-300 uppercase")],
+            [selected === undefined ? `Selected ${targetLabel} ID` : `Selected ${selected.type}`],
+          ),
+          h.p(
+            [h.Class("mt-1 text-sm font-medium text-slate-100")],
+            [selected?.name ?? (draft.value || "No entity selected")],
+          ),
+          ...(selected === undefined || selected.name === draft.value
+            ? []
+            : [
+                h.code([h.Class("mt-1 block break-all text-[11px] text-slate-400")], [draft.value]),
+              ]),
+        ],
+      ),
+      h.label(
+        [h.Class("block")],
+        [
+          h.span([h.Class("mb-1 block text-[11px] text-slate-400")], ["Entity ID"]),
+          Input.view(
+            {
+              id: `entity-value-${draft.attribute}`,
+              value: draft.value,
+              onInput: (value) =>
+                Message.ChangedEntityAttributeValue({ attribute: draft.attribute, value }),
+              toView: ({ input }) =>
+                h.input([
+                  ...input,
+                  h.Class(
+                    "h-9 w-full rounded border border-white/15 bg-black/25 px-3 font-mono text-xs text-slate-100 outline-none focus:border-blue-400",
+                  ),
+                ]),
+            },
+            h,
+          ),
+        ],
+      ),
+      h.label(
+        [h.Class("block")],
+        [
+          h.span([h.Class("mb-1 block text-[11px] text-slate-400")], [`Find ${targetLabel}`]),
+          Input.view(
+            {
+              id: `entity-reference-search-${draft.attribute}`,
+              value: draft.referenceSearch,
+              onInput: (search) =>
+                Message.ChangedEntityReferenceSearch({ attribute: draft.attribute, search }),
+              toView: ({ input }) =>
+                h.input([
+                  ...input,
+                  h.Placeholder(`Search ${targetLabel} by name or ID`),
+                  h.Class(
+                    "h-9 w-full rounded border border-white/15 bg-black/25 px-3 text-sm text-slate-100 outline-none placeholder:text-slate-600 focus:border-blue-400",
+                  ),
+                ]),
+            },
+            h,
+          ),
+        ],
+      ),
+      h.div(
+        [h.Class("max-h-48 space-y-1 overflow-y-auto rounded border border-white/10 p-1")],
+        candidates.length === 0
+          ? [
+              h.p(
+                [h.Class("px-3 py-4 text-center text-xs text-slate-500")],
+                [`No matching ${targetLabel} entities`],
+              ),
+            ]
+          : candidates.map((entity) =>
+              Button.view(
+                {
+                  onClick: Message.SelectedEntityReference({
+                    attribute: draft.attribute,
+                    entityId: entity.id,
+                  }),
+                  toView: ({ button }) =>
+                    h.button(
+                      [
+                        ...button,
+                        h.Class(
+                          entity.id === draft.value
+                            ? "flex w-full items-center justify-between gap-3 rounded bg-blue-500/15 px-3 py-2 text-left ring-1 ring-blue-400/30"
+                            : "flex w-full items-center justify-between gap-3 rounded px-3 py-2 text-left hover:bg-white/[0.06]",
+                        ),
+                      ],
+                      [
+                        h.span(
+                          [h.Class("min-w-0")],
+                          [
+                            h.span(
+                              [h.Class("block truncate text-xs font-medium text-slate-100")],
+                              [entity.name],
+                            ),
+                            h.code(
+                              [h.Class("mt-0.5 block truncate text-[10px] text-slate-500")],
+                              [entity.id],
+                            ),
+                          ],
+                        ),
+                        h.span(
+                          [h.Class("shrink-0 text-[10px] font-medium text-slate-500")],
+                          [entity.type],
+                        ),
+                      ],
+                    ),
+                },
+                h,
+              ),
+            ),
+      ),
+    ],
+  );
+};
+
 const entityEditorView = (model: Model, h: HtmlBuilder<Message>): Html =>
   model.entityEditor === "closed"
     ? h.empty
@@ -1758,17 +1929,15 @@ const entityEditorView = (model: Model, h: HtmlBuilder<Message>): Html =>
                                                       ),
                                                     ],
                                                     [
-                                                      ...[
-                                                        "string",
-                                                        "number",
-                                                        "boolean",
-                                                        "datetime",
-                                                        "ref",
-                                                        "json",
-                                                      ].map((valueType) =>
-                                                        h.option([h.Value(valueType)], [valueType]),
-                                                      ),
-                                                    ],
+                                                      "string",
+                                                      "number",
+                                                      "boolean",
+                                                      "datetime",
+                                                      "ref",
+                                                      "json",
+                                                    ].map((valueType) =>
+                                                      h.option([h.Value(valueType)], [valueType]),
+                                                    ),
                                                   ),
                                               },
                                               h,
@@ -1810,25 +1979,27 @@ const entityEditorView = (model: Model, h: HtmlBuilder<Message>): Html =>
                                           },
                                           h,
                                         )
-                                      : Input.view(
-                                          {
-                                            id: `entity-value-${draft.attribute}`,
-                                            value: draft.value,
-                                            onInput: (value) =>
-                                              Message.ChangedEntityAttributeValue({
-                                                attribute: draft.attribute,
-                                                value,
-                                              }),
-                                            toView: ({ input }) =>
-                                              h.input([
-                                                ...input,
-                                                h.Class(
-                                                  "mt-3 h-10 w-full rounded border border-white/15 bg-black/25 px-3 font-mono text-sm text-slate-100 outline-none focus:border-blue-400",
-                                                ),
-                                              ]),
-                                          },
-                                          h,
-                                        ),
+                                      : draft.valueType === "ref"
+                                        ? referenceEditorView(model, draft, h)
+                                        : Input.view(
+                                            {
+                                              id: `entity-value-${draft.attribute}`,
+                                              value: draft.value,
+                                              onInput: (value) =>
+                                                Message.ChangedEntityAttributeValue({
+                                                  attribute: draft.attribute,
+                                                  value,
+                                                }),
+                                              toView: ({ input }) =>
+                                                h.input([
+                                                  ...input,
+                                                  h.Class(
+                                                    "mt-3 h-10 w-full rounded border border-white/15 bg-black/25 px-3 font-mono text-sm text-slate-100 outline-none focus:border-blue-400",
+                                                  ),
+                                                ]),
+                                            },
+                                            h,
+                                          ),
                                   ],
                                 ),
                               )),

@@ -146,6 +146,47 @@ const entitiesFrom = (facts: readonly Triple[]): readonly EntityView[] => {
     );
 };
 
+const typeExprValueType = (value: unknown): TripleValue["type"] | null => {
+  if (typeof value !== "object" || value === null || !("_tag" in value)) return null;
+  switch (value._tag) {
+    case "Ref":
+      return "ref";
+    case "Prim":
+      if (!("prim" in value)) return null;
+      switch (value.prim) {
+        case "text":
+        case "date":
+          return "string";
+        case "number":
+        case "integer":
+          return "number";
+        case "boolean":
+          return "boolean";
+        case "instant":
+          return "datetime";
+        default:
+          return null;
+      }
+    case "Enum":
+      return "string";
+    case "Constrained":
+      return "base" in value ? typeExprValueType(value.base) : null;
+    default:
+      return null;
+  }
+};
+
+const typeExprReferenceTarget = (value: unknown): string | null => {
+  if (typeof value !== "object" || value === null || !("_tag" in value)) return null;
+  if (value._tag === "Ref" && "kind" in value && typeof value.kind === "string") {
+    return value.kind;
+  }
+  if (value._tag === "Constrained" && "base" in value) {
+    return typeExprReferenceTarget(value.base);
+  }
+  return null;
+};
+
 export const loadEntityTypePage = (
   entityType: string,
   cursor: string | null,
@@ -175,10 +216,20 @@ export const loadEntityTypePage = (
       decoded.afterEntityId === null ? 0 : entityIds.findIndex((id) => id > decoded.afterEntityId!);
     const normalizedStart = start < 0 ? entityIds.length : start;
     const pageIds = entityIds.slice(normalizedStart, normalizedStart + pageSize);
-    const rows = yield* triples.entities(pageIds, basis);
+    const referencedIds = [
+      ...new Set(
+        typeFacts.flatMap((fact) => (fact.value.type === "ref" ? [fact.value.value] : [])),
+      ),
+    ];
+    const [rows, referencedRows] = yield* Effect.all([
+      triples.entities(pageIds, basis),
+      referencedIds.length === 0 ? Effect.succeed([]) : triples.entities(referencedIds, basis),
+    ]);
     const entities = entitiesFrom(rows.flat());
     const typeNode = live?.root.children.find(
-      (child) => child.node.kind === "entity-type" && child.node.key === entityType,
+      (child) =>
+        (child.node.kind === "entity-type" || child.node.kind === "entity-schema") &&
+        child.node.key === entityType,
     )?.node;
     const configuredAttributes = (typeNode?.refs ?? [])
       .filter((reference) => reference.kind === "attribute")
@@ -186,6 +237,14 @@ export const loadEntityTypePage = (
     const columns = [
       ...new Set([...typeFacts.map((fact) => fact.attribute), ...configuredAttributes]),
     ].sort();
+    const referencedTypeById = new Map(
+      referencedRows.flatMap((facts) => {
+        const type = Option.getOrUndefined(facts[0]?.entityType ?? Option.none());
+        return type === undefined || facts[0] === undefined
+          ? []
+          : [[facts[0].entityId, type] as const];
+      }),
+    );
     const attributes = columns.map((attribute) => {
       const values = typeFacts.filter((fact) => fact.attribute === attribute);
       const configNode = live?.root.children.find(
@@ -199,6 +258,21 @@ export const loadEntityTypePage = (
           : undefined;
       const localName = attribute.split("/").at(-1) ?? attribute;
       const configuredType = configAttrs?.["valueType"] ?? configAttrs?.["type"];
+      const configuredReferenceTarget =
+        configNode?.refs.find(
+          (reference) =>
+            reference.rel === "references-entity-type" &&
+            (reference.kind === "entity-type" || reference.kind === "entity-schema"),
+        )?.key ?? typeExprReferenceTarget(configuredType);
+      const observedReferenceTargets = [
+        ...new Set(
+          values.flatMap((fact) =>
+            fact.value.type === "ref"
+              ? ([referencedTypeById.get(fact.value.value)].filter(Boolean) as string[])
+              : [],
+          ),
+        ),
+      ];
       return {
         attribute,
         label:
@@ -210,13 +284,18 @@ export const loadEntityTypePage = (
                 .map((part) => `${part[0]?.toUpperCase() ?? ""}${part.slice(1)}`)
                 .join(" "),
         valueType:
-          typeof configuredType === "string" &&
+          (typeof configuredType === "string" &&
           ["string", "number", "boolean", "datetime", "ref", "json", "blob"].includes(
             configuredType,
           )
             ? configuredType
-            : (values[0]?.value.type ?? "string"),
+            : typeExprValueType(configuredType)) ??
+          values[0]?.value.type ??
+          "string",
         valueCount: values.length,
+        referenceTarget:
+          configuredReferenceTarget ??
+          (observedReferenceTargets.length === 1 ? observedReferenceTargets[0]! : null),
       };
     });
     const hasNext = normalizedStart + pageIds.length < entityIds.length;
@@ -628,7 +707,7 @@ export const loadDashboard: Effect.Effect<
   const release = live ?? [...store.snapshots].sort((left, right) => right.seq - left.seq)[0];
   const entities = entitiesFrom(facts);
   const configuredEntityTypes = (release?.root.children ?? [])
-    .filter((child) => child.node.kind === "entity-type")
+    .filter((child) => child.node.kind === "entity-type" || child.node.kind === "entity-schema")
     .map((child) => child.node.key);
   const entityTypes = [
     ...new Set([...entities.map((entity) => entity.type), ...configuredEntityTypes]),
@@ -637,7 +716,9 @@ export const loadDashboard: Effect.Effect<
     .map((name) => {
       const instances = entities.filter((entity) => entity.type === name);
       const configured = release?.root.children.find(
-        (child) => child.node.kind === "entity-type" && child.node.key === name,
+        (child) =>
+          (child.node.kind === "entity-type" || child.node.kind === "entity-schema") &&
+          child.node.key === name,
       )?.node;
       return {
         name,

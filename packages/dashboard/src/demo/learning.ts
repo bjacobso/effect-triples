@@ -143,6 +143,13 @@ export const seedLearningDemo = Effect.gen(function* () {
       label: "Course teacher",
       description: "The teacher responsible for a course.",
       valueType: "ref",
+      refs: [
+        {
+          rel: "references-entity-type",
+          kind: "entity-type",
+          key: "Teacher",
+        },
+      ],
     });
     const submissionStatus = yield* node({
       kind: "attribute",
