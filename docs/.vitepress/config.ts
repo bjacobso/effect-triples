@@ -1,5 +1,7 @@
-import { resolve } from "node:path";
+import { dirname, resolve } from "node:path";
 
+import { transformerTwoslash } from "@shikijs/vitepress-twoslash";
+import ts from "typescript";
 import { defineConfig } from "vitepress";
 
 export default defineConfig({
@@ -20,6 +22,31 @@ export default defineConfig({
   markdown: {
     theme: { light: "github-light", dark: "tokyo-night" },
     languages: ["js", "json", "sh", "sql", "ts"],
+    codeTransformers: [
+      transformerTwoslash({
+        throws: true,
+        twoslashOptions: {
+          tsModule: ts,
+          tsLibDirectory: dirname(ts.getDefaultLibFilePath({})),
+          vfsRoot: resolve(import.meta.dirname, "../snippets/home"),
+          cache: process.env.NODE_ENV === "production",
+          fsCache: process.env.NODE_ENV === "production",
+          compilerOptions: {
+            target: ts.ScriptTarget.ES2024,
+            module: ts.ModuleKind.ESNext,
+            moduleResolution: ts.ModuleResolutionKind.Bundler,
+            allowImportingTsExtensions: true,
+            noEmit: true,
+            strict: true,
+            baseUrl: resolve(import.meta.dirname, "../.."),
+            paths: {
+              "@bjacobso/triplex": ["packages/core/src/index.ts"],
+              "@bjacobso/triplex/config": ["packages/core/src/config/index.ts"],
+            },
+          },
+        },
+      }),
+    ],
   },
   themeConfig: {
     logo: { src: "/mark.svg", alt: "Triplex" },

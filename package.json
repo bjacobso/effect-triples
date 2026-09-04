@@ -38,6 +38,7 @@
     "@effect/platform-node": "catalog:",
     "@fontsource-variable/ibm-plex-sans": "catalog:",
     "@fontsource/ibm-plex-mono": "catalog:",
+    "@shikijs/vitepress-twoslash": "catalog:",
     "@types/node": "catalog:",
     "alchemy": "catalog:",
     "effect": "catalog:",
