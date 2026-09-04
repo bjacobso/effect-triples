@@ -51,6 +51,7 @@ const descriptorType = TypeExpr.struct({
   label: TypeExpr.required(TypeExpr.text),
   description: TypeExpr.required(TypeExpr.text),
   version: TypeExpr.required(TypeExpr.integer),
+  valueType: TypeExpr.optional(TypeExpr.text),
 });
 
 const derivationDescriptorType = TypeExpr.struct({
@@ -98,13 +99,19 @@ const node = (input: {
   readonly key: string;
   readonly label: string;
   readonly description: string;
+  readonly valueType?: string;
   readonly refs?: readonly ConfigNode.ConfigRef[];
 }) =>
   ConfigNode.makeTyped({
     kind: input.kind,
     key: input.key,
     type: descriptorType,
-    attrs: { label: input.label, description: input.description, version: 1 },
+    attrs: {
+      label: input.label,
+      description: input.description,
+      version: 1,
+      ...(input.valueType === undefined ? {} : { valueType: input.valueType }),
+    },
     ...(input.refs === undefined ? {} : { refs: input.refs }),
   });
 
@@ -128,18 +135,21 @@ export const seedLearningDemo = Effect.gen(function* () {
       key: PERSON_NAME,
       label: "Person name",
       description: "The display name shared by students and teachers.",
+      valueType: "string",
     });
     const courseTeacher = yield* node({
       kind: "attribute",
       key: COURSE_TEACHER,
       label: "Course teacher",
       description: "The teacher responsible for a course.",
+      valueType: "ref",
     });
     const submissionStatus = yield* node({
       kind: "attribute",
       key: SUBMISSION_STATUS,
       label: "Submission status",
       description: "Whether a quiz submission is submitted or graded.",
+      valueType: "string",
     });
     const teacherType = yield* node({
       kind: "entity-type",

@@ -20,7 +20,10 @@ resulting database through six domain-independent views:
 - content-addressed releases, refs, logical config objects, immutable revision ancestry,
   dependency closures, and canonical stored bodies.
 
-The entity workbench can create and edit typed facts as one attributed transaction.
+The entity workbench can create and edit typed facts as one attributed transaction. It
+reflects configured attributes and value types—falling back to observed facts—into an editable form,
+allows individual attributes to be included or cleared, and retains a Raw JSON mode for
+exact bitemporal or multi-valued edits.
 The configuration workbench can create, edit, or remove top-level logical objects;
 validate typed attributes and cross-object references; publish without changing an
 environment; and explicitly promote or roll back `live` and `test` to any release.

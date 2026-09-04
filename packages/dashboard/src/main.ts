@@ -20,6 +20,7 @@ import {
 } from "./data.js";
 import {
   DashboardData,
+  type EntityAttributeDraft,
   type EntityView,
   EntityTypePageView,
   Model,
@@ -42,6 +43,11 @@ export const Message = defineMessageUnion({
   ChangedEntityDraftId: { value: Schema.String },
   ChangedEntityDraftType: { value: Schema.String },
   ChangedEntityDraftFacts: { value: Schema.String },
+  SelectedEntityEditorFormat: { format: Schema.Literals(["form", "json"]) },
+  ChangedEntityAttributeValue: { attribute: Schema.String, value: Schema.String },
+  ChangedEntityAttributeType: { attribute: Schema.String, valueType: Schema.String },
+  ClearedEntityAttribute: { attribute: Schema.String },
+  RestoredEntityAttribute: { attribute: Schema.String },
   RequestedSaveEntity: {},
   RequestedEditConfig: {},
   RequestedCreateConfig: {},
@@ -78,6 +84,8 @@ export const initialModel: Model = {
   selectedEntityId: null,
   selectedEntityHistory: [],
   entityEditor: "closed",
+  entityEditorFormat: "form",
+  entityAttributeDrafts: [],
   entityDraftId: "",
   entityDraftType: "",
   entityDraftFacts: "[]",
@@ -234,6 +242,106 @@ const entityFactsDraft = (entity: EntityView) =>
     2,
   );
 
+const editableValue = (rawValue: string): string => {
+  try {
+    const parsed = JSON.parse(rawValue) as { readonly type?: string; readonly value?: unknown };
+    if (parsed.type === "datetime" && typeof parsed.value === "number") {
+      return new Date(parsed.value).toISOString();
+    }
+    if (parsed.type === "json") return JSON.stringify(parsed.value, null, 2);
+    return parsed.value === undefined ? "" : String(parsed.value);
+  } catch {
+    return "";
+  }
+};
+
+const entityAttributeDrafts = (
+  page: EntityTypePageView | null,
+  entity?: EntityView,
+): readonly EntityAttributeDraft[] => {
+  const byAttribute = new Map<string, EntityView["facts"]>();
+  for (const fact of entity?.facts ?? []) {
+    byAttribute.set(fact.attribute, [...(byAttribute.get(fact.attribute) ?? []), fact]);
+  }
+  const attributes = new Map(
+    (page?.attributes ?? []).map((attribute) => [attribute.attribute, attribute] as const),
+  );
+  for (const fact of entity?.facts ?? []) {
+    if (!attributes.has(fact.attribute)) {
+      attributes.set(fact.attribute, {
+        attribute: fact.attribute,
+        label: fact.attribute.split("/").at(-1) ?? fact.attribute,
+        valueType: fact.valueType,
+        valueCount: 1,
+      });
+    }
+  }
+  return [...attributes.values()]
+    .sort((left, right) => left.attribute.localeCompare(right.attribute))
+    .map((attribute) => {
+      const current = byAttribute.get(attribute.attribute) ?? [];
+      const first = current[0];
+      return {
+        attribute: attribute.attribute,
+        label: attribute.label,
+        valueType: first?.valueType ?? attribute.valueType,
+        value: first === undefined ? "" : editableValue(first.rawValue),
+        cleared: first === undefined,
+        touched: false,
+        multiple: current.length > 1,
+      };
+    });
+};
+
+const typedDraftValue = (draft: EntityAttributeDraft): unknown => {
+  switch (draft.valueType) {
+    case "string":
+      return { type: "string", value: draft.value };
+    case "ref":
+      return { type: "ref", value: draft.value };
+    case "number": {
+      const value = Number(draft.value);
+      if (!Number.isFinite(value)) throw new Error(`${draft.attribute} must be a number`);
+      return { type: "number", value };
+    }
+    case "boolean":
+      if (draft.value !== "true" && draft.value !== "false") {
+        throw new Error(`${draft.attribute} must be true or false`);
+      }
+      return { type: "boolean", value: draft.value === "true" };
+    case "datetime": {
+      const value = Number.isFinite(Number(draft.value))
+        ? Number(draft.value)
+        : Date.parse(draft.value);
+      if (!Number.isFinite(value))
+        throw new Error(`${draft.attribute} must be an ISO date or epoch`);
+      return { type: "datetime", value };
+    }
+    case "json":
+      return { type: "json", value: JSON.parse(draft.value) as unknown };
+    default:
+      throw new Error(`${draft.attribute} uses ${draft.valueType}; edit it in Raw JSON mode`);
+  }
+};
+
+const formFactsDraft = (model: Model): string => {
+  const originals = JSON.parse(model.entityDraftFacts) as ReadonlyArray<{
+    readonly attribute: string;
+    readonly value: unknown;
+    readonly validFrom?: number;
+    readonly validTo?: number;
+  }>;
+  return JSON.stringify(
+    model.entityAttributeDrafts.flatMap((draft) => {
+      if (draft.cleared) return [];
+      if (!draft.touched) return originals.filter((fact) => fact.attribute === draft.attribute);
+      return [{ attribute: draft.attribute, value: typedDraftValue(draft) }];
+    }),
+    null,
+    2,
+  );
+};
+
 const configAttrs = (body: string): string => {
   try {
     const parsed = JSON.parse(body) as { readonly attrs?: unknown };
@@ -316,6 +424,8 @@ export const update = (model: Model, message: Message) =>
       model: {
         ...model,
         entityEditor: "create",
+        entityEditorFormat: "form",
+        entityAttributeDrafts: entityAttributeDrafts(model.entityTypePage),
         entityDraftId: "",
         entityDraftType: model.selectedEntityType ?? "",
         entityDraftFacts: JSON.stringify(
@@ -337,6 +447,8 @@ export const update = (model: Model, message: Message) =>
             model: {
               ...model,
               entityEditor: "edit" as const,
+              entityEditorFormat: "form" as const,
+              entityAttributeDrafts: entityAttributeDrafts(model.entityTypePage, entity),
               entityDraftId: entity.id,
               entityDraftType: entity.type,
               entityDraftFacts: entityFactsDraft(entity),
@@ -349,20 +461,71 @@ export const update = (model: Model, message: Message) =>
     ChangedEntityDraftId: ({ value }) => ({ model: { ...model, entityDraftId: value } }),
     ChangedEntityDraftType: ({ value }) => ({ model: { ...model, entityDraftType: value } }),
     ChangedEntityDraftFacts: ({ value }) => ({ model: { ...model, entityDraftFacts: value } }),
+    SelectedEntityEditorFormat: ({ format }) => ({
+      model: { ...model, entityEditorFormat: format, error: null },
+    }),
+    ChangedEntityAttributeValue: ({ attribute, value }) => ({
+      model: {
+        ...model,
+        entityAttributeDrafts: model.entityAttributeDrafts.map((draft) =>
+          draft.attribute === attribute
+            ? { ...draft, value, cleared: false, touched: true }
+            : draft,
+        ),
+        error: null,
+      },
+    }),
+    ChangedEntityAttributeType: ({ attribute, valueType }) => ({
+      model: {
+        ...model,
+        entityAttributeDrafts: model.entityAttributeDrafts.map((draft) =>
+          draft.attribute === attribute
+            ? { ...draft, valueType, cleared: false, touched: true }
+            : draft,
+        ),
+        error: null,
+      },
+    }),
+    ClearedEntityAttribute: ({ attribute }) => ({
+      model: {
+        ...model,
+        entityAttributeDrafts: model.entityAttributeDrafts.map((draft) =>
+          draft.attribute === attribute ? { ...draft, cleared: true, touched: true } : draft,
+        ),
+      },
+    }),
+    RestoredEntityAttribute: ({ attribute }) => ({
+      model: {
+        ...model,
+        entityAttributeDrafts: model.entityAttributeDrafts.map((draft) =>
+          draft.attribute === attribute ? { ...draft, cleared: false, touched: true } : draft,
+        ),
+      },
+    }),
     RequestedSaveEntity: () =>
       model.entityEditor === "closed"
         ? { model }
-        : {
-            model: { ...model, busy: true, error: null, notice: null },
-            commands: [
-              SaveEntity({
-                mode: model.entityEditor,
-                entityId: model.entityDraftId,
-                entityType: model.entityDraftType,
-                facts: model.entityDraftFacts,
-              }),
-            ],
-          },
+        : (() => {
+            try {
+              const facts =
+                model.entityEditorFormat === "json"
+                  ? model.entityDraftFacts
+                  : formFactsDraft(model);
+              return {
+                model: { ...model, busy: true, error: null, notice: null },
+                commands: [
+                  SaveEntity({
+                    mode: model.entityEditor,
+                    entityId: model.entityDraftId,
+                    entityType: model.entityDraftType,
+                    facts,
+                  }),
+                ],
+              };
+            } catch (error) {
+              return { model: { ...model, error: errorMessage(error), notice: null } };
+            }
+          })(),
     RequestedEditConfig: () => {
       const object = model.data?.config.objects.find(
         (candidate) => `${candidate.kind}\u0000${candidate.key}` === model.selectedConfigObject,
@@ -1445,37 +1608,232 @@ const entityEditorView = (model: Model, h: HtmlBuilder<Message>): Html =>
                       ),
                     ],
                   ),
-                  h.label(
-                    [h.Class("block")],
+                  h.div(
+                    [h.Class("border-b border-white/10")],
                     [
-                      h.span(
-                        [h.Class("mb-2 block text-xs font-semibold text-slate-300")],
-                        ["Facts (typed JSON)"],
-                      ),
-                      h.p(
-                        [h.Class("mb-2 text-xs leading-5 text-slate-500")],
+                      h.div(
+                        [h.Class("flex items-end gap-1")],
                         [
-                          "Each fact declares an attribute and a Triplex value. Optional validFrom and validTo control business time.",
+                          uiButton(
+                            "Attribute form",
+                            Message.SelectedEntityEditorFormat({ format: "form" }),
+                            h,
+                            {
+                              kind: model.entityEditorFormat === "form" ? "primary" : "quiet",
+                            },
+                          ),
+                          uiButton(
+                            "Raw JSON",
+                            Message.SelectedEntityEditorFormat({ format: "json" }),
+                            h,
+                            {
+                              kind: model.entityEditorFormat === "json" ? "primary" : "quiet",
+                            },
+                          ),
                         ],
-                      ),
-                      Textarea.view(
-                        {
-                          id: "entity-facts",
-                          value: model.entityDraftFacts,
-                          rows: 20,
-                          onInput: (value) => Message.ChangedEntityDraftFacts({ value }),
-                          toView: ({ textarea }) =>
-                            h.textarea([
-                              ...textarea,
-                              h.Class(
-                                "block w-full resize-y rounded border border-white/15 bg-black/30 p-4 font-mono text-xs leading-5 text-slate-200 outline-none focus:border-blue-400",
-                              ),
-                            ]),
-                        },
-                        h,
                       ),
                     ],
                   ),
+                  model.entityEditorFormat === "json"
+                    ? h.label(
+                        [h.Class("block")],
+                        [
+                          h.span(
+                            [h.Class("mb-2 block text-xs font-semibold text-slate-300")],
+                            ["Facts (typed JSON)"],
+                          ),
+                          h.p(
+                            [h.Class("mb-2 text-xs leading-5 text-slate-500")],
+                            [
+                              "Use this for exact bitemporal values, multiple values, blobs, or attributes not yet reflected by the type.",
+                            ],
+                          ),
+                          Textarea.view(
+                            {
+                              id: "entity-facts",
+                              value: model.entityDraftFacts,
+                              rows: 20,
+                              onInput: (value) => Message.ChangedEntityDraftFacts({ value }),
+                              toView: ({ textarea }) =>
+                                h.textarea([
+                                  ...textarea,
+                                  h.Class(
+                                    "block w-full resize-y rounded border border-white/15 bg-black/30 p-4 font-mono text-xs leading-5 text-slate-200 outline-none focus:border-blue-400",
+                                  ),
+                                ]),
+                            },
+                            h,
+                          ),
+                        ],
+                      )
+                    : h.div(
+                        [h.Class("space-y-3")],
+                        [
+                          h.div(
+                            [],
+                            [
+                              h.p(
+                                [h.Class("text-xs font-semibold text-slate-300")],
+                                ["Reflected attributes"],
+                              ),
+                              h.p(
+                                [h.Class("mt-1 text-xs leading-5 text-slate-500")],
+                                [
+                                  "Clear omits an attribute from the new entity state. Other current facts remain unchanged unless you edit them.",
+                                ],
+                              ),
+                            ],
+                          ),
+                          ...(model.entityAttributeDrafts.length === 0
+                            ? [
+                                h.div(
+                                  [
+                                    h.Class(
+                                      "rounded border border-white/10 bg-white/5 p-4 text-sm text-slate-400",
+                                    ),
+                                  ],
+                                  [
+                                    "No attributes have been observed for this entity type. Use Raw JSON to add its first facts.",
+                                  ],
+                                ),
+                              ]
+                            : model.entityAttributeDrafts.map((draft) =>
+                                h.div(
+                                  [
+                                    h.Class(
+                                      draft.cleared
+                                        ? "rounded border border-white/8 bg-white/[0.02] p-4 opacity-65"
+                                        : "rounded border border-white/10 bg-white/[0.04] p-4",
+                                    ),
+                                  ],
+                                  [
+                                    h.div(
+                                      [h.Class("flex flex-wrap items-start justify-between gap-3")],
+                                      [
+                                        h.div(
+                                          [h.Class("min-w-0")],
+                                          [
+                                            h.p(
+                                              [h.Class("text-sm font-semibold text-slate-100")],
+                                              [draft.label],
+                                            ),
+                                            h.code(
+                                              [
+                                                h.Class(
+                                                  "mt-1 block break-all text-[11px] text-blue-300",
+                                                ),
+                                              ],
+                                              [draft.attribute],
+                                            ),
+                                            ...(draft.multiple
+                                              ? [
+                                                  h.p(
+                                                    [h.Class("mt-1 text-[11px] text-amber-300")],
+                                                    [
+                                                      "Multiple current values · unchanged unless edited; use Raw JSON for exact control.",
+                                                    ],
+                                                  ),
+                                                ]
+                                              : []),
+                                          ],
+                                        ),
+                                        h.div(
+                                          [h.Class("flex items-center gap-2")],
+                                          [
+                                            Select.view(
+                                              {
+                                                id: `entity-type-${draft.attribute}`,
+                                                value: draft.valueType,
+                                                onChange: (valueType) =>
+                                                  Message.ChangedEntityAttributeType({
+                                                    attribute: draft.attribute,
+                                                    valueType,
+                                                  }),
+                                                toView: ({ select }) =>
+                                                  h.select(
+                                                    [
+                                                      ...select,
+                                                      h.Class(
+                                                        "h-8 rounded border border-white/15 bg-[#111b2b] px-2 font-mono text-xs text-slate-200 outline-none",
+                                                      ),
+                                                    ],
+                                                    [
+                                                      ...[
+                                                        "string",
+                                                        "number",
+                                                        "boolean",
+                                                        "datetime",
+                                                        "ref",
+                                                        "json",
+                                                      ].map((valueType) =>
+                                                        h.option([h.Value(valueType)], [valueType]),
+                                                      ),
+                                                    ],
+                                                  ),
+                                              },
+                                              h,
+                                            ),
+                                            uiButton(
+                                              draft.cleared ? "Include" : "Clear",
+                                              draft.cleared
+                                                ? Message.RestoredEntityAttribute({
+                                                    attribute: draft.attribute,
+                                                  })
+                                                : Message.ClearedEntityAttribute({
+                                                    attribute: draft.attribute,
+                                                  }),
+                                              h,
+                                              { kind: "quiet" },
+                                            ),
+                                          ],
+                                        ),
+                                      ],
+                                    ),
+                                    draft.valueType === "json"
+                                      ? Textarea.view(
+                                          {
+                                            id: `entity-value-${draft.attribute}`,
+                                            value: draft.value,
+                                            rows: 4,
+                                            onInput: (value) =>
+                                              Message.ChangedEntityAttributeValue({
+                                                attribute: draft.attribute,
+                                                value,
+                                              }),
+                                            toView: ({ textarea }) =>
+                                              h.textarea([
+                                                ...textarea,
+                                                h.Class(
+                                                  "mt-3 block w-full resize-y rounded border border-white/15 bg-black/25 p-3 font-mono text-xs text-slate-100 outline-none focus:border-blue-400",
+                                                ),
+                                              ]),
+                                          },
+                                          h,
+                                        )
+                                      : Input.view(
+                                          {
+                                            id: `entity-value-${draft.attribute}`,
+                                            value: draft.value,
+                                            onInput: (value) =>
+                                              Message.ChangedEntityAttributeValue({
+                                                attribute: draft.attribute,
+                                                value,
+                                              }),
+                                            toView: ({ input }) =>
+                                              h.input([
+                                                ...input,
+                                                h.Class(
+                                                  "mt-3 h-10 w-full rounded border border-white/15 bg-black/25 px-3 font-mono text-sm text-slate-100 outline-none focus:border-blue-400",
+                                                ),
+                                              ]),
+                                          },
+                                          h,
+                                        ),
+                                  ],
+                                ),
+                              )),
+                        ],
+                      ),
                 ],
               ),
               h.footer(

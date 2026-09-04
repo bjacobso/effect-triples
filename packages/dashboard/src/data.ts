@@ -150,9 +150,10 @@ export const loadEntityTypePage = (
   entityType: string,
   cursor: string | null,
   pageSize = 5,
-): Effect.Effect<EntityTypePageView, unknown, Triples> =>
+): Effect.Effect<EntityTypePageView, unknown, Triples | ConfigStore.ConfigStore> =>
   Effect.gen(function* () {
     const triples = yield* Triples;
+    const config = yield* ConfigStore.ConfigStore;
     const now = Date.now();
     const decoded =
       cursor === null
@@ -165,7 +166,10 @@ export const loadEntityTypePage = (
       return yield* Effect.fail(new Error("Entity page size must be an integer between 1 and 100"));
     }
     const basis = { recordedAt: decoded.recordedAt, validAt: decoded.validAt };
-    const typeFacts = yield* triples.match({ entityType }, basis);
+    const [typeFacts, live] = yield* Effect.all([
+      triples.match({ entityType }, basis),
+      config.resolveRef("live"),
+    ]);
     const entityIds = [...new Set(typeFacts.map((fact) => fact.entityId))].sort();
     const start =
       decoded.afterEntityId === null ? 0 : entityIds.findIndex((id) => id > decoded.afterEntityId!);
@@ -173,11 +177,53 @@ export const loadEntityTypePage = (
     const pageIds = entityIds.slice(normalizedStart, normalizedStart + pageSize);
     const rows = yield* triples.entities(pageIds, basis);
     const entities = entitiesFrom(rows.flat());
-    const columns = [...new Set(typeFacts.map((fact) => fact.attribute))].sort();
+    const typeNode = live?.root.children.find(
+      (child) => child.node.kind === "entity-type" && child.node.key === entityType,
+    )?.node;
+    const configuredAttributes = (typeNode?.refs ?? [])
+      .filter((reference) => reference.kind === "attribute")
+      .map((reference) => reference.key);
+    const columns = [
+      ...new Set([...typeFacts.map((fact) => fact.attribute), ...configuredAttributes]),
+    ].sort();
+    const attributes = columns.map((attribute) => {
+      const values = typeFacts.filter((fact) => fact.attribute === attribute);
+      const configNode = live?.root.children.find(
+        (child) => child.node.kind === "attribute" && child.node.key === attribute,
+      )?.node;
+      const configAttrs =
+        typeof configNode?.attrs === "object" &&
+        configNode.attrs !== null &&
+        !Array.isArray(configNode.attrs)
+          ? (configNode.attrs as Record<string, unknown>)
+          : undefined;
+      const localName = attribute.split("/").at(-1) ?? attribute;
+      const configuredType = configAttrs?.["valueType"] ?? configAttrs?.["type"];
+      return {
+        attribute,
+        label:
+          typeof configAttrs?.["label"] === "string"
+            ? configAttrs["label"]
+            : localName
+                .split(/[-_]/)
+                .filter(Boolean)
+                .map((part) => `${part[0]?.toUpperCase() ?? ""}${part.slice(1)}`)
+                .join(" "),
+        valueType:
+          typeof configuredType === "string" &&
+          ["string", "number", "boolean", "datetime", "ref", "json", "blob"].includes(
+            configuredType,
+          )
+            ? configuredType
+            : (values[0]?.value.type ?? "string"),
+        valueCount: values.length,
+      };
+    });
     const hasNext = normalizedStart + pageIds.length < entityIds.length;
     return {
       entityType,
       columns,
+      attributes,
       entities,
       totalCount: entityIds.length,
       nextCursor:
@@ -234,6 +280,13 @@ const decodeDraftValue = (value: unknown) =>
       Schema.Struct({ type: Schema.Literal("datetime"), value: Schema.Number }),
       Schema.Struct({ type: Schema.Literal("ref"), value: EntityId }),
       Schema.Struct({ type: Schema.Literal("json"), value: Schema.Unknown }),
+      Schema.Struct({
+        type: Schema.Literal("blob"),
+        value: Schema.String,
+        mimeType: Schema.String,
+        size: Schema.Number,
+        filename: Schema.optional(Schema.String),
+      }),
     ]),
   )(value);
 
@@ -574,16 +627,29 @@ export const loadDashboard: Effect.Effect<
   ]);
   const release = live ?? [...store.snapshots].sort((left, right) => right.seq - left.seq)[0];
   const entities = entitiesFrom(facts);
-  const entityTypes = [...new Set(entities.map((entity) => entity.type))].sort().map((name) => {
-    const instances = entities.filter((entity) => entity.type === name);
-    return {
-      name,
-      entityCount: instances.length,
-      attributeCount: new Set(
-        instances.flatMap((entity) => entity.facts.map((fact) => fact.attribute)),
-      ).size,
-    };
-  });
+  const configuredEntityTypes = (release?.root.children ?? [])
+    .filter((child) => child.node.kind === "entity-type")
+    .map((child) => child.node.key);
+  const entityTypes = [
+    ...new Set([...entities.map((entity) => entity.type), ...configuredEntityTypes]),
+  ]
+    .sort()
+    .map((name) => {
+      const instances = entities.filter((entity) => entity.type === name);
+      const configured = release?.root.children.find(
+        (child) => child.node.kind === "entity-type" && child.node.key === name,
+      )?.node;
+      return {
+        name,
+        entityCount: instances.length,
+        attributeCount: new Set([
+          ...instances.flatMap((entity) => entity.facts.map((fact) => fact.attribute)),
+          ...(configured?.refs ?? [])
+            .filter((reference) => reference.kind === "attribute")
+            .map((reference) => reference.key),
+        ]).size,
+      };
+    });
   const applicationFacts = facts.filter(isApplicationFact);
   const transactions = [...journal.transactions].reverse().map(transactionView);
   const definitions = yield* configuredDerivations(store, release);

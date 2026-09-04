@@ -129,6 +129,9 @@ describe("Triplex dashboard", () => {
     );
 
     expect(result.first.totalCount).toBe(6);
+    expect(result.first.attributes).toContainEqual(
+      expect.objectContaining({ attribute: ":person/name", valueType: "string" }),
+    );
     expect(result.first.nextCursor).not.toBeNull();
     expect(result.second.totalCount).toBe(6);
     expect([
@@ -267,5 +270,51 @@ describe("Triplex dashboard", () => {
           (child) => child.node.kind === "form" && child.node.key === "quiz/bitemporal-facts",
         ),
     ).toBe(false);
+  });
+
+  it("renders reflected entity attributes as an editable form and clears one attribute", async () => {
+    const result = await Effect.runPromise(
+      Effect.gen(function* () {
+        const data = yield* loadDashboard;
+        const page = yield* loadEntityTypePage("QuizSubmission", null, 20);
+        const base = {
+          ...initialModel,
+          data,
+          busy: false,
+          selectedEntityType: "QuizSubmission" as const,
+          selectedEntityId: "submission:leo-bitemporal-facts",
+          entityTypePage: page,
+        };
+        const editing = update(base, Message.RequestedEditEntity());
+        const cleared = update(
+          editing.model,
+          Message.ClearedEntityAttribute({ attribute: ":submission/status" }),
+        );
+        const saving = update(cleared.model, Message.RequestedSaveEntity());
+        const completed = yield* saving.commands![0]!.effect;
+        const triples = yield* Triples;
+        const current = yield* triples.entity(EntityId.make("submission:leo-bitemporal-facts"));
+        return { editing, cleared, completed, current, page };
+      }).pipe(Effect.provide(DashboardDemoLayer)),
+    );
+
+    expect(result.page.attributes.map((attribute) => attribute.attribute)).toEqual(
+      expect.arrayContaining([
+        ":submission/student",
+        ":submission/quiz",
+        ":submission/status",
+        ":submission/answers",
+      ]),
+    );
+    expect(result.editing.model.entityEditorFormat).toBe("form");
+    expect(result.editing.model.entityAttributeDrafts).toHaveLength(result.page.attributes.length);
+    expect(
+      result.cleared.model.entityAttributeDrafts.find(
+        (draft) => draft.attribute === ":submission/status",
+      )?.cleared,
+    ).toBe(true);
+    expect(result.completed._tag).toBe("SucceededMutation");
+    expect(result.current.some((fact) => fact.attribute === ":submission/status")).toBe(false);
+    expect(result.current.some((fact) => fact.attribute === ":submission/student")).toBe(true);
   });
 });

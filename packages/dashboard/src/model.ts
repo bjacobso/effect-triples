@@ -38,14 +38,34 @@ export const EntityTypeSummary = Schema.Struct({
 });
 export type EntityTypeSummary = typeof EntityTypeSummary.Type;
 
+export const EntityAttributeView = Schema.Struct({
+  attribute: Schema.String,
+  label: Schema.String,
+  valueType: Schema.String,
+  valueCount: Schema.Number,
+});
+export type EntityAttributeView = typeof EntityAttributeView.Type;
+
 export const EntityTypePageView = Schema.Struct({
   entityType: Schema.String,
   columns: Schema.Array(Schema.String),
+  attributes: Schema.Array(EntityAttributeView),
   entities: Schema.Array(EntityView),
   totalCount: Schema.Number,
   nextCursor: Schema.NullOr(Schema.String),
 });
 export type EntityTypePageView = typeof EntityTypePageView.Type;
+
+export const EntityAttributeDraft = Schema.Struct({
+  attribute: Schema.String,
+  label: Schema.String,
+  valueType: Schema.String,
+  value: Schema.String,
+  cleared: Schema.Boolean,
+  touched: Schema.Boolean,
+  multiple: Schema.Boolean,
+});
+export type EntityAttributeDraft = typeof EntityAttributeDraft.Type;
 
 export const ChangeView = Schema.Struct({
   op: Schema.Literals(["assert", "retract"]),
@@ -197,6 +217,8 @@ export const Model = Schema.Struct({
   selectedEntityId: Schema.NullOr(Schema.String),
   selectedEntityHistory: Schema.Array(TransactionView),
   entityEditor: Schema.Literals(["closed", "create", "edit"]),
+  entityEditorFormat: Schema.Literals(["form", "json"]),
+  entityAttributeDrafts: Schema.Array(EntityAttributeDraft),
   entityDraftId: Schema.String,
   entityDraftType: Schema.String,
   entityDraftFacts: Schema.String,
