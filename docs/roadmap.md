@@ -30,8 +30,11 @@ host rows, Triplex facts/journal, and outbox writes can share one Effect SQL tra
 - Delivered: Cloudflare and FoundationDB are private experimental workspace packages and cannot be
   included in the first release accidentally.
 - Delivered: the GitHub repository cutover to `bjacobso/triplex`.
-- Remaining: configure the protected GitHub environment, bootstrap npm package ownership, publish
-  and test the `next` snapshot externally, then merge and approve the initial `0.1.0` release.
+- Delivered: the protected GitHub environment and trusted publishers are configured for all six
+  public packages; a registry-only consumer and a provenance-bearing GitHub OIDC `next` canary
+  passed.
+- Remaining: review and merge the initial version PR, approve the environment deployment, and
+  verify the coordinated stable `0.1.0` release.
 
 ## Immediate correctness gate: backend parity
 

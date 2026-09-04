@@ -3,7 +3,7 @@
 The Node.js SQLite backend for Triplex, built on `@effect/sql-sqlite-node`.
 
 ```bash
-npm install effect @bjacobso/triplex @bjacobso/triplex-sqlite
+npm install effect@4.0.0-rc.112 @bjacobso/triplex@next @bjacobso/triplex-sqlite@next
 ```
 
 Requires Node.js 22 or newer.
@@ -19,6 +19,7 @@ The convenience layer applies Triplex's single v1 migration. Production hosts th
 compose `makeSqliteLayerUnmigrated` and `makeSqliteAdapter({ autoMigrate: false })` with the shared
 `migrations`/`runMigrations` exports from `@bjacobso/triplex-sql`.
 
-SQLite is part of the default shared conformance suite. The package is not yet published to npm.
+SQLite is part of the default shared conformance suite. Pre-1.0 canaries are published under the
+`next` tag.
 
 MIT © 2026 Ben Jacobson.

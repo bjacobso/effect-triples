@@ -14,9 +14,10 @@ work the data implies. One store answers "what does this record look like today"
 believe last Tuesday", "who changed it and under which policy", and "what tasks should exist right
 now", without stitching together a database, an audit log, a config service, and a job queue.
 
-> Pre-1.0 and not yet published to npm. KV and SQLite are the supported baseline; PostgreSQL is a
-> production candidate whose integration suite is still opt-in. Cloudflare and FoundationDB are
-> experimental. See [Current state](docs/current-state.md) for the exact maturity contract.
+> Pre-1.0 canaries are published to npm under the `next` tag. KV and SQLite are the supported
+> baseline; PostgreSQL is a production candidate with a Docker-backed CI integration suite.
+> Cloudflare and FoundationDB are experimental. See [Current state](docs/current-state.md) for the
+> exact maturity contract.
 
 ## Why Triplex?
 
@@ -60,16 +61,17 @@ and never ask about history or provenance. Triplex is a system of record, not a 
 
 ## Installation
 
-This is the intended command after the first release:
+Install the current canary explicitly:
 
 ```sh
-pnpm add @bjacobso/triplex effect
+pnpm add @bjacobso/triplex@next effect@4.0.0-rc.112
 ```
 
-Until then, use the monorepo workspace or a reviewed package tarball produced by
-`pnpm pack:check`. Triplex is ESM-only, targets Node.js 22+, and is aligned to
-`effect@4.0.0-rc.112`. The browser-safe core also runs in modern browsers and edge runtimes.
-The coordinated package and canary process is documented in [Releasing Triplex](docs/releasing.md).
+Use `@next` until the reviewed stable `0.1.0` release: npm assigned the initial bootstrap snapshot
+to `latest` when the package records were created. Triplex is ESM-only, targets Node.js 22+, and is
+aligned to `effect@4.0.0-rc.112`. The browser-safe core also runs in modern browsers and edge
+runtimes. The coordinated package and canary process is documented in
+[Releasing Triplex](docs/releasing.md).
 
 ## Quick start
 

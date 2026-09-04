@@ -67,8 +67,12 @@ normal test matrix.
 
 ## Honest limitations
 
-- Packages have not been published to npm. The GitHub repository is `bjacobso/triplex`; the local
-  clone may still use the old redirecting remote URL until it is updated.
+- All six public packages have registry canaries under the `next` tag. A GitHub Actions OIDC canary
+  has passed with npm provenance. Stable `0.1.0` has not been published. The GitHub repository is
+  `bjacobso/triplex`, and the local `origin` uses that canonical URL.
+- npm assigned the package family's first bootstrap snapshot to `latest` as well as `next`, and the
+  registry rejects removing the only `latest` tag. Consumers must request `@next` explicitly until
+  stable `0.1.0` replaces it.
 - `SubscriptionManager` discovers dependencies and reports possible invalidations. It does not
   push result deltas or automatically re-run queries.
 - Entity snapshots, validation results, and derivation materializations are projections. Callers
@@ -87,16 +91,13 @@ normal test matrix.
 
 ## First-release gates
 
-1. Configure the protected `npm-publish` GitHub environment and npm authentication described in
-   [`releasing.md`](releasing.md).
-2. Merge the initial Changesets version PR, which advances the six public packages from `0.0.0` to
+1. Merge the initial Changesets version PR, which advances the six public packages from `0.0.0` to
    `0.1.0`.
-3. Publish and install a `next` snapshot in a clean external consumer.
-4. Publish the scoped stable packages together and verify their peer dependency, provenance, CLI,
+2. Publish the scoped stable packages together and verify their peer dependency, provenance, CLI,
    and exports behavior from the registry.
 
 Cloudflare and FoundationDB are private for the first release. Their source stays in the monorepo
 and continues to compile, but Changesets cannot publish them accidentally.
 
-No npm deprecations are required today because none of the new `@bjacobso/triplex*` package names
-has been published.
+No npm deprecations are required: the package family was introduced directly under the Triplex
+names and has no legacy public package line.

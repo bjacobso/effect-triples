@@ -97,8 +97,8 @@ content-addressed graph constraints with opt-in atomic enforcement, portable der
 freshness-aware materialization runs, temporal wakeups, hypothetical overlays, and a substantially
 stronger cross-backend Datalog contract.
 
-This does not mean the application cutover is complete. Packages remain unpublished, PostgreSQL
-integration is not yet a required CI job, and an Onboarded database copy still needs a rehearsed
+This does not mean the application cutover is complete. Registry canaries and PostgreSQL CI are
+green, but stable `0.1.0` remains unreleased and an Onboarded database copy still needs a rehearsed
 migration plus shadow comparisons. Current release and backend maturity is maintained in
 [`current-state.md`](current-state.md); application integration guidance lives in
 [`onboarded-foundation.md`](onboarded-foundation.md).

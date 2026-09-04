@@ -9,11 +9,12 @@ and Effect services.
 ## Install
 
 ```bash
-npm install effect @bjacobso/triplex
+npm install effect@4.0.0-rc.112 @bjacobso/triplex@next
 ```
 
-This is the intended command for the first release. The package is not yet published to npm; use
-the monorepo workspace or a reviewed package tarball during development.
+Pre-1.0 canaries are published under the `next` tag. Use an exact canary version in lockstep
+deployments; the unqualified install currently resolves the bootstrap snapshot until reviewed
+stable `0.1.0` replaces it.
 
 ## In-memory store
 

@@ -3,7 +3,7 @@
 The PostgreSQL backend for Triplex, built on `@effect/sql-pg`.
 
 ```bash
-npm install effect @bjacobso/triplex @bjacobso/triplex-postgres
+npm install effect@4.0.0-rc.112 @bjacobso/triplex@next @bjacobso/triplex-postgres@next
 ```
 
 Requires Node.js 22 or newer and a PostgreSQL connection URL.
@@ -67,8 +67,8 @@ package-level API is the boundary for hosts that also need the scoped `SqlClient
 Ordered migration definitions and `runMigrations` are exported by `@bjacobso/triplex-sql` for
 host deployment tooling. Triplex uses its own `triplex_schema_migrations` table.
 
-PostgreSQL passes the opt-in shared conformance and multi-connection isolation integration suite,
-but that suite is not yet a required CI job. Treat this package as a production candidate rather
-than a supported default. It is not yet published to npm.
+PostgreSQL passes the shared conformance and multi-connection isolation integration suite in CI.
+Treat this package as a production candidate rather than a supported default. Pre-1.0 canaries are
+published under the `next` tag.
 
 MIT © 2026 Ben Jacobson.

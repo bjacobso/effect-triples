@@ -4,7 +4,7 @@ Shared SQL migrations, database management, and Datalog execution for Triplex. M
 install this transitively through a concrete backend package.
 
 ```bash
-npm install effect @bjacobso/triplex @bjacobso/triplex-sql
+npm install effect@4.0.0-rc.112 @bjacobso/triplex@next @bjacobso/triplex-sql@next
 ```
 
 The public surface includes the ordered greenfield `migrations`, explicit `runMigrations`, the
@@ -12,6 +12,6 @@ The public surface includes the ordered greenfield `migrations`, explicit `runMi
 `DatabaseManager`/registry layers. It is infrastructure rather than a standalone database; use
 `@bjacobso/triplex-sqlite` or `@bjacobso/triplex-postgres` for a concrete client and adapter.
 
-The package is not yet published to npm.
+Pre-1.0 canaries are published under the `next` tag.
 
 MIT © 2026 Ben Jacobson.

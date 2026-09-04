@@ -10,8 +10,11 @@ pnpm --silent triplex --sqlite ./app.db status
 pnpm --silent triplex --sqlite ./app.db entity types
 ```
 
-After publication, the same commands are available through the `triplex` binary installed by
-`@bjacobso/triplex-cli`.
+The same commands are available through the `triplex` binary installed by the current canary:
+
+```sh
+pnpm add @bjacobso/triplex-cli@next
+```
 
 ## Agent contract
 

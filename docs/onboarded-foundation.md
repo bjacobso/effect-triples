@@ -10,10 +10,10 @@ It publishes generic configuration, writes facts pinned to that release, evaluat
 derivation with provenance, reconciles candidates into durable host-owned work, previews a
 hypothetical submission, and reopens work at an evidence-expiry boundary.
 
-Adoption status: the required database primitives exist, but the packages are not yet on npm and
-PostgreSQL conformance is still an opt-in local integration rather than a required CI job. Treat
-[`current-state.md`](current-state.md) as the release-readiness gate before replacing the vendored
-implementation.
+Adoption status: the required database primitives exist, registry canaries are available under the
+`next` tag, and PostgreSQL conformance runs in CI. Stable `0.1.0` and an application-owned migration
+rehearsal remain gates before replacing the vendored implementation. Treat
+[`current-state.md`](current-state.md) as the release-readiness contract.
 
 ## Guarantees available now
 
@@ -225,5 +225,6 @@ second audit log.
 - FoundationDB and Cloudflare remain experimental and are not Onboarded production targets.
 - A production migration must be rehearsed against an Onboarded database copy and shadow-compared
   before removing the vendored implementation.
-- The package swap must wait for a published canary consumer check and PostgreSQL conformance in CI;
-  neither is complete today.
+- The registry canary consumer check and PostgreSQL conformance in CI are complete. The package
+  swap must still wait for stable `0.1.0`, a rehearsed data copy, and application shadow
+  comparisons.
