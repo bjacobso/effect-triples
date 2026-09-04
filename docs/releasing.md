@@ -67,6 +67,21 @@ npm assigned the first bootstrap snapshot to both `latest` and `next` and reject
 package's only `latest` tag. Until stable `0.1.0` replaces it, documentation and consumer checks
 must always install `@next` explicitly.
 
+## Documentation deployment
+
+The VitePress site is deployed to Cloudflare as an assets-only Worker with the Effect-native
+Alchemy stack in `alchemy.run.ts`. Preview the infrastructure diff before applying it:
+
+```sh
+pnpm docs:plan
+pnpm docs:deploy
+```
+
+The production stage publishes <https://triplex-docs.bjacobso.workers.dev>. Local deployment uses
+the maintainer's authenticated Alchemy profile. CI deployment is intentionally not configured
+until a narrowly scoped Cloudflare credential is provisioned for GitHub Actions; package releases
+do not implicitly deploy the documentation.
+
 ## Verify the canary
 
 Install from the registry in a clean directory outside this monorepo:

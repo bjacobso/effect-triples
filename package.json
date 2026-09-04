@@ -12,7 +12,9 @@
     "dev": "turbo watch build",
     "docs:build": "vitepress build docs",
     "docs:check": "node scripts/check-markdown-code.mjs && tsc --noEmit -p docs/snippets/tsconfig.json",
+    "docs:deploy": "alchemy deploy --stage prod",
     "docs:dev": "vitepress dev docs",
+    "docs:plan": "alchemy plan --stage prod",
     "docs:preview": "vitepress preview docs",
     "dashboard": "pnpm --filter @bjacobso/triplex-dashboard dev",
     "triplex": "pnpm --filter @bjacobso/triplex-cli dev",
@@ -29,13 +31,15 @@
     "test:foundationdb:integration": "pnpm --filter @bjacobso/triplex-foundationdb test:integration",
     "test:postgres:integration": "pnpm --filter @bjacobso/triplex-postgres test:integration",
     "test:watch": "turbo watch test",
-    "typecheck": "turbo run typecheck"
+    "typecheck": "tsc --noEmit -p tsconfig.alchemy.json && turbo run typecheck"
   },
   "devDependencies": {
     "@changesets/cli": "catalog:",
+    "@effect/platform-node": "catalog:",
     "@fontsource-variable/ibm-plex-sans": "catalog:",
     "@fontsource/ibm-plex-mono": "catalog:",
     "@types/node": "catalog:",
+    "alchemy": "catalog:",
     "effect": "catalog:",
     "oxfmt": "catalog:",
     "oxlint": "catalog:",

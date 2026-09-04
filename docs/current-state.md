@@ -43,6 +43,8 @@ roadmap tracks work that is not complete.
   database-scoped pools. Ambient composition shares Effect SQL's fiber-local transaction so host
   rows, Triplex facts/journal, command claims, commit positions, and host outbox rows commit or roll
   back together without an internal second pool.
+- The VitePress documentation is published as a Cloudflare assets-only Worker through the
+  repository's Effect-native Alchemy stack at <https://triplex-docs.bjacobso.workers.dev>.
 
 ## Backend maturity
 

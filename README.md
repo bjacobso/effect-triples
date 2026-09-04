@@ -9,6 +9,10 @@
 
 An Effect-native fact database for applications that have to explain themselves.
 
+[Documentation](https://triplex-docs.bjacobso.workers.dev) ·
+[GitHub](https://github.com/bjacobso/triplex) ·
+[npm](https://www.npmjs.com/package/@bjacobso/triplex)
+
 Triplex stores what is true, what was true, which versioned rules governed each write, and what
 work the data implies. One store answers "what does this record look like today", "what did we
 believe last Tuesday", "who changed it and under which policy", and "what tasks should exist right

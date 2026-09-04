@@ -6,3 +6,4 @@ coverage/
 *.tsbuildinfo
 .DS_Store
 **/.vitepress/cache/
+.alchemy/

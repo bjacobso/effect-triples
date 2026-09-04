@@ -1,0 +1,11 @@
+{
+  "extends": "./tsconfig.base.json",
+  "compilerOptions": {
+    "declaration": false,
+    "declarationMap": false,
+    "lib": ["ESNext", "DOM"],
+    "noEmit": true,
+    "types": ["node"]
+  },
+  "include": ["alchemy.run.ts"]
+}
