@@ -124,6 +124,10 @@ hosts typed configuration as a modular layer over the same core.
   integration suite in CI but remains a pre-1.0 production candidate. Cloudflare and FoundationDB
   are private experimental workspace packages; shared core changes must keep them compiling, but
   their semantics are not part of the default conformance claim.
+- `@bjacobso/triplex-workbench` is a private browser application over the public core, config,
+  and derivation surfaces. It composes an app-lifetime Effect layer for a workforce demo,
+  evaluates hypothetical edits with `Derivation.Overlay`, and commits attributed transactions.
+  Its product UI and workforce model stay above core; no core or backend package depends on it.
 - `@bjacobso/triplex-testkit` is the public home for reusable backend conformance helpers.
 - `test/integration` owns tests that intentionally compose multiple publishable packages.
 - `test/stress` owns opt-in performance and scale tests.

@@ -31,7 +31,8 @@
     "test:foundationdb:integration": "pnpm --filter @bjacobso/triplex-foundationdb test:integration",
     "test:postgres:integration": "pnpm --filter @bjacobso/triplex-postgres test:integration",
     "test:watch": "turbo watch test",
-    "typecheck": "tsc --noEmit -p tsconfig.alchemy.json && turbo run typecheck"
+    "typecheck": "tsc --noEmit -p tsconfig.alchemy.json && turbo run typecheck",
+    "workbench": "pnpm --filter @bjacobso/triplex-workbench dev"
   },
   "devDependencies": {
     "@changesets/cli": "catalog:",
