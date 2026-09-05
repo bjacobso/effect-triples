@@ -350,6 +350,13 @@ hypothetical facts without mutating the source store or journal.
 - [Compliance host demo](examples/compliance-host) — config, facts, feed catch-up, reconciliation,
   hypothetical planning, and expiry-driven reopening in one standalone scenario
 
+## Workbench
+
+Run the workforce operations app with `pnpm workbench` and open <http://localhost:4174>.
+Workbench combines spreadsheet, board, and graph views with eligibility explanations,
+read-only change previews, and attributed transactions over a real browser-local Triplex database.
+The demo resets on reload. See [`packages/workbench`](packages/workbench) for setup and scope.
+
 ## Explorer dashboard
 
 Run the standalone Foldkit dashboard to inspect a real browser-local Triplex database:
